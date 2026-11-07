@@ -1,0 +1,8 @@
+# Everything tool4d writes while generating fixtures
+/Data/
+/archive/
+/Logs/
+/Settings/
+/userPreferences.*/
+/Project/DerivedData/
+/Resources/

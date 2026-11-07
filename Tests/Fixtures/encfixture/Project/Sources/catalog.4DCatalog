@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE base SYSTEM "http://www.4d.com/dtd/2007/base.dtd" >
+<base name="encfixture" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F601" collation_locale="en">
+	<schema name="DEFAULT_SCHEMA"/>
+	<table name="Plain" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F611" id="1">
+		<field name="ID" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F612" type="4" unique="true" autosequence="true" not_null="true" id="1"/>
+		<field name="name" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F613" type="10" limiting_length="255" never_null="true" id="2"/>
+		<field name="note" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F614" type="10" never_null="true" id="3"/>
+		<primary_key field_name="ID" field_uuid="5A1E0C0FFEE0400090A1B2C3D4E5F612"/>
+	</table>
+	<table name="Secret" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F621" id="2" encryptable="true">
+		<field name="ID" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F622" type="4" unique="true" autosequence="true" not_null="true" id="1"/>
+		<field name="name" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F623" type="10" limiting_length="255" never_null="true" id="2"/>
+		<field name="note" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F624" type="10" never_null="true" id="3"/>
+		<field name="payload" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F625" type="18" never_null="true" id="4"/>
+		<primary_key field_name="ID" field_uuid="5A1E0C0FFEE0400090A1B2C3D4E5F622"/>
+	</table>
+	<table name="EmptySecret" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F631" id="3" encryptable="true">
+		<field name="ID" uuid="5A1E0C0FFEE0400090A1B2C3D4E5F632" type="4" unique="true" autosequence="true" not_null="true" id="1"/>
+		<primary_key field_name="ID" field_uuid="5A1E0C0FFEE0400090A1B2C3D4E5F632"/>
+	</table>
+</base>

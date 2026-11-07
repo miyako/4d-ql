@@ -30,11 +30,13 @@ enum DB4DAnalysis {
         case .data:
             for t in storage.sorted(by: { $0.number < $1.number }) {
                 let def = latest[t.uuid]
+                let encrypted: Bool? = t.firstRecordTag.map { $0 == DataBlockTag.encryptedRecord }
                 tables.append(TableInfo(
                     number: t.number, name: def?.name ?? "Table \(t.number)", uuid: t.uuid,
                     fields: def?.fields ?? [], recordCount: t.recordCount, blobCount: t.blobCount,
                     lastModified: t.timestamp.isValid ? t.timestamp : nil,
-                    historicalDefinitions: max(0, (versions[t.uuid] ?? 1) - 1)))
+                    historicalDefinitions: max(0, (versions[t.uuid] ?? 1) - 1),
+                    encryptable: def?.encryptable ?? false, encrypted: encrypted))
             }
         case .structure:
             // User tables are defined here but stored in the data file. The
@@ -44,7 +46,8 @@ enum DB4DAnalysis {
             for d in defs.reversed() where seen.insert(d.uuid).inserted {
                 tables.append(TableInfo(number: d.index + 1, name: d.name, uuid: d.uuid, fields: d.fields,
                                         recordCount: nil, blobCount: nil, lastModified: nil,
-                                        historicalDefinitions: max(0, (versions[d.uuid] ?? 1) - 1)))
+                                        historicalDefinitions: max(0, (versions[d.uuid] ?? 1) - 1),
+                                        encryptable: d.encryptable, encrypted: nil))
             }
             tables.sort { $0.number < $1.number }
             resourceTable = storage.first { $0.uuid.hasPrefix("5265735F") } // "Res_"
@@ -67,10 +70,52 @@ enum DB4DAnalysis {
 
         let lastModified = storage.map(\.timestamp).filter(\.isValid).max()
 
+        let encryption = EncryptionInfo(
+            keyCheckValue: extras.first { $0.key == "encryptedProofB64" }?.value,
+            encryptedTables: tables.filter { $0.encrypted == true }.count,
+            encryptableTables: tables.filter(\.encryptable).count)
+
         return DB4DFileInfo(
             role: role, fileName: source.url.lastPathComponent, fileSize: source.size,
             header: raw.header, tables: tables, relations: relations, extraProperties: extras,
-            resources: resources, lastModified: lastModified, warnings: c.warnings + warnings)
+            resources: resources, encryption: encryption, journal: journal(from: extras),
+            lastModified: lastModified, warnings: c.warnings + warnings)
+    }
+
+    /// Journal settings live in the extra properties under "journal_file.".
+    /// Seen so far: "journal_file_enabled" (bool) and "next_filepath" (the
+    /// journal that starts after the next backup). Any other key ending in
+    /// "path" is taken as the journal currently in use.
+    static func journal(from extras: [ExtraProperty]) -> JournalInfo? {
+        let props = extras.filter { $0.key.hasPrefix("journal_file.") }
+        guard !props.isEmpty else { return nil }
+        var info = JournalInfo(enabled: nil, path: nil, pending: false)
+        for p in props {
+            let key = String(p.key.dropFirst("journal_file.".count)).lowercased()
+            if key.hasSuffix("enabled") {
+                info.enabled = p.value == "true"
+            } else if key.hasPrefix("next"), key.hasSuffix("path"), info.path == nil {
+                info.path = posixPath(fromHFS: p.value)
+                info.pending = true
+            } else if key.hasSuffix("path") {
+                info.path = posixPath(fromHFS: p.value)
+                info.pending = false
+            }
+        }
+        // Other keys (e.g. "sequence_number") say nothing about the journal itself.
+        return (info.enabled == nil && info.path == nil) ? nil : info
+    }
+
+    /// "Macintosh HD:Users:me:x.journal" -> "/Users/me/x.journal". Paths on other
+    /// volumes map to /Volumes/<name>/…; anything else (Windows paths) is kept.
+    static func posixPath(fromHFS hfs: String) -> String {
+        guard hfs.contains(":"), !hfs.hasPrefix("/"), !hfs.contains("\\"),
+              let colon = hfs.firstIndex(of: ":"), colon != hfs.startIndex else { return hfs }
+        let volume = String(hfs[..<colon])
+        let rest = hfs[hfs.index(after: colon)...].split(separator: ":", omittingEmptySubsequences: false)
+            .map { $0.replacingOccurrences(of: "/", with: ":") }.joined(separator: "/")
+        let bootVolume = (try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeNameKey]))?.volumeName
+        return (volume == bootVolume ? "/" : "/Volumes/\(volume)/") + rest
     }
 }
 

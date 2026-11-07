@@ -124,6 +124,34 @@ public struct TableInfo: Codable {
     public var lastModified: DB4DTimestamp?
     /// Number of older definitions of the same table kept in the file.
     public var historicalDefinitions: Int
+    /// The structure marks the table "encryptable".
+    public var encryptable: Bool
+    /// Whether the stored records are encrypted (read from their block tags).
+    /// nil when it cannot be told, e.g. a table with no records, or a structure file.
+    public var encrypted: Bool?
+}
+
+/// Journal settings found in the extra properties ("journal_file.*").
+public struct JournalInfo: Codable {
+    /// Explicit on/off flag, when the file records one.
+    public var enabled: Bool?
+    /// POSIX path when the stored 4D (HFS-style) path could be converted, else as stored.
+    public var path: String?
+    /// The path is the journal 4D will start using (after the next backup),
+    /// not one already in use.
+    public var pending: Bool
+}
+
+/// Data file encryption (Encrypt data file, 4D v17 R5+). Only records and blobs
+/// of encryptable tables are encrypted; table definitions, record counts and
+/// the rest of the catalog stay readable, which is why the preview still works.
+public struct EncryptionInfo: Codable {
+    /// The file holds a key check value ("encryptedProofB64" extra property).
+    public var keyCheckValue: String?
+    public var encryptedTables: Int
+    public var encryptableTables: Int
+
+    public var isEncrypted: Bool { keyCheckValue != nil || encryptedTables > 0 }
 }
 
 public struct RelationInfo: Codable {
@@ -165,6 +193,8 @@ public struct DB4DFileInfo: AnalysisModel {
     public var relations: [RelationInfo]
     public var extraProperties: [ExtraProperty]
     public var resources: ResourceSummary?
+    public var encryption: EncryptionInfo
+    public var journal: JournalInfo?
     public var lastModified: DB4DTimestamp?
     /// Non-fatal problems met while parsing; the preview still shows what was read.
     public var warnings: [String]
@@ -172,7 +202,7 @@ public struct DB4DFileInfo: AnalysisModel {
     public var totalRecords: Int { tables.reduce(0) { $0 + ($1.recordCount ?? 0) } }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, role, fileName, fileSize, header, tables, relations, extraProperties, resources, lastModified, warnings
+        case kind, role, fileName, fileSize, header, tables, relations, extraProperties, resources, encryption, journal, lastModified, warnings
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -186,6 +216,8 @@ public struct DB4DFileInfo: AnalysisModel {
         try c.encode(relations, forKey: .relations)
         try c.encode(extraProperties, forKey: .extraProperties)
         try c.encodeIfPresent(resources, forKey: .resources)
+        try c.encode(encryption, forKey: .encryption)
+        try c.encodeIfPresent(journal, forKey: .journal)
         try c.encodeIfPresent(lastModified, forKey: .lastModified)
         try c.encode(warnings, forKey: .warnings)
     }

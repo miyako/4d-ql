@@ -49,4 +49,9 @@ enum Fmt {
     static func plural(_ v: Int, _ one: String, _ many: String? = nil) -> String {
         "\(n(v)) \(v == 1 ? one : (many ?? one + "s"))"
     }
+
+    static func percent(_ fraction: Double) -> String {
+        let p = fraction * 100
+        return p > 0 && p < 1 ? "<1%" : String(format: "%.0f%%", p)
+    }
 }

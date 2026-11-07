@@ -4,17 +4,21 @@ import Foundation
 ///
 ///     +28   16   table UUID
 ///     +44   i16 + 31×UTF-16  table name
+///     +202  u8   1 = table is "encryptable" in the structure (not proof that its data is encrypted)
 ///     +212  i32  number of field slots
 ///     +244  field slots, 132 bytes each:
 ///           +0    16   field UUID (all zero = deleted field)
 ///           +16   i16 + 31×UTF-16  field name
 ///           +108  i32  limiting length (meaningful for Alpha only)
 ///           +116  i32  field type (catalog.4DCatalog numbering)
+///
+/// Table definitions are never encrypted, even in an encrypted data file.
 struct TableDefinition {
     var index: Int
     var uuid: String
     var name: String
     var fields: [FieldInfo]
+    var encryptable: Bool
 }
 
 /// Data table header (DTab block). Offsets relative to the block start:
@@ -32,10 +36,22 @@ struct DataTable {
     var blobCount: Int
     var recordTableAddress: Int64
     var timestamp: DB4DTimestamp
+    /// Block tag of the first live record ("rec1" plain, "recx" encrypted), nil if none.
+    var firstRecordTag: String?
+}
+
+/// Encrypted records and blobs keep their 28-byte block header in clear text but
+/// change tag: "rec1" -> "recx", "blob" -> "blbx". The payload is AES-encrypted
+/// with the data key and cannot be read without it.
+enum DataBlockTag {
+    static let plainRecord = "rec1"
+    static let encryptedRecord = "recx"
+    static let encryptedBlob = "blbx"
 }
 
 extension DB4DContainer {
     static let tableNameOffset = 44
+    static let encryptableOffset = 202
     static let fieldCountOffset = 212
     static let firstFieldOffset = 244
     static let fieldSlotSize = 132
@@ -61,6 +77,8 @@ extension DB4DContainer {
         r.offset = BlockHeader.size
         let uuid = try r.uuid()
         let name = try self.name(&r, wideLength: false, maxChars: Self.maxNameChars)
+        r.offset = Self.encryptableOffset
+        let encryptable = try r.u8() != 0
         r.offset = Self.fieldCountOffset
         let slots = Int(try r.i32())
         var fields: [FieldInfo] = []
@@ -75,10 +93,22 @@ extension DB4DContainer {
             let limit = Int(try r.i32())
             r.offset = base + 116
             let type = Int(try r.i32())
+            // Deleted slots do not always clear their UUID; they keep type 0 and no name.
+            if type == 0 && fname.isEmpty { continue }
             fields.append(FieldInfo(number: slot + 1, name: fname, uuid: fuuid, typeCode: type,
                                     limitingLength: (type == FieldKind.text.rawValue && limit > 0) ? limit : nil))
         }
-        return TableDefinition(index: index, uuid: uuid, name: name, fields: fields)
+        return TableDefinition(index: index, uuid: uuid, name: name, fields: fields, encryptable: encryptable)
+    }
+
+    /// Tag of the first live block in an address table (one table read, one header read).
+    func firstEntryTag(at address: Int64) -> String? {
+        var tag: String?
+        _ = try? walkAddressTable(at: address) { _, header in
+            tag = header.tag
+            return false
+        }
+        return tag
     }
 
     func dataTables(at address: Int64) throws -> [DataTable] {
@@ -93,7 +123,8 @@ extension DB4DContainer {
                 r.offset = 72; let nblob = Int(try r.i32())
                 r.offset = 92; let uuid = try r.uuid()
                 result.append(DataTable(number: Int(header.position), uuid: uuid, recordCount: nrec,
-                                        blobCount: nblob, recordTableAddress: recTab, timestamp: header.timestamp))
+                                        blobCount: nblob, recordTableAddress: recTab, timestamp: header.timestamp,
+                                        firstRecordTag: nrec > 0 ? firstEntryTag(at: recTab) : nil))
             } catch {
                 warnings.append("data table #\(entry.index + 1): \(error)")
             }

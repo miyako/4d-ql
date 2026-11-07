@@ -2,6 +2,9 @@ import Foundation
 
 /// Renders a Report as a self-contained HTML page (no scripts, no external
 /// resources) that follows the system light/dark appearance.
+///
+/// Quick Look may run previews with JavaScript disabled, so hover details use
+/// the `title` attribute and nothing depends on script.
 public struct HTMLRenderer {
     public init() {}
 
@@ -20,17 +23,74 @@ public struct HTMLRenderer {
                 "<div class=\"stat\"><div class=\"v\">\(esc($0.value))</div><div class=\"l\">\(esc($0.label))</div></div>"
             }.joined() + "</div>"
         }
-        for s in report.sections {
-            h += "<section><h2>\(esc(s.title))</h2>" + s.blocks.map(block).joined() + "</section>"
+
+        // Consecutive half-width sections are laid out side by side.
+        var i = 0
+        let sections = report.sections
+        while i < sections.count {
+            if sections[i].width == .half {
+                var group: [Section] = []
+                while i < sections.count, sections[i].width == .half { group.append(sections[i]); i += 1 }
+                h += "<div class=\"pair\">" + group.map(section).joined() + "</div>"
+            } else {
+                h += section(sections[i]); i += 1
+            }
         }
         h += "</body></html>"
         return h
     }
 
+    private func section(_ s: Section) -> String {
+        "<section><h2>\(esc(s.title))</h2>" + s.blocks.map(block).joined() + "</section>"
+    }
+
     private func block(_ b: Block) -> String {
         switch b {
         case .keyValues(let kv):
-            return "<dl>" + kv.map { "<dt>\(esc($0.0))</dt><dd>\(esc($0.1))</dd>" }.joined() + "</dl>"
+            return "<dl>" + kv.map {
+                "<dt>\(esc($0.key))</dt><dd\($0.mono ? " class=\"mono\"" : "")>\(esc($0.value))</dd>"
+            }.joined() + "</dl>"
+
+        case .identity(let label, let value, let caption):
+            var h = "<div class=\"identity\"><div class=\"il\">\(esc(label))</div><div class=\"iv mono\">\(esc(value))</div>"
+            if let c = caption { h += "<div class=\"ic\">\(esc(c))</div>" }
+            return h + "</div>"
+
+        case .meter(let fraction, let label, let caption):
+            let pct = max(0, min(1, fraction)) * 100
+            var h = "<div class=\"meter\" title=\"\(esc(label))\"><div class=\"ml\">\(esc(label))</div>"
+            h += "<div class=\"track\"><span class=\"fill\" style=\"width:\(String(format: "%.1f", pct))%\"></span></div>"
+            if let c = caption { h += "<div class=\"mc\">\(esc(c))</div>" }
+            return h + "</div>"
+
+        case .bars(let rows, let valueHeader, let extraHeader):
+            let maxV = rows.filter { !$0.muted }.map(\.value).max() ?? rows.map(\.value).max() ?? 0
+            var h = "<div class=\"bars\"><div class=\"bh\"><span></span><span></span><span class=\"num\">\(esc(valueHeader))</span><span class=\"num\">\(esc(extraHeader))</span></div>"
+            for r in rows {
+                // Tiny non-zero values stay visible; zero stays empty. "Other" may exceed the scale: cap it.
+                let pct = (maxV > 0 && r.value > 0) ? min(100, max(0.5, r.value / maxV * 100)) : 0
+                let tip = r.tooltip.map { " title=\"\(esc($0))\"" } ?? ""
+                h += "<div class=\"bar\(r.muted ? " muted" : "")\"\(tip)>"
+                h += "<span class=\"bl\">\(esc(r.label))\(r.marker.map { " <span class=\"mk\">\(esc($0))</span>" } ?? "")</span>"
+                h += "<span class=\"track\"><span class=\"fill\" style=\"width:\(String(format: "%.1f", pct))%\"></span></span>"
+                h += "<span class=\"bv num\">\(esc(r.display))</span><span class=\"bx num\">\(esc(r.extra))</span></div>"
+            }
+            return h + "</div>"
+
+        case .composition(let segments):
+            let total = segments.reduce(0) { $0 + $1.value }
+            guard total > 0 else { return "" }
+            func cls(_ s: Segment) -> String { s.slot.map { "s\(min(max($0, 1), 8))" } ?? "so" }
+            var h = "<div class=\"comp\"><div class=\"strip\">"
+            for s in segments where s.value > 0 {
+                h += "<span class=\"seg \(cls(s))\" style=\"flex-grow:\(s.value)\" title=\"\(esc(s.label)): \(esc(s.display))\"></span>"
+            }
+            h += "</div><ul class=\"legend\">"
+            for s in segments where s.value > 0 {
+                h += "<li><span class=\"sw \(cls(s))\"></span>\(esc(s.label)) <span class=\"lc\">\(esc(s.display))</span></li>"
+            }
+            return h + "</ul></div>"
+
         case .table(let t):
             var h = "<table><thead><tr>"
             h += t.columns.map { "<th class=\"\(align($0.1))\">\(esc($0.0))</th>" }.joined()
@@ -41,19 +101,18 @@ public struct HTMLRenderer {
                     return "<td class=\"\(a)\">\(esc(cell))</td>"
                 }.joined() + "</tr>"
             }
-            return h + "</tbody></table>"
-        case .bars(let bars):
-            let maxV = bars.map(\.value).max() ?? 0
-            return "<div class=\"bars\">" + bars.map { b in
-                let pct = maxV > 0 ? max(0.5, b.value / maxV * 100) : 0
-                return "<div class=\"bar\"><span class=\"bl\">\(esc(b.label))</span><span class=\"track\"><span class=\"fill\" style=\"width:\(String(format: "%.1f", pct))%\"></span></span><span class=\"bv\">\(esc(b.display))</span></div>"
-            }.joined() + "</div>"
+            h += "</tbody></table>"
+            if let more = t.more { h += "<p class=\"more\">\(esc(more))</p>" }
+            return h
+
         case .disclosure(let summary, let detail, let blocks):
             var h = "<details><summary><span class=\"st\">\(esc(summary))</span>"
             if let d = detail { h += "<span class=\"sd\">\(esc(d))</span>" }
             return h + "</summary>" + blocks.map(block).joined() + "</details>"
+
         case .note(let text, let t):
             return "<p class=\"note \(tone(t))\">\(esc(text))</p>"
+
         case .text(let text):
             return "<p>\(esc(text))</p>"
         }
@@ -83,41 +142,62 @@ public struct HTMLRenderer {
         return o
     }
 
+    // Categorical slots s1–s8 are the validated reference palette (dataviz skill),
+    // light and dark steps; adjacent pairs pass the CVD and normal-vision checks.
     static let css = """
-    :root{--bg:#fff;--fg:#1d1d1f;--muted:#6e6e73;--line:#e5e5ea;--soft:#f5f5f7;--accent:#0a66d8;--good:#1e8e3e;--warn:#b26a00;--bad:#c5221f}
-    @media (prefers-color-scheme:dark){:root{--bg:#1e1e1e;--fg:#f2f2f7;--muted:#a1a1a6;--line:#3a3a3c;--soft:#2a2a2c;--accent:#4c9bff;--good:#4cc76b;--warn:#f0a83a;--bad:#ff6b63}}
+    :root{--bg:#fcfcfb;--fg:#0b0b0b;--muted:#52514e;--faint:#8a8984;--line:#e6e5e1;--soft:#f2f1ee;--track:#ebeae6;
+    --accent:#2a78d6;--other:#a3a29c;--good:#1e8e3e;--warn:#b26a00;--bad:#c5221f;
+    --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#6250d6;--s8:#e34948}
+    @media (prefers-color-scheme:dark){:root{--bg:#1a1a19;--fg:#f0efec;--muted:#c3c2b7;--faint:#8f8e86;--line:#353533;--soft:#252524;--track:#2e2e2c;
+    --accent:#3987e5;--other:#6d6c66;--good:#4cc76b;--warn:#f0a83a;--bad:#ff6b63;
+    --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767}}
     *{box-sizing:border-box}
-    body{margin:0;padding:20px 24px 32px;background:var(--bg);color:var(--fg);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
+    body{margin:0;padding:20px 24px 28px;background:var(--bg);color:var(--fg);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
     h1{font-size:20px;margin:0;font-weight:600;word-break:break-all}
-    h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:22px 0 8px;font-weight:600}
+    h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:20px 0 8px;font-weight:600}
     .sub{margin:2px 0 0;color:var(--muted)}
+    .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px}
+    .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     .badges{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}
     .badge{font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid var(--line);color:var(--muted)}
     .badge.good{color:var(--good);border-color:currentColor}.badge.warning{color:var(--warn);border-color:currentColor}.badge.danger{color:var(--bad);border-color:currentColor}
-    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:16px}
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-top:14px}
     .stat{background:var(--soft);border-radius:8px;padding:10px 12px}
-    .stat .v{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+    .stat .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
     .stat .l{color:var(--muted);font-size:11px}
-    dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0}
+    .pair{display:grid;grid-template-columns:1fr 1fr;gap:0 28px}
+    @media (max-width:560px){.pair{grid-template-columns:1fr}}
+    dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:0}
     dt{color:var(--muted)}dd{margin:0;word-break:break-word;font-variant-numeric:tabular-nums}
+    .identity{background:var(--soft);border-radius:8px;padding:10px 12px;margin-bottom:10px}
+    .il{color:var(--muted);font-size:11px}.iv{font-size:14px;margin:2px 0;word-break:break-all;user-select:all}.ic{color:var(--faint);font-size:11px}
+    .meter{margin:4px 0 10px}.ml{margin-bottom:4px}.mc{color:var(--muted);font-size:11px;margin-top:4px}
+    .track{display:block;height:8px;background:var(--track);border-radius:4px;overflow:hidden}
+    .fill{display:block;height:100%;background:var(--accent);border-radius:4px}
+    .bars{display:grid;gap:5px}
+    .bh,.bar{display:grid;grid-template-columns:minmax(90px,32%) 1fr 64px 52px;gap:10px;align-items:center}
+    .bh{color:var(--faint);font-size:11px}
+    .bl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mk{color:var(--muted);font-size:11px}
+    .bv{color:var(--fg)}.bx{color:var(--muted)}
+    .bar.muted .bl{color:var(--muted)}.bar.muted .fill{background:var(--other)}
+    .comp .strip{display:flex;gap:2px;height:12px}
+    .seg{display:block;height:100%;min-width:3px}.seg:first-child{border-radius:4px 0 0 4px}.seg:last-child{border-radius:0 4px 4px 0}.seg:only-child{border-radius:4px}
+    .legend{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px}
+    .legend li{display:flex;align-items:center;gap:5px}.lc{color:var(--muted);font-variant-numeric:tabular-nums}
+    .sw{width:10px;height:10px;border-radius:3px;display:inline-block}
+    .s1{background:var(--s1)}.s2{background:var(--s2)}.s3{background:var(--s3)}.s4{background:var(--s4)}
+    .s5{background:var(--s5)}.s6{background:var(--s6)}.s7{background:var(--s7)}.s8{background:var(--s8)}.so{background:var(--other)}
     table{border-collapse:collapse;width:100%}
     th{text-align:left;font-weight:500;color:var(--muted);border-bottom:1px solid var(--line);padding:4px 8px}
     td{border-bottom:1px solid var(--line);padding:4px 8px;vertical-align:top;word-break:break-word}
-    .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .more{color:var(--muted);font-size:11px;margin:6px 0 0}
     details{border-bottom:1px solid var(--line)}
     summary{cursor:default;padding:6px 2px;display:flex;gap:12px;align-items:baseline;list-style:none}
     summary::-webkit-details-marker{display:none}
     summary::before{content:"▸";color:var(--muted);font-size:10px;width:10px}
     details[open]>summary::before{content:"▾"}
     .st{font-weight:500}.sd{color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap}
-    details table{margin:0 0 10px 22px;width:calc(100% - 22px)}
-    .bars{display:grid;gap:4px}
-    .bar{display:grid;grid-template-columns:minmax(80px,30%) 1fr max-content;gap:10px;align-items:center}
-    .bl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .track{height:8px;background:var(--soft);border-radius:4px;overflow:hidden}
-    .fill{display:block;height:100%;background:var(--accent);border-radius:4px}
-    .bv{color:var(--muted);font-variant-numeric:tabular-nums;min-width:60px;text-align:right}
-    .note{padding:8px 10px;border-radius:6px;background:var(--soft);margin:6px 0}
+    .note{padding:8px 10px;border-radius:6px;background:var(--soft);margin:8px 0 0;font-size:12px;color:var(--muted)}
     .note.warning{color:var(--warn)}.note.danger{color:var(--bad)}.note.good{color:var(--good)}
     """
 }

@@ -67,11 +67,21 @@ for path in paths {
 
 func printBlock(_ b: Block, indent: String) {
     switch b {
-    case .keyValues(let kv): kv.forEach { print("\(indent)\($0.0): \($0.1)") }
+    case .keyValues(let kv): kv.forEach { print("\(indent)\($0.key): \($0.value)") }
+    case .identity(let label, let value, let caption):
+        print("\(indent)\(label): \(value)" + (caption.map { "  (\($0))" } ?? ""))
+    case .meter(let fraction, let label, let caption):
+        let filled = Int((max(0, min(1, fraction)) * 20).rounded())
+        print("\(indent)[\(String(repeating: "#", count: filled))\(String(repeating: ".", count: 20 - filled))] \(label)" + (caption.map { " — \($0)" } ?? ""))
     case .table(let t):
         print(indent + t.columns.map(\.0).joined(separator: " | "))
-        t.rows.prefix(50).forEach { print(indent + $0.joined(separator: " | ")) }
-    case .bars(let bars): bars.forEach { print("\(indent)\($0.label): \($0.display)") }
+        t.rows.forEach { print(indent + $0.joined(separator: " | ")) }
+        if let more = t.more { print(indent + more) }
+    case .bars(let rows, let valueHeader, let extraHeader):
+        print("\(indent)(\(valueHeader)\(extraHeader.isEmpty ? "" : " / \(extraHeader)"))")
+        rows.forEach { print("\(indent)\($0.label)\($0.marker.map { " \($0)" } ?? ""): \($0.display)\($0.extra.isEmpty ? "" : " / \($0.extra)")") }
+    case .composition(let segments):
+        print(indent + segments.filter { $0.value > 0 }.map { "\($0.label) \($0.display)" }.joined(separator: " · "))
     case .disclosure(let s, let d, let blocks):
         print("\(indent)\(s)  — \(d ?? "")")
         blocks.forEach { printBlock($0, indent: indent + "    ") }
