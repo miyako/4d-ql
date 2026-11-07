@@ -1,0 +1,233 @@
+# Builds "4D Quick Look.app" (universal), signs it with Developer ID and the
+# hardened runtime, notarizes and staples it, and publishes a GitHub Release
+# with a zip and a dmg.
+#
+# Trigger: push a tag vX.Y.Z, or run manually against an existing tag:
+#   gh workflow run release.yml -f tag=vX.Y.Z
+# The version comes from the tag (passed to scripts/build.sh as VERSION), so
+# no file needs bumping before a release.
+#
+# Repository secrets (set with set-release-secrets.sh, never by hand in a file):
+#   APPLE_DEVELOPER_ID_CERTIFICATE           base64 of the Developer ID Application .p12
+#   APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD  its password
+#   KEYCHAIN_PASSWORD                        any value, for the temporary keychain
+#   NOTARYTOOL_APPLE_ID, NOTARYTOOL_TEAM_ID, NOTARYTOOL_PASSWORD (app-specific password)
+#
+# Signing, keychain and notarization steps follow the 4d-plugin-migration
+# templates, which have released many repositories from hosted runners.
+
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build (e.g. v0.2.0)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: 4D Quick Look
+  ASSET_NAME: 4D-QuickLook   # no spaces: GitHub would rename the assets
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.set.outputs.tag }}
+      version: ${{ steps.set.outputs.version }}
+    steps:
+      - id: set
+        env:
+          RAW_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # trim whitespace from a hand-typed workflow_dispatch input (" v1.0.1")
+          TAG="$(echo "$RAW_TAG" | xargs)"
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '${RAW_TAG}' is not of the form vX.Y.Z"
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  build-macos:
+    name: Build, sign, notarize & release
+    needs: [version]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: test
+        run: swift test
+
+      - name: import Developer ID certificate
+        env:
+          CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for v in CERT_BASE64 CERT_PASSWORD KEYCHAIN_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Secret for $v is empty or missing"; exit 1; fi
+          done
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+
+          echo -n "$CERT_BASE64" | base64 --decode -o "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$CERT_PATH"
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: store notarytool credentials
+        env:
+          APPLE_ID: ${{ secrets.NOTARYTOOL_APPLE_ID }}
+          TEAM_ID: ${{ secrets.NOTARYTOOL_TEAM_ID }}
+          APP_PASSWORD: ${{ secrets.NOTARYTOOL_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for v in APPLE_ID TEAM_ID APP_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Secret for $v is empty or missing"; exit 1; fi
+          done
+          xcrun notarytool store-credentials "notarytool-profile" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$TEAM_ID" \
+            --password "$APP_PASSWORD" \
+            --keychain "$KEYCHAIN_PATH"
+
+      - name: build and sign
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          BUILD: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)".*/\1/')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No Developer ID Application identity found"
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+            exit 1
+          fi
+          echo "Signing with: $IDENTITY"
+          SIGN_IDENTITY="$IDENTITY" scripts/build.sh
+
+      - name: verify
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          APP="build/${APP_NAME}.app"
+          APPEX="$APP/Contents/PlugIns/4D Preview.appex"
+          echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+
+          # separate lines: under set -e a failure left of && is ignored
+          for BIN in "$APP/Contents/MacOS/FourDQuickLookHost" "$APPEX/Contents/MacOS/FourDQuickLookExtension"; do
+            lipo -info "$BIN"
+            lipo -info "$BIN" | grep -q arm64
+            lipo -info "$BIN" | grep -q x86_64
+          done
+
+          V=$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")
+          if [ "$V" != "$VERSION" ]; then
+            echo "::error::App version '$V' does not match the tag version '$VERSION'"
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          for B in "$APP" "$APPEX"; do
+            INFO=$(codesign -dv --verbose=4 "$B" 2>&1)
+            echo "$INFO" | grep -E '^(Identifier|Authority=Developer ID Application|Timestamp|CodeDirectory)'
+            echo "$INFO" | grep -q 'Authority=Developer ID Application'
+            echo "$INFO" | grep -q 'flags=.*runtime'
+          done
+          # App extensions must be sandboxed.
+          codesign -d --entitlements - --xml "$APPEX" 2>/dev/null > "$RUNNER_TEMP/appex-entitlements.plist"
+          plutil -extract com\\.apple\\.security\\.app-sandbox raw -o - "$RUNNER_TEMP/appex-entitlements.plist" | grep -qx true
+
+      - name: notarize, staple & package
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ZIP_PATH="${ASSET_NAME}-${VERSION}.zip"
+          DMG_PATH="${ASSET_NAME}-${VERSION}.dmg"
+
+          # submit and wait; on anything but Accepted, print Apple's log and fail
+          # (notarytool submit --wait exits 0 even when the status is Invalid)
+          notarize() {
+            local OUT ID STATUS
+            OUT=$(xcrun notarytool submit "$1" --keychain-profile "notarytool-profile" --keychain "$KEYCHAIN_PATH" \
+              --wait --output-format json) || true
+            echo "$OUT"
+            ID=$(plutil -extract id raw -o - - <<< "$OUT" 2>/dev/null || true)
+            STATUS=$(plutil -extract status raw -o - - <<< "$OUT" 2>/dev/null || true)
+            if [ "$STATUS" != "Accepted" ]; then
+              echo "::error::Notarization of $1 returned '${STATUS:-no status}'"
+              if [ -n "$ID" ]; then
+                xcrun notarytool log "$ID" --keychain-profile "notarytool-profile" --keychain "$KEYCHAIN_PATH" || true
+              fi
+              return 1
+            fi
+          }
+
+          # 1. Notarize the app and staple the ticket to it, so it verifies offline.
+          ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/notarize.zip"
+          notarize "$RUNNER_TEMP/notarize.zip"
+          xcrun stapler staple "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+          spctl --assess --type execute --verbose=2 "$APP_PATH"
+
+          # 2. zip of the stapled app.
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+
+          # 3. dmg with the stapled app and an Applications shortcut; notarize and staple it too.
+          STAGE="$RUNNER_TEMP/dmg"
+          mkdir -p "$STAGE"
+          ditto "$APP_PATH" "$STAGE/${APP_NAME}.app"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -format UDBZ -volname "$APP_NAME" -srcfolder "$STAGE" "$DMG_PATH"
+          notarize "$DMG_PATH"
+          xcrun stapler staple "$DMG_PATH"
+
+          echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
+          echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
+          ls -lh "$ZIP_PATH" "$DMG_PATH"
+
+      - name: create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: ${{ needs.version.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.DMG_PATH }}
+
+      - name: delete temporary keychain
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN_PATH:-}" ]; then security delete-keychain "$KEYCHAIN_PATH" || true; fi

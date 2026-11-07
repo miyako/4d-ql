@@ -1,0 +1,47 @@
+# Runs the tests and builds the universal app (ad-hoc signed) on every push
+# and pull request, so a broken build shows up before a release is attempted.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: test
+        run: swift test
+
+      - name: build app (universal, ad-hoc signed)
+        run: scripts/build.sh
+
+      - name: verify bundle
+        run: |
+          set -euo pipefail
+          APP="build/4D Quick Look.app"
+          for BIN in "$APP/Contents/MacOS/FourDQuickLookHost" \
+                     "$APP/Contents/PlugIns/4D Preview.appex/Contents/MacOS/FourDQuickLookExtension"; do
+            lipo -info "$BIN"
+            lipo -info "$BIN" | grep -q arm64
+            lipo -info "$BIN" | grep -q x86_64
+          done
+          plutil -extract NSExtension.NSExtensionAttributes.QLSupportedContentTypes json -o - \
+            "$APP/Contents/PlugIns/4D Preview.appex/Contents/Info.plist"
+          codesign --verify --deep --strict --verbose=2 "$APP"

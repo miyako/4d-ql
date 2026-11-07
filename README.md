@@ -65,7 +65,14 @@ presenter (one file family), and a parser fix never touches either.
 `QLSupportedContentTypes` in the extension's Info.plist is generated from the
 registry at build time (`fourdql --content-types`), so there is no list to keep in sync.
 
-## Build and install
+## Install
+
+Download the `.dmg` from [Releases](https://github.com/miyako/4d-ql/releases),
+drag **4D Quick Look** to Applications, and open it once so macOS registers the
+preview extension. The app is signed with a Developer ID and notarized. If
+Finder still shows the old preview, run `qlmanage -r`.
+
+## Build from source
 
 ```bash
 scripts/build.sh --register
@@ -76,11 +83,31 @@ registers it with Launch Services and Quick Look. To install it for good, copy
 `build/4D Quick Look.app` to `/Applications` and open it once. If Finder still
 shows the old preview, run `qlmanage -r`.
 
-For distribution, sign with a Developer ID and notarize:
+To sign with a Developer ID locally (hardened runtime and secure timestamp
+are added automatically):
 
 ```bash
 SIGN_IDENTITY="Developer ID Application: …" scripts/build.sh
 ```
+
+## Releasing
+
+Releases are built on GitHub's hosted macOS runners:
+
+* `.github/workflows/ci.yml` runs the tests and an ad-hoc build on every push and pull request.
+* `.github/workflows/release.yml` runs on a `vX.Y.Z` tag. It tests, builds
+  with the tag's version, signs with Developer ID, notarizes and staples the
+  app, and publishes `4D-QuickLook-X.Y.Z.dmg` and `.zip`. To release:
+
+  ```bash
+  git tag v0.2.0 && git push origin v0.2.0
+  ```
+
+  To rebuild an existing tag: `gh workflow run release.yml -f tag=v0.2.0`.
+
+It needs six repository secrets: `APPLE_DEVELOPER_ID_CERTIFICATE` (base64
+.p12), `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`,
+`NOTARYTOOL_APPLE_ID`, `NOTARYTOOL_TEAM_ID` and `NOTARYTOOL_PASSWORD`.
 
 ## Developing
 
