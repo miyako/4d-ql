@@ -59,6 +59,23 @@ echo "==> built $APP"
 if [ "${1:-}" = "--register" ]; then
     echo "==> registering"
     LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+
+    # Unregister other copies with the same bundle ID (e.g. another checkout or
+    # /Applications). Otherwise macOS may keep using one of them instead of this build.
+    # pluginkit only lists the copy it elected, so read Launch Services' database.
+    "$LSREGISTER" -dump 2>/dev/null | awk -v want="$BUNDLE_ID.Preview" '
+        /^-----/       { if (id == want && p != "") print p; p = ""; id = "" }
+        /^path:/       { sub(/^path: +/, ""); sub(/ \(0x[0-9a-f]+\)$/, ""); p = $0 }
+        /^identifier:/ { sub(/^identifier: +/, ""); id = $0 }
+        END            { if (id == want && p != "") print p }' | sort -u |
+    while IFS= read -r other; do
+        [ "$other" = "$APPEX" ] && continue
+        echo "    unregistering $other"
+        pluginkit -r "$other" >/dev/null 2>&1 || true
+        "$LSREGISTER" -u "$other" >/dev/null 2>&1 || true
+        "$LSREGISTER" -u "${other%/Contents/PlugIns/*}" >/dev/null 2>&1 || true
+    done
+
     "$LSREGISTER" -f -R "$APP"
     pluginkit -a "$APPEX"
     pluginkit -e use -i "$BUNDLE_ID.Preview" || true
