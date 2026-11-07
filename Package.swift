@@ -1,0 +1,37 @@
+// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "FourDQuickLook",
+    platforms: [.macOS(.v12)],
+    products: [
+        .library(name: "FourDFileKit", targets: ["FourDFileKit"]),
+        .library(name: "FourDRender", targets: ["FourDRender"]),
+        .executable(name: "fourdql", targets: ["fourdql"]),
+    ],
+    targets: [
+        // Analyzer layer: bytes -> typed, Codable models. No UI, no HTML.
+        .target(name: "FourDFileKit"),
+
+        // Rendering layer: typed models -> generic Report -> HTML.
+        .target(name: "FourDRender", dependencies: ["FourDFileKit"]),
+
+        // Command line tool for development: inspect a file as text, JSON or HTML.
+        .executableTarget(name: "fourdql", dependencies: ["FourDFileKit", "FourDRender"]),
+
+        // Quick Look preview extension binary (bundled into an .appex by scripts/build.sh).
+        .executableTarget(
+            name: "FourDQuickLookExtension",
+            dependencies: ["FourDFileKit", "FourDRender"],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
+                .linkedFramework("QuickLookUI"),
+            ]
+        ),
+
+        // Minimal host app; macOS only loads app extensions that live inside an app.
+        .executableTarget(name: "FourDQuickLookHost"),
+
+        .testTarget(name: "FourDFileKitTests", dependencies: ["FourDFileKit", "FourDRender"]),
+    ]
+)

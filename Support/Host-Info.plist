@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key><string>en</string>
+	<key>CFBundleDisplayName</key><string>4D Quick Look</string>
+	<key>CFBundleExecutable</key><string>FourDQuickLookHost</string>
+	<key>CFBundleIdentifier</key><string>__BUNDLE_ID__</string>
+	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+	<key>CFBundleName</key><string>4D Quick Look</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>__VERSION__</string>
+	<key>CFBundleVersion</key><string>__BUILD__</string>
+	<key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
+	<key>LSMinimumSystemVersion</key><string>12.0</string>
+	<key>NSPrincipalClass</key><string>NSApplication</string>
+	<key>NSHighResolutionCapable</key><true/>
+	<!-- Imported so previews work on Macs without 4D installed; 4D.app's own
+	     exported declarations take precedence when it is present. -->
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.data-file</string>
+			<key>UTTypeDescription</key><string>4D Data File</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>4dd</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.structure-file</string>
+			<key>UTTypeDescription</key><string>4D Structure File</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.interpreted-structure-file</string>
+			<key>UTTypeDescription</key><string>4D Structure File</string>
+			<key>UTTypeConformsTo</key><array><string>com.4d.4d.structure-file</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>4db</string></array></dict>
+		</dict>
+	</array>
+</dict>
+</plist>
