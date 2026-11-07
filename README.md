@@ -98,3 +98,7 @@ source next to the code that reads them (`DB4DHeader.swift`, `DB4DContainer.swif
 
 Not decoded yet: index definitions beyond counts, record contents, and the
 meaning of most resource types (they are shown by their four-character code).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
