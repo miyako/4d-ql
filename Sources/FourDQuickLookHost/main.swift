@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     code{background:rgba(127,127,127,.15);padding:1px 5px;border-radius:4px}
     </style></head><body>
     <h2>4D Quick Look is installed</h2>
-    <p>Select a <code>.4DD</code> or <code>.4DB</code> file in Finder and press Space.</p>
+    <p>Select a <code>.4DD</code>, <code>.4DB</code>, or <code>.4dm</code> file in Finder and press Space.</p>
     <p>You can also drop a file on this window to open its Quick Look preview.</p>
     <p>If Finder still shows the old preview, run <code>qlmanage -r</code> in Terminal.</p>
     </body></html>

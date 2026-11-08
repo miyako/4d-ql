@@ -24,6 +24,9 @@ public final class AnalyzerRegistry {
         DataFileAnalyzer(),
         StructureFileAnalyzer(),
         CatalogAnalyzer(),
+        TextFileAnalyzer(format: .xml),
+        TextFileAnalyzer(format: .json),
+        MethodFileAnalyzer(),
     ])
 
     public var allContentTypes: [String] { analyzers.flatMap(\.contentTypes) }

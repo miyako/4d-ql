@@ -14,7 +14,7 @@ public final class PresenterRegistry {
 
     public init(_ presenters: [ReportPresenter]) { self.presenters = presenters }
 
-    public static let `default` = PresenterRegistry([DB4DPresenter(), CatalogPresenter()])
+    public static let `default` = PresenterRegistry([DB4DPresenter(), CatalogPresenter(), TextFilePresenter(), MethodPresenter()])
 
     public func register(_ p: ReportPresenter) { presenters.append(p) }
 
