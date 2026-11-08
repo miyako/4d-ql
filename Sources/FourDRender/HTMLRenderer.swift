@@ -115,6 +115,10 @@ public struct HTMLRenderer {
 
         case .text(let text):
             return "<p>\(esc(text))</p>"
+        case .code(let text, let language):
+            let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+            let highlighted = SourceHighlighter.html(normalized, language: language, escape: esc)
+            return "<pre class=\"source mono\"><code>\(highlighted)</code></pre>"
         }
     }
 
@@ -157,6 +161,18 @@ public struct HTMLRenderer {
     h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:20px 0 8px;font-weight:600}
     .sub{margin:2px 0 0;color:var(--muted)}
     .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px}
+    .source{white-space:pre;overflow:auto;padding:12px;background:var(--soft);border-radius:8px;tab-size:4}
+    .source code{font:inherit}
+    .source .syntax-key,.source .syntax-tag{color:#175aa8}
+    .source .syntax-string,.source .syntax-entity{color:#226b35}
+    .source .syntax-number,.source .syntax-attribute{color:#8c3e97}
+    .source .syntax-literal{color:#9c4b10}
+    .source .syntax-comment{color:var(--muted)}
+    @media (prefers-color-scheme:dark){
+    .source .syntax-key,.source .syntax-tag{color:#80b8ff}
+    .source .syntax-string,.source .syntax-entity{color:#93d49d}
+    .source .syntax-number,.source .syntax-attribute{color:#d3a0ec}
+    .source .syntax-literal{color:#f2b37b}}
     .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     .badges{margin-top:10px;display:flex;flex-wrap:wrap;gap:6px}
     .badge{font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid var(--line);color:var(--muted)}

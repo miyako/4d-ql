@@ -23,6 +23,8 @@ public final class AnalyzerRegistry {
     public static let `default` = AnalyzerRegistry([
         DataFileAnalyzer(),
         StructureFileAnalyzer(),
+        TextFileAnalyzer(format: .xml),
+        TextFileAnalyzer(format: .json),
     ])
 
     public var allContentTypes: [String] { analyzers.flatMap(\.contentTypes) }

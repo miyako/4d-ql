@@ -7,6 +7,8 @@ file to see what is inside instead of a generic icon.
 |---|---|
 | `.4DD` data file | tables ranked by records (the largest eight, the rest folded into "Other"), field types, the database UUID the structure must match, sort/search language and wildcard rule, index engine versions, journal file path, storage use, whether it was closed cleanly or needs repair, and for [encrypted data files](https://developer.4d.com/docs/commands/encrypt-data-file) which tables are encrypted |
 | `.4DB` binary structure | tables ranked by fields, field types, relations (`[Table_1]Field_4 → [Table_2]ID`), resource types (forms, menu bars, picture library, …), the database UUID, sort/search settings, journaling |
+| `.4DSettings` settings file | syntax-highlighted XML source with indentation and line breaks preserved |
+| `.4DProject` project file | syntax-highlighted JSON source with indentation and line breaks preserved |
 
 Even a 220 MB data file previews in about 30 ms, because only header blocks are read.
 
@@ -33,6 +35,7 @@ Sources/
     Core/                ByteSource (pread), BinaryReader (bounds-checked),
                          FileAnalyzer protocol, AnalyzerRegistry
     DB4D/                the shared .4DD/.4DB container format
+    Text/                XML .4DSettings and JSON .4DProject source text
   FourDRender/           rendering layer: model -> Report -> HTML
     Report.swift         generic page model (stats, badges, tables, bars, disclosures)
     *Presenter.swift     one presenter per model kind

@@ -20,6 +20,20 @@
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.settings</string>
+			<key>UTTypeDescription</key><string>4D Settings</string>
+			<key>UTTypeConformsTo</key><array><string>public.xml</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>4dsettings</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.project</string>
+			<key>UTTypeDescription</key><string>4D Project</string>
+			<key>UTTypeConformsTo</key><array><string>public.json</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>4dproject</string></array></dict>
+		</dict>
+		<dict>
 			<key>UTTypeIdentifier</key><string>com.4d.4d.data-file</string>
 			<key>UTTypeDescription</key><string>4D Data File</string>
 			<key>UTTypeConformsTo</key><array><string>public.data</string></array>

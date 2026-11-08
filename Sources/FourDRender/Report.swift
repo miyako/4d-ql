@@ -7,8 +7,9 @@ import Foundation
 /// renderer; choosing what to show means changing a presenter. Neither
 /// touches the parsers.
 ///
-/// Every block has a bounded size, so a file with 500 tables previews in the
-/// same space as one with 5: presenters fold the long tail into "Other".
+/// Summary blocks have a bounded size, so a file with 500 tables previews in
+/// the same space as one with 5: presenters fold the long tail into "Other".
+/// Source text preserves the complete contents in a scrollable block.
 public struct Report {
     public var title: String
     public var subtitle: String?
@@ -94,6 +95,8 @@ public struct Segment {
 }
 
 public indirect enum Block {
+    public enum CodeLanguage { case plain, xml, json }
+
     case keyValues([KeyValue])
     /// A prominent identifier with an explanation, e.g. the database UUID.
     case identity(label: String, value: String, caption: String?)
@@ -107,6 +110,8 @@ public indirect enum Block {
     case disclosure(summary: String, detail: String?, blocks: [Block])
     case note(String, Badge.Tone)
     case text(String)
+    /// Source text with its whitespace preserved.
+    case code(String, language: CodeLanguage = .plain)
 }
 
 public struct Table {
