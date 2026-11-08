@@ -41,6 +41,11 @@ connectors for details. Table headings are centered; relation names appear
 only in connector tooltips to keep the diagram uncluttered.
 Primary-key field names are underlined, indexed field names are bold, and
 hidden names are italic; these styles combine when multiple flags apply.
+Cards use compact 21-point field rows and original inline SVG type icons;
+the full type and Alpha length remain in hover details. Card widths are
+measured from the displayed names, so valid 31-character names are shown in
+full, including wide or non-Latin text, without padding every card to the
+same width. No proprietary 4D image assets are bundled.
 Previews show at most 24 tables, eight fields per table
 (prioritizing primary keys and joins), and 64 relations. Per-table field
 omissions are labeled on the cards; omission totals and the legend remain in

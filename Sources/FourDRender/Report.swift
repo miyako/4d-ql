@@ -166,21 +166,27 @@ public struct DiagramNode {
 }
 
 public struct DiagramField {
+    public enum Icon: String, CaseIterable {
+        case boolean, integer, real, text, date, time, picture, uuid, blob, object, unknown
+    }
+
     public var id: String
     public var name: String
     public var type: String
     public var primaryKey: Bool
     public var hidden: Bool
     public var indexed: Bool
+    public var icon: Icon
 
     public init(id: String, name: String, type: String,
-                primaryKey: Bool = false, hidden: Bool = false, indexed: Bool = false) {
+                primaryKey: Bool = false, hidden: Bool = false, indexed: Bool = false, icon: Icon = .unknown) {
         self.id = id
         self.name = name
         self.type = type
         self.primaryKey = primaryKey
         self.hidden = hidden
         self.indexed = indexed
+        self.icon = icon
     }
 }
 

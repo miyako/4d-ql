@@ -69,7 +69,7 @@ public struct CatalogPresenter: ReportPresenter {
             let fields = selected.map { fi in
                 let field = table.fields[fi]
                 return DiagramField(id: "\(fi)", name: field.name, type: field.typeName, primaryKey: field.primaryKey,
-                                    hidden: field.hidden, indexed: !field.indexUUIDs.isEmpty)
+                                    hidden: field.hidden, indexed: !field.indexUUIDs.isEmpty, icon: icon(for: field.kind))
             }
             return DiagramNode(id: "\(ti)", title: table.name, fields: fields,
                                position: table.position.map { DiagramPosition(x: $0.x, y: $0.y) },
@@ -88,5 +88,21 @@ public struct CatalogPresenter: ReportPresenter {
         }
         return StructureDiagram(nodes: nodes, edges: edges, omittedTables: info.tables.count - nodes.count,
                                 omittedRelations: info.relations.count - edges.count)
+    }
+
+    private func icon(for kind: FieldKind?) -> DiagramField.Icon {
+        switch kind {
+        case .boolean: return .boolean
+        case .byte, .integer, .longint, .integer64: return .integer
+        case .real, .float: return .real
+        case .text, .legacyText, .unlimitedText: return .text
+        case .date: return .date
+        case .time: return .time
+        case .picture: return .picture
+        case .uuid: return .uuid
+        case .blob, .legacyBlob: return .blob
+        case .object: return .object
+        case nil: return .unknown
+        }
     }
 }

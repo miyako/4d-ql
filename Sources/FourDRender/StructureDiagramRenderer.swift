@@ -2,15 +2,15 @@ import Foundation
 
 /// Script-free SVG rendering. Presentation models contain no HTML or SVG.
 struct StructureDiagramRenderer {
-    private let width = 300.0
-    private let header = 38.0
-    private let row = 26.0
-    private let margin = 32.0
+    private let header = 28.0
+    private let row = 21.0
+    private let margin = 24.0
 
     private struct Box {
         var node: DiagramNode
         var x: Double
         var y: Double
+        var width: Double
         var height: Double
     }
 
@@ -42,7 +42,7 @@ struct StructureDiagramRenderer {
         var html = "<div class=\"structure-diagram\">"
         guard !boxes.isEmpty else { return html + "<p class=\"more\" title=\"\(esc(summary))\">No tables to display.</p></div>" }
 
-        let canvasWidth = max(364, (boxes.map { $0.x + width }.max() ?? 0) + 100)
+        let canvasWidth = max(200, (boxes.map { $0.x + $0.width }.max() ?? 0) + margin + 72)
         let canvasHeight = max(120, (boxes.map { $0.y + $0.height }.max() ?? 0) + margin)
         let description = "Structure diagram: \(summary). Relations connect field rows; unavailable fields connect to table headers. Underlined fields are primary keys; bold fields are indexed; italic table and field names are hidden."
         html += "<div class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"Scrollable structure diagram\">"
@@ -58,8 +58,8 @@ struct StructureDiagramRenderer {
 
     private func layout(_ nodes: [DiagramNode]) -> [Box] {
         var boxes = nodes.map {
-            Box(node: $0, x: 0, y: 0,
-                height: header + row * Double($0.fields.count + ($0.omittedFields > 0 ? 1 : 0)) + 8)
+            Box(node: $0, x: 0, y: 0, width: cardWidth($0),
+                height: header + row * Double($0.fields.count + ($0.omittedFields > 0 ? 1 : 0)) + 6)
         }
         let valid = nodes.map { node -> DiagramPosition? in
             guard let p = node.position, p.x.isFinite, p.y.isFinite,
@@ -78,29 +78,50 @@ struct StructureDiagramRenderer {
             var overlapping = false
             for (offset, i) in saved.enumerated() {
                 for j in saved.dropFirst(offset + 1) {
-                    if boxes[i].x < boxes[j].x + width + 24 && boxes[j].x < boxes[i].x + width + 24
+                    if boxes[i].x < boxes[j].x + boxes[j].width + 24 && boxes[j].x < boxes[i].x + boxes[i].width + 24
                         && boxes[i].y < boxes[j].y + boxes[j].height + 24
                         && boxes[j].y < boxes[i].y + boxes[i].height + 24 { overlapping = true }
                 }
             }
-            let extentX = saved.map { boxes[$0].x + width }.max() ?? 0
+            let extentX = saved.map { boxes[$0].x + boxes[$0].width }.max() ?? 0
             let extentY = saved.map { boxes[$0].y + boxes[$0].height }.max() ?? 0
             if !overlapping && extentX <= 12_000 && extentY <= 12_000 {
-                var bottom = extentY + 64
+                var bottom = extentY + 48
                 for i in boxes.indices where valid[i] == nil {
                     boxes[i].x = margin
                     boxes[i].y = bottom
-                    bottom += boxes[i].height + 64
+                    bottom += boxes[i].height + 48
                 }
                 return boxes
             }
         }
-        let strideY = (boxes.map(\.height).max() ?? header) + 64
-        for i in boxes.indices {
-            boxes[i].x = margin + Double(i % 3) * (width + 100)
-            boxes[i].y = margin + Double(i / 3) * strideY
+        let columns = min(3, boxes.count)
+        guard columns > 0 else { return boxes }
+        let columnWidths = (0..<columns).map { column in
+            boxes.indices.filter { $0 % columns == column }.map { boxes[$0].width }.max() ?? 0
+        }
+        var top = margin
+        for start in stride(from: 0, to: boxes.count, by: columns) {
+            let end = min(start + columns, boxes.count)
+            var left = margin
+            for i in start..<end {
+                boxes[i].x = left
+                boxes[i].y = top
+                left += columnWidths[i % columns] + 64
+            }
+            top += (boxes[start..<end].map(\.height).max() ?? 0) + 48
         }
         return boxes
+    }
+
+    func cardWidth(_ node: DiagramNode) -> Double {
+        let heading = DiagramTypography.width(short(node.title, limit: 31), bold: true, italic: node.hidden) + 20
+        let fields = node.fields.map {
+            DiagramTypography.width(short($0.name, limit: 31), bold: $0.indexed, italic: $0.hidden) + 40
+        }.max() ?? 0
+        let footer = node.omittedFields > 0 ? DiagramTypography.width("\(node.omittedFields) fields omitted") + 20 : 0
+        // Measure actual glyphs rather than assuming 31 Latin and CJK characters occupy the same space.
+        return ceil(max(144, heading, fields, footer))
     }
 
     private func anchor(_ field: String, in box: Box) -> Double {
@@ -114,8 +135,8 @@ struct StructureDiagramRenderer {
         let dy = anchor(edge.destinationField, in: destination)
         let rightward = destination.x > source.x
         let sameColumn = destination.x == source.x
-        let sx = source.x + (rightward || sameColumn ? width : 0)
-        let dx = destination.x + (rightward && !selfRelation ? 0 : width)
+        let sx = source.x + (rightward || sameColumn ? source.width : 0)
+        let dx = destination.x + (rightward && !selfRelation ? 0 : destination.width)
         let lane = 36.0 + Double(index % 5) * 8
         let path: String
         if selfRelation {
@@ -137,19 +158,19 @@ struct StructureDiagramRenderer {
     private func table(_ box: Box) -> String {
         let node = box.node
         var svg = "<g class=\"diagram-node\" data-node-id=\"\(esc(node.id))\" transform=\"translate(\(n(box.x)) \(n(box.y)))\"><title>\(esc(node.title))\(node.hidden ? " (hidden table)" : "")</title>"
-        svg += "<rect class=\"diagram-card\" width=\"\(n(width))\" height=\"\(n(box.height))\" rx=\"7\"/>"
-        svg += "<path class=\"diagram-header-line\" d=\"M 0 \(n(header)) H \(n(width))\"/>"
-        svg += "<text class=\"diagram-heading\(node.hidden ? " diagram-hidden" : "")\" x=\"\(n(width / 2))\" y=\"24\" text-anchor=\"middle\">\(esc(short(node.title, limit: 34)))</text>"
+        svg += "<rect class=\"diagram-card\" width=\"\(n(box.width))\" height=\"\(n(box.height))\" rx=\"5\"/>"
+        svg += "<path class=\"diagram-header-line\" d=\"M 0 \(n(header)) H \(n(box.width))\"/>"
+        svg += "<text class=\"diagram-heading\(node.hidden ? " diagram-hidden" : "")\" x=\"\(n(box.width / 2))\" y=\"18\" text-anchor=\"middle\">\(esc(short(node.title, limit: 31)))</text>"
         for (index, field) in node.fields.enumerated() {
             let y = header + row * Double(index)
             let full = "\(field.name): \(field.type)\(field.primaryKey ? " (primary key)" : "")\(field.indexed ? " (indexed)" : "")\(field.hidden ? " (hidden)" : "")"
             svg += "<g class=\"diagram-field\(field.hidden ? " diagram-hidden" : "")\" data-field-id=\"\(esc(field.id))\"><title>\(esc(full))</title>"
             let nameClass = "diagram-field-name" + (field.primaryKey ? " diagram-primary-key" : "") + (field.indexed ? " diagram-indexed" : "")
-            svg += "<text class=\"\(nameClass)\" x=\"12\" y=\"\(n(y + 18))\">\(esc(short(field.name, limit: 22)))</text>"
-            svg += "<text class=\"diagram-type\" x=\"288\" y=\"\(n(y + 18))\" text-anchor=\"end\">\(esc(short(field.type, limit: 12)))</text></g>"
+            svg += DiagramTypeIcon.render(field.icon, label: field.type, y: y + 3.5)
+            svg += "<text class=\"\(nameClass)\" x=\"30\" y=\"\(n(y + 14))\">\(esc(short(field.name, limit: 31)))</text></g>"
         }
         if node.omittedFields > 0 {
-            svg += "<text class=\"diagram-omitted\" x=\"12\" y=\"\(n(header + row * Double(node.fields.count) + 18))\">\(node.omittedFields) fields omitted</text>"
+            svg += "<text class=\"diagram-omitted\" x=\"10\" y=\"\(n(header + row * Double(node.fields.count) + 14))\">\(node.omittedFields) fields omitted</text>"
         }
         return svg + "</g>"
     }
@@ -166,15 +187,16 @@ struct StructureDiagramRenderer {
     static let css = """
     .diagram-viewport{max-width:100%;max-height:max(320px,calc(100vh - 180px));overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
     .diagram-viewport:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-    .diagram-svg{display:block;max-width:none;font:12px -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
+    .diagram-svg{display:block;max-width:none;font:12px "Helvetica Neue",Helvetica,sans-serif}
     .diagram-card{fill:var(--soft);stroke:var(--faint);stroke-width:1}
     .diagram-header-line{stroke:var(--line)}
-    .diagram-node text{fill:var(--fg)}.diagram-heading{font-weight:600;font-size:14px}
-    .diagram-node .diagram-type,.diagram-node .diagram-omitted{fill:var(--muted);font-size:11px}
+    .diagram-node text{fill:var(--fg)}.diagram-heading{font-weight:700;font-size:12px}
+    .diagram-node .diagram-omitted{fill:var(--muted);font-size:11px}
     .diagram-hidden{font-style:italic}
     .diagram-primary-key{text-decoration:underline}
     .diagram-indexed{font-weight:700}
     .diagram-edge path{fill:none;stroke:var(--accent);stroke-width:1.5}
     .diagram-edge circle{fill:var(--accent)}
+    \(DiagramTypeIcon.css)
     """
 }
