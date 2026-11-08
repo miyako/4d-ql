@@ -9,7 +9,7 @@ file to see what is inside instead of a generic icon.
 | `.4DB` binary structure | tables ranked by fields, field types, the number of relations, the database UUID, sort/search settings, journaling |
 | `.4DCatalog` XML catalog | a diagram-first view of tables, field types, primary keys, hidden fields, and relations; counts, database UUID, sort/search language, schemas, and encryptable tables tucked into "Catalog details" |
 | `.4DSettings` settings file | syntax-highlighted XML source with indentation and line breaks preserved |
-| `.4si` import/export settings | fields in saved import/export order, readable field types, table and format settings, and text/other options in tables |
+| `.4si` import/export settings | ordered field cards with readable types, summary cards, and borderless settings and options |
 | `.4DProject` project file | syntax-highlighted JSON source with indentation and line breaks preserved |
 | `.4df` saved query | condition cards with table/field numbers, comparison labels, AND/OR/EXCEPT connectors, saved values, and selection destination; original JSON folded below |
 | `.4dm` method / class source | syntax-highlighted UTF-8 source with line numbers, line count and file size |
@@ -18,7 +18,13 @@ Even a 220 MB data file previews in about 30 ms, because only header blocks are 
 
 Import/export settings previews preserve field order (which can differ from field
 numbers), display missing values explicitly, and retain unknown field types and
-extra options. XML is limited to 4 MiB, 20,000 elements, and 32 nesting levels;
+extra options. Summary cards show the table, selected field count, format, and
+encoding above a compact, responsive grid of field cards in saved order (left to
+right, then top to bottom), without order labels. Original type symbols have
+hover and accessibility labels; unknown types remain visible as text. Names wrap
+rather than being truncated, including 31-character names. Secondary
+settings and options follow below as borderless key/value pairs.
+XML is limited to 4 MiB, 20,000 elements, and 32 nesting levels;
 malformed XML and custom entities are rejected without loading external entities.
 Leading ASCII whitespace before an XML declaration is tolerated; formatting
 warnings remain in JSON output rather than the preview.

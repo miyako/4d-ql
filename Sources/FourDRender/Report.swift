@@ -107,6 +107,7 @@ public indirect enum Block {
     case composition([Segment])
     case table(Table)
     case queryConditions([QueryCondition])
+    case orderedCards([OrderedCard])
     /// A bounded, format-independent table/field relationship diagram.
     case structureDiagram(StructureDiagram)
     /// Collapsible group with a summary line.
@@ -116,6 +117,25 @@ public indirect enum Block {
     /// Source text with its whitespace preserved.
     case sourceCode(String, language: CodeLanguage = .plain)
     case code([CodeSpan])
+}
+
+public struct OrderedCard {
+    public enum Icon: String {
+        case text = "Aa", integer = "123", real = "1.2", boolean = "✓"
+        case date = "▦", time = "◷", picture = "▧", blob = "01"
+        case object = "{}", collection = "[]"
+    }
+    public var title: String
+    public var subtitle: String
+    public var details: [KeyValue]
+    public var icon: Icon?
+
+    public init(title: String, subtitle: String, details: [KeyValue], icon: Icon? = nil) {
+        self.title = title
+        self.subtitle = subtitle
+        self.details = details
+        self.icon = icon
+    }
 }
 
 public struct QueryCondition {

@@ -105,6 +105,17 @@ public struct HTMLRenderer {
             if let more = t.more { h += "<p class=\"more\">\(esc(more))</p>" }
             return h
 
+        case .orderedCards(let cards):
+            return "<ol class=\"ordered-cards\">" + cards.map { card in
+                let type = card.icon.map {
+                    "<span class=\"field-type-icon\" role=\"img\" aria-label=\"\(esc(card.subtitle))\" title=\"\(esc(card.subtitle))\">\(esc($0.rawValue))</span>"
+                } ?? "<span class=\"field-type-label\">\(esc(card.subtitle))</span>"
+                return "<li><div class=\"field-card-heading\"><span class=\"field-card-name\">\(esc(card.title))</span>\(type)</div>"
+                    + "<dl>" + card.details.map {
+                        "<div><dt>\(esc($0.key))</dt><dd>\(esc($0.value))</dd></div>"
+                    }.joined() + "</dl></li>"
+            }.joined() + "</ol>"
+
         case .queryConditions(let conditions):
             return "<ol class=\"query-conditions\">" + conditions.map { condition in
                 "<li><span class=\"query-connector\">\(esc(condition.connector))</span>"
@@ -204,6 +215,15 @@ public struct HTMLRenderer {
     .query-code{font-size:10px;color:var(--muted)}
     .query-card dd{white-space:pre-wrap;overflow-wrap:anywhere}
     @media(max-width:400px){.query-conditions li{grid-template-columns:1fr;gap:4px}.query-card dl{grid-template-columns:1fr}}
+    .ordered-cards{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:6px;max-height:640px;overflow:auto}
+    .ordered-cards li{min-width:0;padding:7px 10px;background:var(--soft);border:1px solid var(--line);border-radius:8px}
+    .field-card-heading{display:flex;align-items:center;gap:8px;justify-content:space-between}
+    .field-card-name{font-weight:600;overflow-wrap:anywhere;min-width:0}
+    .field-type-icon{flex:none;color:var(--accent);font:600 11px/1.5 ui-monospace,"SF Mono",Menlo,monospace;min-width:26px;text-align:center}
+    .field-type-label{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+    .ordered-cards dl{display:flex;flex-wrap:wrap;gap:2px 12px;margin:3px 0 0;font-size:11px}
+    .ordered-cards dl>div{display:flex;gap:4px;min-width:0;max-width:100%}
+    .ordered-cards dt{flex:none}.ordered-cards dd{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}
     .source-text{white-space:pre;overflow:auto;padding:12px;background:var(--soft);border-radius:8px;tab-size:4}
     .source-text code{font:inherit}
     .source-text .syntax-key,.source-text .syntax-tag{color:#175aa8}
