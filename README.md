@@ -9,8 +9,21 @@ file to see what is inside instead of a generic icon.
 | `.4DB` binary structure | tables ranked by fields, field types, relations (`[Table_1]Field_4 → [Table_2]ID`), resource types (forms, menu bars, picture library, …), the database UUID, sort/search settings, journaling |
 | `.4DSettings` settings file | syntax-highlighted XML source with indentation and line breaks preserved |
 | `.4DProject` project file | syntax-highlighted JSON source with indentation and line breaks preserved |
+| `.4dm` method / class source | syntax-highlighted UTF-8 source with line numbers, line count and file size |
 
 Even a 220 MB data file previews in about 30 ms, because only header blocks are read.
+
+Method previews use an in-process regex lexer: no 4D installation, tool4d,
+LSP server, JavaScript, or network access is required. Highlighting covers
+comments, attributes headers, strings, numbers, date/time literals, keywords,
+variables, table/field references, tokenized commands (`:C…`) and constants
+(`:K…:…`), and call names. Untokenized commands are highlighted heuristically;
+this is not semantic analysis or syntax validation. The token categories are
+inspired by [miyako/language-4dm-zed](https://github.com/miyako/language-4dm-zed)
+and its [tree-sitter grammar](https://github.com/miyako/tree-sitter-fourd).
+Previews read at most 256 KiB and show at most 1,000 lines, with a visible
+notice when truncated (including in CLI `--thorough` mode). UTF-8 BOMs and
+Windows/classic Mac line endings are supported; invalid UTF-8 is reported.
 
 ### What is shown, and what is not
 
@@ -36,6 +49,7 @@ Sources/
                          FileAnalyzer protocol, AnalyzerRegistry
     DB4D/                the shared .4DD/.4DB container format
     Text/                XML .4DSettings and JSON .4DProject source text
+    Method/              bounded UTF-8 .4dm reader and regex lexer
   FourDRender/           rendering layer: model -> Report -> HTML
     Report.swift         generic page model (stats, badges, tables, bars, disclosures)
     *Presenter.swift     one presenter per model kind

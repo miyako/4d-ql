@@ -23,7 +23,7 @@ final class TextFileTests: XCTestCase {
         XCTAssertEqual(info.fileName, url.lastPathComponent)
         let html = PreviewPipeline().html(for: url)
         XCTAssertTrue(html.contains("4D Settings (XML)"))
-        XCTAssertTrue(html.contains("<pre class=\"source mono\"><code>"))
+        XCTAssertTrue(html.contains("<pre class=\"source-text mono\"><code>"))
         XCTAssertTrue(withoutHighlighting(html).contains("\n\t&lt;name&gt;日本語 &amp;amp; text&lt;/name&gt;\n"))
         XCTAssertTrue(html.contains("<span class=\"syntax-tag\">name</span>"))
         XCTAssertFalse(html.contains("<settings>"))

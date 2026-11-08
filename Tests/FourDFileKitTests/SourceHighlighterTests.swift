@@ -4,7 +4,7 @@ import XCTest
 final class SourceHighlighterTests: XCTestCase {
     private func source(_ text: String, language: Block.CodeLanguage) throws -> (html: String, plain: String) {
         var report = Report(title: "Source")
-        report.sections = [Section("Contents", [.code(text, language: language)])]
+        report.sections = [Section("Contents", [.sourceCode(text, language: language)])]
         let html = HTMLRenderer().render(report)
         let start = try XCTUnwrap(html.range(of: "<code>")?.upperBound)
         let end = try XCTUnwrap(html.range(of: "</code>", range: start..<html.endIndex)?.lowerBound)

@@ -86,7 +86,8 @@ func printBlock(_ b: Block, indent: String) {
         print("\(indent)\(s)  — \(d ?? "")")
         blocks.forEach { printBlock($0, indent: indent + "    ") }
     case .note(let t, _): print("\(indent)! \(t)")
-    case .text(let t), .code(let t, _): print(indent + t)
+    case .text(let t), .sourceCode(let t, _): print(indent + t)
+    case .code(let spans): print(spans.map(\.text).joined())
     }
 }
 

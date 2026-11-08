@@ -111,7 +111,22 @@ public indirect enum Block {
     case note(String, Badge.Tone)
     case text(String)
     /// Source text with its whitespace preserved.
-    case code(String, language: CodeLanguage = .plain)
+    case sourceCode(String, language: CodeLanguage = .plain)
+    case code([CodeSpan])
+}
+
+public struct CodeSpan {
+    public enum Style: String {
+        case plain, comment, processing, string, number, keyword
+        case variable, command, constant, type, property, `operator`
+    }
+    public var text: String
+    public var style: Style
+
+    public init(_ text: String, style: Style = .plain) {
+        self.text = text
+        self.style = style
+    }
 }
 
 public struct Table {
