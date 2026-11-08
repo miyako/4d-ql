@@ -35,6 +35,62 @@ final class FormStaticTests: XCTestCase {
         try XCTUnwrap(info.appearances.first { $0.theme == theme }?.pages.first { $0.number == page }?.objects)
     }
 
+    func testSharedLargeStylesheetIsParsedOnceAcrossInlineContexts() throws {
+        let root = try folder()
+        let rule = "text { stroke: #123456; }"
+        let css = "/*" + String(repeating: "x", count: 4 * 1024 * 1024 - rule.utf8.count - 4) + "*/" + rule
+        try write(css, "shared.css", in: root)
+        let inline = (0..<500).map {
+            #""panel\#($0)":{"type":"subform","detailForm":{"css":"shared.css","pages":[{"objects":{}},{"objects":{"label":{"type":"text","text":"Saved label"}}}]}}"#
+        }.joined(separator: ",")
+        let url = try write(form("{\(inline)}"), "form.4DForm", in: root)
+        let start = ProcessInfo.processInfo.systemUptime
+        let info = try analyze(url)
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 4,
+                          "Repeated CSS contexts must not exhaust the four-second preview deadline.")
+        let panels = try objects(info)
+        XCTAssertEqual(panels.count, 500)
+        XCTAssertTrue(panels.allSatisfy { $0.children.first?.properties["stroke"]?.string == "#123456" })
+        XCTAssertEqual(info.dependencies.filter { $0 == "shared.css" }.count, 1)
+    }
+
+    func testCachedStylesheetsPreserveRepeatedReferenceCascadeOrder() throws {
+        let root = try folder()
+        try write("text { stroke: #123456; }", "first.css", in: root)
+        try write("text { stroke: #654321; }", "second.css", in: root)
+        let url = try write(form(#"{"label":{"type":"text","text":"Label"}}"#,
+                                 extra: #","css":["first.css","second.css","./first.css"]"#),
+                            "form.4DForm", in: root)
+        let info = try analyze(url)
+        XCTAssertEqual(try objects(info).first?.properties["stroke"]?.string, "#123456")
+        XCTAssertEqual(info.dependencies.count, 2)
+        try write("text { stroke: #ABCDEF; }", "first.css", in: root)
+        XCTAssertEqual(try objects(analyze(url)).first?.properties["stroke"]?.string, "#ABCDEF")
+    }
+
+    func testNestedCachedStylesheetKeepsItsPictureDocumentContext() throws {
+        let root = try folder()
+        try write(#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="red"/></svg>"#,
+                  "assets/tile.svg", in: root)
+        try write(#"picture { picture: "../assets/tile.svg"; }"#, "styles/common.css", in: root)
+        let nested = #"{"css":"../styles/common.css","pages":[{"objects":{}},{"objects":{"image":{"type":"picture"}}}]}"#
+        try write(form(#"{"image":{"type":"picture"},"nested":{"type":"subform","detailForm":\#(nested)}}"#,
+                       extra: #","css":"../styles/common.css""#),
+                  "child/form.4DForm", in: root)
+        let url = try write(form(#"{"panel":{"type":"subform","detailForm":"child/form.4DForm"}}"#,
+                                 extra: #","css":"styles/common.css""#), "form.4DForm", in: root)
+        let info = try analyze(url)
+        let panel = try XCTUnwrap(objects(info).first)
+        let direct = try XCTUnwrap(panel.children.first)
+        let inner = try XCTUnwrap(panel.children.last?.children.first)
+        XCTAssertEqual(direct.properties["picture"]?.string, "assets/tile.svg")
+        XCTAssertEqual(inner.properties["picture"]?.string, "assets/tile.svg")
+        XCTAssertEqual(direct.images["picture"], info.images.first?.id)
+        XCTAssertEqual(inner.images["picture"], info.images.first?.id)
+        XCTAssertEqual(info.images.count, 1)
+        XCTAssertEqual(info.dependencies.filter { $0 == "styles/common.css" }.count, 1)
+    }
+
     func testInheritedPagesLayeringDuplicateNamesAndProperties() throws {
         let info = try analyze(fixture())
         let background = try objects(info, page: 0)

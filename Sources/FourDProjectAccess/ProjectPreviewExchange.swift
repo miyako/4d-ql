@@ -103,9 +103,8 @@ public struct ProjectPreviewExchange: Sendable {
         guard fileURL.isFileURL, fileURL.path.hasPrefix("/"), Self.validRendererBuild(rendererBuild) else {
             throw ProjectPreviewExchangeError.invalidRequest
         }
-        let data = try Self.readBounded(fileURL, maximum: Self.maximumSourceBytes)
         let request = ProjectPreviewRequest(id: UUID().uuidString, path: fileURL.standardizedFileURL.path,
-                                            sourceSHA: Self.hash(data), rendererBuild: rendererBuild)
+                                            sourceSHA: try Self.sourceHash(fileURL: fileURL), rendererBuild: rendererBuild)
         try writeRequest(request)
         return request
     }
@@ -114,8 +113,14 @@ public struct ProjectPreviewExchange: Sendable {
         guard fileURL.isFileURL, fileURL.path.hasPrefix("/"), validHash(expectedHash) else {
             throw ProjectPreviewExchangeError.invalidRequest
         }
-        let data = try readBounded(fileURL, maximum: maximumSourceBytes)
-        guard hash(data) == expectedHash else { throw ProjectPreviewExchangeError.sourceChanged }
+        guard try sourceHash(fileURL: fileURL) == expectedHash else { throw ProjectPreviewExchangeError.sourceChanged }
+    }
+
+    static func sourceHash(fileURL: URL) throws -> String {
+        guard fileURL.isFileURL, fileURL.path.hasPrefix("/") else {
+            throw ProjectPreviewExchangeError.invalidRequest
+        }
+        return hash(try readBounded(fileURL, maximum: maximumSourceBytes))
     }
 
     public func writeRequest(_ request: ProjectPreviewRequest) throws {

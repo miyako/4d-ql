@@ -98,6 +98,8 @@ each appearance. JSON properties beat ordinary CSS, while `!important`
 can override them. Common web-property aliases are mapped to 4D names,
 including styles on listbox columns, headers and footers. Unsupported
 selectors, at-rules and unavailable dependencies produce preview notices.
+Within one analysis, stylesheets are parsed once per canonical dependency
+path and reused across static contexts; repeated references retain cascade order.
 
 Recursive `$ref` pointers support local and external JSON documents,
 RFC 6901 escapes, array indices, and local-property overrides. Relative
@@ -162,7 +164,8 @@ the selected-file-only preview, never a silently stale project preview.
 Role-specific XPC sessions check the signing identity before admission;
 only the hosting app can authorize or revoke projects. The preview role is
 read-only. Each service reuses two listeners, limits work to 32 operations,
-and caps HTML replies at 32 MiB; the client has a four-second deadline.
+and caps HTML replies at 32 MiB; the client has a four-second deadline,
+including its bounded selected-source hash and both XPC calls.
 
 Actual Finder checks verified persistence after closing the hosting app,
 automatic service activation, static composition/XLIFF, and revocation.

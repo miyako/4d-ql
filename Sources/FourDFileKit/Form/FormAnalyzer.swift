@@ -84,6 +84,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
         let expansion = FormStaticExpansion(dependencies: dependencies)
         let rawPages = try expansion.expand(resolved, document: url)
         var stylesheet = FormStylesheet(dependencies: dependencies)
+        var parsedStylesheets: [URL: FormStylesheet] = [:]
         if let sources = dependencies.sources {
             if !FileManager.default.isReadableFile(atPath: sources.path) {
                 dependencies.warn("Project stylesheets are inaccessible. Quick Look may grant access only to the selected form.")
@@ -91,7 +92,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
             for name in ["styleSheets.css", "styleSheets_mac.css"] {
                 let cssURL = sources.appendingPathComponent(name)
                 if FileManager.default.fileExists(atPath: cssURL.path) {
-                    try loadCSS(cssURL, stylesheet: &stylesheet, dependencies: dependencies)
+                    try loadCSS(cssURL, stylesheet: &stylesheet, parsed: &parsedStylesheets, dependencies: dependencies)
                 }
             }
         }
@@ -106,7 +107,8 @@ public struct FormFileAnalyzer: FileAnalyzer {
         contextKeys.insert(String(url.path.dropFirst(dependencies.root.path.count + 1)))
         for key in contextKeys.sorted() {
             var formStylesheet = stylesheet
-            try loadFormCSS(expansion.contexts[key]!, stylesheet: &formStylesheet, dependencies: dependencies, document: url)
+            try loadFormCSS(expansion.contexts[key]!, stylesheet: &formStylesheet,
+                            parsed: &parsedStylesheets, dependencies: dependencies, document: url)
             stylesheets[key] = formStylesheet
         }
         func styledCount(_ objects: [FormObject]) -> Int {
@@ -193,6 +195,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
     }
 
     private func loadFormCSS(_ form: FormValue, stylesheet: inout FormStylesheet,
+                             parsed: inout [URL: FormStylesheet],
                              dependencies: FormDependencies, document: URL) throws {
         guard let css = form["css"] else { return }
         let entries: [FormValue]
@@ -203,7 +206,10 @@ public struct FormFileAnalyzer: FileAnalyzer {
                 dependencies.warn("Invalid form CSS reference.")
                 continue
             }
-            do { try loadCSS(dependencies.url(path, relativeTo: document), stylesheet: &stylesheet, dependencies: dependencies) }
+            do {
+                try loadCSS(dependencies.url(path, relativeTo: document), stylesheet: &stylesheet,
+                            parsed: &parsed, dependencies: dependencies)
+            }
             catch let error as FormError {
                 if case .limit = error { throw error }
                 dependencies.warn("Stylesheet \(path): \(error)")
@@ -211,11 +217,22 @@ public struct FormFileAnalyzer: FileAnalyzer {
         }
     }
 
-    private func loadCSS(_ url: URL, stylesheet: inout FormStylesheet, dependencies: FormDependencies) throws {
+    private func loadCSS(_ url: URL, stylesheet: inout FormStylesheet,
+                         parsed: inout [URL: FormStylesheet], dependencies: FormDependencies) throws {
         do {
-            let data = try dependencies.read(url)
-            guard let text = String(data: data, encoding: .utf8) else { throw FormError.dependency("CSS is not UTF-8.") }
-            try stylesheet.append(text, document: url)
+            let canonical = url.standardizedFileURL.resolvingSymlinksInPath()
+            let loaded: FormStylesheet
+            if let cached = parsed[canonical] {
+                loaded = cached
+            } else {
+                let data = try dependencies.read(canonical)
+                guard let text = String(data: data, encoding: .utf8) else { throw FormError.dependency("CSS is not UTF-8.") }
+                var newStylesheet = FormStylesheet(dependencies: dependencies)
+                try newStylesheet.append(text, document: canonical)
+                loaded = newStylesheet
+                parsed[canonical] = loaded
+            }
+            try stylesheet.append(contentsOf: loaded)
         } catch let error as FormError {
             if case .limit = error { throw error }
             dependencies.warn("Stylesheet \(url.lastPathComponent): \(error)")

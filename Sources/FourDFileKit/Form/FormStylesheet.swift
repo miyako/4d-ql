@@ -35,6 +35,14 @@ struct FormStylesheet {
                 }
             }
         }
+        try appendRules(added)
+    }
+
+    mutating func append(contentsOf stylesheet: FormStylesheet) throws {
+        try appendRules(stylesheet.rules)
+    }
+
+    private mutating func appendRules(_ added: [FormStyleRule]) throws {
         guard rules.count + added.count <= 5_000 else { throw FormError.limit("5,000 CSS rules exceeded.") }
         rules += added
     }

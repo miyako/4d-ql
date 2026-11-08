@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 private final class ProjectServiceReply<Value>: @unchecked Sendable {
     private let lock = NSLock()
@@ -64,11 +63,10 @@ public struct ProjectServiceClient {
     }
 
     public func preview(_ fileURL: URL) async throws -> String {
+        let deadline = ProcessInfo.processInfo.systemUptime + 4
         let nonce = UUID().uuidString
-        let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
-        guard data.count <= 4_194_304 else { throw Self.error("The selected form exceeds the 4 MiB preview limit.") }
-        let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        return try await call { proxy, completion in
+        let hash = try ProjectPreviewExchange.sourceHash(fileURL: fileURL)
+        return try await call(deadline: deadline) { proxy, completion in
             proxy.preview(fileURL as NSURL, nonce: nonce as NSString, sourceSHA: hash as NSString,
                           rendererBuild: rendererBuild as NSString) { html, error, replyNonce, replySHA, replyBuild in
                 guard replyNonce as String == nonce, replySHA as String == hash,
@@ -86,12 +84,14 @@ public struct ProjectServiceClient {
         }
     }
 
-    private func call<Value>(authorizing: Bool = false, _ invoke: @escaping (ProjectPreviewServiceProtocol, @escaping (Result<Value, Error>) -> Void) -> Void) async throws -> Value {
-        let deadline = ProcessInfo.processInfo.systemUptime + 4
+    private func call<Value>(authorizing: Bool = false, deadline: TimeInterval? = nil,
+                             _ invoke: @escaping (ProjectPreviewServiceProtocol, @escaping (Result<Value, Error>) -> Void) -> Void) async throws -> Value {
+        let deadline = deadline ?? ProcessInfo.processInfo.systemUptime + 4
         let endpoint: NSXPCListenerEndpoint = try await rpc(
             connection: NSXPCConnection(serviceName: serviceName),
             interface: ProjectPreviewServiceTransport.sessionInterface(),
-            proxyType: ProjectPreviewServiceSessionProtocol.self, timeout: 4
+            proxyType: ProjectPreviewServiceSessionProtocol.self,
+            timeout: max(0, deadline - ProcessInfo.processInfo.systemUptime)
         ) { proxy, completion in
             proxy.openSession(authorizing: authorizing) { endpoint, error in
                 if let error { completion(.failure(Self.error(error as String))) }

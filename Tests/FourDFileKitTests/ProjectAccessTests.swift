@@ -71,6 +71,31 @@ final class ProjectAccessTests: XCTestCase {
         XCTAssertNotEqual(changed.id, request.id)
     }
 
+    func testServiceSourceHashUsesBoundedRegularFileReader() throws {
+        XCTAssertEqual(try ProjectPreviewExchange.sourceHash(fileURL: source),
+                       "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
+        let handle = try FileHandle(forWritingTo: source)
+        try handle.truncate(atOffset: UInt64(ProjectPreviewExchange.maximumSourceBytes + 1))
+        try handle.close()
+        assertError(.oversizedFile) { _ = try ProjectPreviewExchange.sourceHash(fileURL: source) }
+        let link = root.appendingPathComponent("linked.4DForm")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
+        XCTAssertThrowsError(try ProjectPreviewExchange.sourceHash(fileURL: link))
+        XCTAssertThrowsError(try ProjectPreviewExchange.sourceHash(fileURL: root))
+    }
+
+    func testServiceClientRejectsOversizedSourceBeforeOpeningXPC() async throws {
+        let handle = try FileHandle(forWritingTo: source)
+        try handle.truncate(atOffset: UInt64(ProjectPreviewExchange.maximumSourceBytes + 1))
+        try handle.close()
+        do {
+            _ = try await ProjectServiceClient().preview(source)
+            XCTFail("Oversized forms must be rejected before XPC.")
+        } catch {
+            XCTAssertEqual(error as? ProjectPreviewExchangeError, .oversizedFile)
+        }
+    }
+
     func testFreshReplyRoundTripAndOwnCleanup() async throws {
         let request = try post()
         let other = try post()
