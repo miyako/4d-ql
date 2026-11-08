@@ -77,6 +77,11 @@ func printBlock(_ b: Block, indent: String) {
         print(indent + t.columns.map(\.0).joined(separator: " | "))
         t.rows.forEach { print(indent + $0.joined(separator: " | ")) }
         if let more = t.more { print(indent + more) }
+    case .orderedCards(let cards):
+        for card in cards {
+            print("\(indent)\(card.title) - \(card.subtitle)")
+            printBlock(.keyValues(card.details), indent: indent + "  ")
+        }
     case .queryConditions(let conditions):
         for condition in conditions {
             print("\(indent)\(condition.connector) \(condition.field) \(condition.operation) [criterion \(condition.code)]")

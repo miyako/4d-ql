@@ -10,35 +10,37 @@ public struct ImportExportSettingsPresenter: ReportPresenter {
         let root = info.root
         let fields = root.children.filter { $0.name == "field" }
         var report = Report(title: info.fileName, subtitle: "4D Import/Export Settings")
-        report.sections.append(Section("Settings", [.keyValues(settings(root.attributes))]))
+        report.stats = [
+            Stat("Table", root.attributes["table_name"].map { value($0, key: "table_name") }
+                 ?? root.attributes["table_no"].map { "Table \($0)" } ?? "Not specified"),
+            Stat("Fields", Fmt.n(fields.count)),
+            Stat("Format", root.attributes["format"].map { value($0, key: "format") } ?? "Not specified"),
+            Stat("Encoding", root.attributes["encoding"].map { value($0, key: "encoding") } ?? "Not specified"),
+        ]
 
         let limit = 500
-        let hasOptions = fields.contains { !$0.children.isEmpty || !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-            !$0.attributes.keys.filter { !Self.fieldKeys.contains($0) }.isEmpty }
-        var columns: [(String, Table.Align)] = [
-            ("Order", .trailing), ("Table #", .trailing), ("Field #", .trailing),
-            ("Field", .leading), ("Type", .leading),
-        ]
-        if hasOptions { columns.append(("Options", .leading)) }
-        let rows = fields.prefix(limit).enumerated().map { index, field -> [String] in
-            var row = [
-                "\(index + 1)", field.attributes["table_no"] ?? root.attributes["table_no"] ?? "Not specified",
-                field.attributes["field_no"] ?? "Not specified", field.attributes["name"] ?? "Not specified",
-                field.attributes["kind"].map { Self.types[$0] ?? $0 } ?? "Not specified",
+        let cards = fields.prefix(limit).map { field -> OrderedCard in
+            var details = [
+                KeyValue("Table #", field.attributes["table_no"] ?? root.attributes["table_no"] ?? "Not specified"),
+                KeyValue("Field #", field.attributes["field_no"] ?? "Not specified"),
             ]
-            if hasOptions {
-                let attributes = field.attributes.filter { !Self.fieldKeys.contains($0.key) }
-                var options = settings(attributes).map { "\($0.key): \($0.value)" }
-                options += properties(field).map { "\($0[0]): \($0[1])" }
-                row.append(options.joined(separator: "; "))
-            }
-            return row
+            details += settings(field.attributes.filter { !Self.fieldKeys.contains($0.key) })
+            details += properties(field).map { KeyValue($0[0], $0[1]) }
+            return OrderedCard(title: field.attributes["name"] ?? "Not specified",
+                               subtitle: field.attributes["kind"].map { Self.types[$0] ?? $0 } ?? "Not specified",
+                               details: details, icon: field.attributes["kind"].flatMap { Self.icons[$0] })
         }
-        let fieldBlocks: [Block] = fields.isEmpty ? [.note("No fields are selected in this configuration.", .neutral)] :
-            [.table(Table(columns: columns, rows: rows,
-                          more: fields.count > limit ? "\(Fmt.plural(fields.count - limit, "more field")) not shown; JSON output includes all fields." : nil))]
+        var fieldBlocks: [Block] = fields.isEmpty ? [.note("No fields are selected in this configuration.", .neutral)] :
+            [.orderedCards(cards)]
+        if fields.count > limit {
+            fieldBlocks.append(.note("\(Fmt.plural(fields.count - limit, "more field")) not shown; JSON output includes all fields.", .neutral))
+        }
         report.sections.append(Section("Fields in import/export order", fieldBlocks))
 
+        let additionalSettings = root.attributes.filter { !["table_name", "format", "encoding"].contains($0.key) }
+        if !additionalSettings.isEmpty {
+            report.sections.append(Section("Settings", [.keyValues(settings(additionalSettings))], width: .half))
+        }
         var configuration: [[String]] = []
         let text = root.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.isEmpty { configuration.append(["Text", text]) }
@@ -49,15 +51,21 @@ public struct ImportExportSettingsPresenter: ReportPresenter {
             configuration += properties(node, path: path, includeAttributes: true)
         }
         if !configuration.isEmpty {
-            report.sections.append(Section("Options", [.table(Table(
-                columns: [("Setting", .leading), ("Value", .leading)],
-                rows: Array(configuration.prefix(limit)),
-                more: configuration.count > limit ? "\(Fmt.plural(configuration.count - limit, "more setting")) not shown; JSON output includes all settings." : nil))]))
+            var blocks: [Block] = [.keyValues(configuration.prefix(limit).map { KeyValue($0[0], $0[1]) })]
+            if configuration.count > limit {
+                blocks.append(.note("\(Fmt.plural(configuration.count - limit, "more setting")) not shown; JSON output includes all settings.", .neutral))
+            }
+            report.sections.append(Section("Options", blocks, width: .half))
         }
         return report
     }
 
     private static let fieldKeys: Set<String> = ["table_no", "field_no", "name", "kind"]
+    private static let icons: [String: OrderedCard.Icon] = [
+        "alpha": .text, "text": .text, "int16": .integer, "int32": .integer, "int64": .integer,
+        "real": .real, "boolean": .boolean, "date": .date, "time": .time,
+        "picture": .picture, "blob": .blob, "object": .object, "collection": .collection,
+    ]
     private static let types = [
         "alpha": "Alpha", "text": "Text", "int16": "Integer (16-bit)", "int32": "Long integer (32-bit)",
         "int64": "Integer (64-bit)", "real": "Real", "boolean": "Boolean", "date": "Date",

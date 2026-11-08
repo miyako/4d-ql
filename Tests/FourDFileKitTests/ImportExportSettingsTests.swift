@@ -22,21 +22,37 @@ final class ImportExportSettingsTests: XCTestCase {
         return url
     }
 
-    func testSampleUsesTablesAndPreservesSelectedFieldOrder() throws {
+    func testSampleUsesOrderedCardsAndPreservesSelectedFieldOrder() throws {
         let url = try file(sample)
         let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? ImportExportSettingsInfo)
         XCTAssertEqual(info.root.children.filter { $0.name == "field" }.map { $0.attributes["field_no"] }, ["2", "3", "4", "5", "1"])
         let report = PresenterRegistry.default.report(for: info)
-        guard case .table(let fields) = report.sections[1].blocks[0] else { return XCTFail("Expected a field table") }
-        XCTAssertEqual(fields.columns.map(\.0), ["Order", "Table #", "Field #", "Field", "Type"])
-        XCTAssertEqual(fields.rows.last, ["5", "1", "1", "ID", "Long integer (32-bit)"])
+        XCTAssertEqual(report.stats.map(\.label), ["Table", "Fields", "Format", "Encoding"])
+        XCTAssertEqual(report.stats.map(\.value), ["Table_1", "5", "4D", "UTF-8"])
+        XCTAssertEqual(report.sections.map(\.title), ["Fields in import/export order", "Settings", "Options"])
+        guard case .orderedCards(let fields) = report.sections[0].blocks[0] else { return XCTFail("Expected field cards") }
+        XCTAssertEqual(fields.map(\.title), ["Field_2", "Field_3", "Field_4", "Field_5", "ID"])
+        XCTAssertEqual(fields.last?.subtitle, "Long integer (32-bit)")
+        XCTAssertEqual(fields.last?.details.map(\.value), ["1", "1"])
+        guard case .keyValues(let options) = report.sections[2].blocks[0] else { return XCTFail("Expected borderless options") }
+        XCTAssertEqual(options.map(\.value), ["No"])
         let html = PreviewPipeline().html(for: url)
         XCTAssertTrue(html.contains("4D Import/Export Settings"))
         XCTAssertTrue(html.contains("Text settings / Include column titles"))
-        XCTAssertTrue(html.contains(">No</td>"))
+        XCTAssertTrue(html.contains(">No</dd>"))
         XCTAssertTrue(html.contains("Table_1"))
         XCTAssertFalse(html.contains("<pre"))
-        XCTAssertTrue(html.contains("<table>"))
+        XCTAssertFalse(html.contains("<table>"))
+        XCTAssertTrue(html.contains("<ol class=\"ordered-cards\">"))
+        XCTAssertFalse(html.contains("<span class=\"query-connector\""))
+        XCTAssertTrue(html.contains("aria-label=\"Long integer (32-bit)\""))
+        XCTAssertFalse(html.contains("criterion "))
+        let summaryPosition = try XCTUnwrap(html.range(of: "<div class=\"stats\">"))
+        let fieldsPosition = try XCTUnwrap(html.range(of: "<h2>Fields in import/export order</h2>"))
+        let settingsPosition = try XCTUnwrap(html.range(of: "<h2>Settings</h2>"))
+        XCTAssertLessThan(summaryPosition.lowerBound, fieldsPosition.lowerBound)
+        XCTAssertLessThan(fieldsPosition.lowerBound, settingsPosition.lowerBound)
+        XCTAssertTrue(html.contains("<div class=\"pair\">"))
     }
 
     func testUTIAndCaseInsensitiveExtensionRouting() throws {
@@ -52,7 +68,7 @@ final class ImportExportSettingsTests: XCTestCase {
         let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? ImportExportSettingsInfo)
         XCTAssertEqual(info.warnings, ["Ignored whitespace before the XML declaration."])
         let html = PreviewPipeline().html(for: url)
-        XCTAssertTrue(html.contains("<table>"))
+        XCTAssertTrue(html.contains("<ol class=\"ordered-cards\">"))
         XCTAssertFalse(html.contains("No preview available"))
         XCTAssertFalse(html.contains("Ignored whitespace"))
         XCTAssertFalse(html.contains("Parser notes"))
@@ -72,14 +88,14 @@ final class ImportExportSettingsTests: XCTestCase {
         XCTAssertEqual((root["attributes"] as? [String: String])?["future_option"], "custom")
         XCTAssertEqual(info.root.children[1].children[0].text, "<script>")
         let report = PresenterRegistry.default.report(for: info)
-        guard case .table(let fields) = report.sections[1].blocks[0] else { return XCTFail("Expected a field table") }
-        XCTAssertEqual(fields.rows[0][1], "7")
-        XCTAssertEqual(fields.rows[0][2], "Not specified")
-        XCTAssertEqual(fields.rows[0][4], "future-type")
-        XCTAssertTrue(fields.rows[0][5].contains("Width: 12"))
-        XCTAssertTrue(fields.rows[0][5].contains("a&b"))
+        guard case .orderedCards(let fields) = report.sections[0].blocks[0] else { return XCTFail("Expected field cards") }
+        XCTAssertEqual(fields[0].details[0].value, "7")
+        XCTAssertEqual(fields[0].details[1].value, "Not specified")
+        XCTAssertEqual(fields[0].subtitle, "future-type")
+        XCTAssertTrue(fields[0].details.contains { $0.key == "Width" && $0.value == "12" })
+        XCTAssertTrue(fields[0].details.contains { $0.value == "a&b" })
         let html = HTMLRenderer().render(report)
-        XCTAssertTrue(html.contains("<dd>false</dd>"))
+        XCTAssertEqual(report.stats.first?.value, "false")
         XCTAssertTrue(html.contains("日本語 &amp; &lt;script&gt;"))
         XCTAssertTrue(html.contains("Future Option"))
         XCTAssertTrue(html.contains("(empty)"))
@@ -94,6 +110,25 @@ final class ImportExportSettingsTests: XCTestCase {
         let html = PreviewPipeline().html(for: url)
         XCTAssertTrue(html.contains("日本語"))
         XCTAssertTrue(html.contains("No fields are selected"))
+        let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? ImportExportSettingsInfo)
+        XCTAssertEqual(PresenterRegistry.default.report(for: info).stats.map(\.value), ["日本語", "0", "Not specified", "Not specified"])
+    }
+
+    func testMaximumLengthNamesAndAllTypeSymbols() throws {
+        let name = String(repeating: "界", count: 31)
+        let kinds = ["alpha", "text", "int16", "int32", "int64", "real", "boolean", "date", "time", "picture", "blob", "object", "collection", "future-type"]
+        let fields = kinds.map { "<field name='\(name)' kind='\($0)'/>" }.joined()
+        let url = try file("<settings-import-export table_name='\(name)'>\(fields)</settings-import-export>")
+        let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? ImportExportSettingsInfo)
+        let report = PresenterRegistry.default.report(for: info)
+        guard case .orderedCards(let cards) = report.sections[0].blocks[0] else { return XCTFail("Expected cards") }
+        XCTAssertEqual(cards.count, kinds.count)
+        XCTAssertTrue(cards.dropLast().allSatisfy { $0.icon != nil && $0.title == name })
+        XCTAssertNil(cards.last?.icon)
+        let html = HTMLRenderer().render(report)
+        XCTAssertTrue(html.contains("<span class=\"field-card-name\">\(name)</span>"))
+        XCTAssertTrue(html.contains("<span class=\"field-type-label\">future-type</span>"))
+        XCTAssertFalse(html.contains("query-connector\""))
     }
 
     func testMalformedWrongRootAndCustomEntitiesAreRejected() throws {
@@ -126,11 +161,13 @@ final class ImportExportSettingsTests: XCTestCase {
         let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? ImportExportSettingsInfo)
         XCTAssertEqual(info.root.children.count, 1002)
         let report = PresenterRegistry.default.report(for: info)
-        for section in report.sections.dropFirst() {
-            guard case .table(let table) = section.blocks[0] else { return XCTFail("Expected a table") }
-            XCTAssertEqual(table.rows.count, 500)
-            XCTAssertNotNil(table.more)
-        }
+        XCTAssertEqual(report.stats[1].value, "501")
+        guard case .orderedCards(let cards) = report.sections[0].blocks[0],
+              case .keyValues(let settings) = report.sections[1].blocks[0] else { return XCTFail("Expected cards and settings") }
+        XCTAssertEqual(cards.count, 500)
+        XCTAssertEqual(settings.count, 500)
+        XCTAssertEqual(report.sections[0].blocks.count, 2)
+        XCTAssertEqual(report.sections[1].blocks.count, 2)
         let html = HTMLRenderer().render(report)
         XCTAssertFalse(html.contains(">Field_501<"))
         XCTAssertTrue(html.contains("1 more field"))
