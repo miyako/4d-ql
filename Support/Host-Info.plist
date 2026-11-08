@@ -15,10 +15,18 @@
 	<key>LSMinimumSystemVersion</key><string>12.0</string>
 	<key>NSPrincipalClass</key><string>NSApplication</string>
 	<key>NSHighResolutionCapable</key><true/>
+	<key>FourDProjectGroupIdentifier</key><string>__PROJECT_GROUP__</string>
 	<!-- Imported so previews work on Macs without 4D installed; 4D.app's own
 	     exported declarations take precedence when it is present. -->
 	<key>UTImportedTypeDeclarations</key>
 	<array>
+		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.form</string>
+			<key>UTTypeDescription</key><string>4D Form</string>
+			<key>UTTypeConformsTo</key><array><string>public.json</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>4DForm</string><string>4dform</string></array></dict>
+		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key><string>com.4d.4d.queryFile</string>
 			<key>UTTypeDescription</key><string>4D Saved Query</string>

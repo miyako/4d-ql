@@ -1,0 +1,11 @@
+<xliff version="1.1">
+  <file source-language="en" target-language="fr"><body>
+    <trans-unit id="1" resname="save"><source>Save</source><target>Enregistrer</target></trans-unit>
+    <trans-unit id="2" resname="window"><source>Window</source><target>Formulaires statiques</target></trans-unit>
+    <trans-unit id="3" resname="base"><source>Base</source><target>Base héritée</target></trans-unit>
+    <group id="100"><trans-unit id="2"><source>Tip</source><target>Enregistrer les modifications</target></trans-unit></group>
+    <group resname="[ProjectForm]"><group resname="Root">
+      <trans-unit resname="automatic"><source>Automatic</source><target>Traduction par nom d'objet</target></trans-unit>
+    </group></group>
+  </body></file>
+</xliff>

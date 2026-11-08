@@ -1,0 +1,53 @@
+{
+  "$4d": {"version": "1", "kind": "form"},
+  "windowTitle": "Observatory contact and invoice", "destination": "detailScreen",
+  "width": 720, "height": 600, "windowSizingX": "fixed", "windowSizingY": "fixed",
+  "events": ["onLoad", "onUnload"],
+  "pages": [
+    {"objects": {
+      "headerBand": {"type": "rectangle", "left": 0, "top": 0, "width": 720, "height": 68, "fill": "automaticAlternate", "borderStyle": "none"},
+      "brandMark": {"type": "picture", "left": 24, "top": 12, "width": 44, "height": 44, "picture": "/RESOURCES/benchmark-mark.svg", "pictureFormat": "scaled"},
+      "heading": {"type": "text", "left": 84, "top": 20, "width": 540, "height": 32, "text": "Northwind Observatory", "fontSize": 22, "fontWeight": "bold"},
+      "cancel": {"type": "button", "left": 456, "top": 553, "width": 112, "height": 27, "text": "Cancel"},
+      "save": {"type": "button", "left": 584, "top": 553, "width": 112, "height": 27, "text": "Save draft", "defaultButton": true},
+      "footerNote": {"type": "text", "left": 24, "top": 558, "width": 410, "height": 20, "text": "Static template · expressions are intentionally unresolved", "fontSize": 11}
+    }},
+    {"objects": {
+      "tabs": {"type": "tab", "left": 24, "top": 84, "width": 672, "height": 28, "labels": ["Contact", "Invoice"]},
+      "nameLabel": {"type": "text", "left": 24, "top": 139, "width": 112, "height": 23, "text": "Full name"},
+      "nameInput": {"type": "input", "left": 156, "top": 137, "width": 540, "height": 23, "dataSource": "Form.contact.fullName", "borderStyle": "solid"},
+      "emailLabel": {"type": "text", "left": 24, "top": 189, "width": 112, "height": 23, "text": "Email"},
+      "emailInput": {"type": "input", "left": 156, "top": 187, "width": 540, "height": 23, "dataSource": "Form.contact.email", "borderStyle": "solid"},
+      "departmentLabel": {"type": "text", "left": 24, "top": 239, "width": 112, "height": 23, "text": "Department"},
+      "department": {"type": "dropdown", "left": 156, "top": 237, "width": 250, "height": 27, "dataSource": "Form.contact.department"},
+      "active": {"type": "checkbox", "left": 452, "top": 240, "width": 244, "height": 20, "text": "Active collaborator"},
+      "work": {"type": "radio", "left": 156, "top": 287, "width": 160, "height": 20, "text": "Work address", "radioGroup": "addressKind"},
+      "home": {"type": "radio", "left": 336, "top": 287, "width": 160, "height": 20, "text": "Home address", "radioGroup": "addressKind"},
+      "notesLabel": {"type": "text", "left": 24, "top": 343, "width": 112, "height": 23, "text": "Notes"},
+      "notesInput": {"type": "input", "left": 156, "top": 337, "width": 540, "height": 172, "dataSource": "Form.contact.notes", "borderStyle": "solid", "multiline": "yes", "wordwrap": "normal", "scrollbarVertical": "visible"}
+    }},
+    {"objects": {
+      "invoiceTitle": {"type": "text", "left": 24, "top": 88, "width": 500, "height": 30, "text": "Invoice draft — equipment service", "fontSize": 18, "fontWeight": "bold"},
+      "numberLabel": {"type": "text", "left": 24, "top": 140, "width": 106, "height": 23, "text": "Reference"},
+      "numberInput": {"type": "input", "left": 148, "top": 137, "width": 220, "height": 23, "dataSource": "Form.invoice.reference", "borderStyle": "solid"},
+      "dateLabel": {"type": "text", "left": 420, "top": 140, "width": 70, "height": 23, "text": "Due date"},
+      "dateInput": {"type": "input", "left": 506, "top": 137, "width": 190, "height": 23, "dataSource": "Form.invoice.dueDate", "borderStyle": "solid"},
+      "lineItems": {
+        "type": "listbox", "left": 24, "top": 202, "width": 672, "height": 248,
+        "listboxType": "collection", "dataSource": "Form.invoice.lines",
+        "rowHeight": "28px", "headerHeight": "30px", "footerHeight": "28px",
+        "showHeaders": true, "showFooters": true, "fontSize": 13,
+        "verticalAlign": "middle", "alternateFill": "automaticAlternate",
+        "scrollbarHorizontal": "hidden", "scrollbarVertical": "visible",
+        "columns": [
+          {"name": "description", "width": 334, "dataSource": "This.description", "wordwrap": "normal", "header": {"name": "descriptionHeader", "text": "Service description", "fontWeight": "bold", "icon": "/RESOURCES/benchmark-mark.svg", "iconPlacement": "left"}, "footer": {"name": "descriptionFooter", "dataSource": "Form.invoice.summary"}},
+          {"name": "quantity", "width": 86, "dataSource": "This.quantity", "textAlign": "right", "header": {"text": "Qty", "textAlign": "right"}, "footer": {"name": "quantityFooter", "dataSource": "Form.invoice.totalQuantity", "textAlign": "right"}},
+          {"name": "unitPrice", "width": 118, "dataSource": "This.unitPrice", "textAlign": "right", "header": {"text": "Unit price", "textAlign": "right"}, "footer": {"name": "priceFooter", "dataSource": "Form.invoice.currency"}},
+          {"name": "amount", "width": 118, "dataSource": "This.amount", "textAlign": "right", "header": {"text": "Amount", "textAlign": "right"}, "footer": {"name": "amountFooter", "dataSource": "Form.invoice.total", "textAlign": "right", "fontWeight": "bold"}}
+        ]
+      },
+      "totalLabel": {"type": "text", "left": 444, "top": 485, "width": 106, "height": 24, "text": "Total due", "fontWeight": "bold"},
+      "totalInput": {"type": "input", "left": 566, "top": 480, "width": 130, "height": 27, "dataSource": "Form.invoice.total", "borderStyle": "none", "textAlign": "right", "fontWeight": "bold"}
+    }}
+  ]
+}

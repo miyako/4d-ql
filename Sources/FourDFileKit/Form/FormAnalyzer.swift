@@ -6,7 +6,22 @@ public struct FormObject: Encodable {
     public var name: String
     public var properties: FormValue
     public var images: [String: String] = [:]
+    /// Children paint in declaration order, in container-local coordinates, clipped
+    /// to the subform object's width/height. Empty children retain the placeholder.
+    public var children: [FormObject] = []
+    public var embeddedProperties: FormValue? = nil
+    public var source: FormObjectSource? = nil
+    var stylesheetContext: String? = nil
     public var type: String { properties["type"]?.string ?? "unknown" }
+    private enum CodingKeys: String, CodingKey { case name, properties, images, children, embeddedProperties, source }
+}
+
+public struct FormObjectSource: Encodable {
+    public var document: String
+    public var formName: String
+    public var page: Int
+    public var tableName: String? = nil
+    public var inline: Bool = false
 }
 
 public struct FormPage: Encodable {
@@ -36,15 +51,24 @@ public struct FormFileInfo: AnalysisModel {
     public var images: [FormImage]
     public var dependencies: [String]
     public var warnings: [String]
+    public var localizationLanguage: String? = nil
 }
 
 public struct FormFileAnalyzer: FileAnalyzer {
-    public init() {}
+    public var preferredLanguages: [String]
+    /// No 4D application language is inferred or read from an installed application.
+    public init(preferredLanguages: [String] = Locale.preferredLanguages) {
+        self.preferredLanguages = preferredLanguages
+    }
     public var identifier: String { "4dform" }
     public var contentTypes: [String] { ["com.4d.4d.form"] }
     public var filenameExtensions: [String] { ["4dform"] }
 
     public func analyze(_ source: ByteSource, options: AnalysisOptions) throws -> AnalysisModel {
+        try analyzeForm(source, options: options)
+    }
+
+    public func analyzeForm(_ source: ByteSource, options: AnalysisOptions = .preview) throws -> FormFileInfo {
         guard source.size <= 4 * 1024 * 1024 else { throw FormError.limit("Form exceeds 4 MiB.") }
         var data = try source.read(at: 0, length: Int(source.size))
         if data.starts(with: [0xEF, 0xBB, 0xBF]) { data.removeFirst(3) }
@@ -57,20 +81,10 @@ public struct FormFileAnalyzer: FileAnalyzer {
         if let scheme = resolved["colorScheme"], scheme.string != "light" && scheme.string != "dark" {
             throw FormError.invalid("colorScheme must be light or dark.")
         }
-        guard case .array(let pages) = resolved["pages"], pages.count >= 2 else {
-            throw FormError.invalid("pages must contain page 0 and page 1.")
-        }
-        let rawPages = try pages.enumerated().map { index, page -> FormPage in
-            if page == .null { return FormPage(number: index, objects: []) }
-            guard case .object = page, case .object(let objects) = page["objects"] else {
-                throw FormError.invalid("Page \(index) must contain an objects map or be null.")
-            }
-            return FormPage(number: index, objects: try objects.map { member in
-                guard case .object = member.value else { throw FormError.invalid("Object \(member.name) must be an object.") }
-                return FormObject(name: member.name, properties: member.value)
-            })
-        }
+        let expansion = FormStaticExpansion(dependencies: dependencies)
+        let rawPages = try expansion.expand(resolved, document: url)
         var stylesheet = FormStylesheet(dependencies: dependencies)
+        var parsedStylesheets: [URL: FormStylesheet] = [:]
         if let sources = dependencies.sources {
             if !FileManager.default.isReadableFile(atPath: sources.path) {
                 dependencies.warn("Project stylesheets are inaccessible. Quick Look may grant access only to the selected form.")
@@ -78,39 +92,37 @@ public struct FormFileAnalyzer: FileAnalyzer {
             for name in ["styleSheets.css", "styleSheets_mac.css"] {
                 let cssURL = sources.appendingPathComponent(name)
                 if FileManager.default.fileExists(atPath: cssURL.path) {
-                    try loadCSS(cssURL, stylesheet: &stylesheet, dependencies: dependencies)
+                    try loadCSS(cssURL, stylesheet: &stylesheet, parsed: &parsedStylesheets, dependencies: dependencies)
                 }
             }
         }
-        if let css = resolved["css"] {
-            let entries: [FormValue]
-            if case .array(let list) = css { entries = list } else { entries = [css] }
-            for entry in entries {
-                if entry["media"]?.string == "windows" { continue }
-                guard let path = entry.string ?? entry["path"]?.string else {
-                    dependencies.warn("Invalid form CSS reference.")
-                    continue
-                }
-                do { try loadCSS(dependencies.url(path, relativeTo: url), stylesheet: &stylesheet, dependencies: dependencies) }
-                catch let error as FormError {
-                    if case .limit = error { throw error }
-                    dependencies.warn("Stylesheet \(path): \(error)")
-                } catch { dependencies.warn("Stylesheet \(path): \(error)") }
+        var stylesheets: [String: FormStylesheet] = [:]
+        func usedContexts(_ objects: [FormObject]) -> Set<String> {
+            objects.reduce(into: Set<String>()) { result, object in
+                if let key = object.stylesheetContext { result.insert(key) }
+                result.formUnion(usedContexts(object.children))
             }
         }
-        if resolved["inheritedForm"] != nil {
-            dependencies.warn("Inherited form objects are not expanded in this preview.")
+        var contextKeys = usedContexts(rawPages.flatMap(\.objects))
+        contextKeys.insert(String(url.path.dropFirst(dependencies.root.path.count + 1)))
+        for key in contextKeys.sorted() {
+            var formStylesheet = stylesheet
+            try loadFormCSS(expansion.contexts[key]!, stylesheet: &formStylesheet,
+                            parsed: &parsedStylesheets, dependencies: dependencies, document: url)
+            stylesheets[key] = formStylesheet
         }
-        let count = rawPages.reduce(0) { $0 + $1.objects.count }
-        let styledCount = rawPages.flatMap(\.objects).reduce(0) { count, object in
-            count + 1 + (object.properties["columns"]?.values.reduce(0) { $0 + 1 + ($1["header"] == nil ? 0 : 1) + ($1["footer"] == nil ? 0 : 1) } ?? 0)
+        func styledCount(_ objects: [FormObject]) -> Int {
+            objects.reduce(0) { count, object in
+                count + 1 + styledCount(object.children) +
+                (object.properties["columns"]?.values.reduce(0) { $0 + 1 + ($1["header"] == nil ? 0 : 1) + ($1["footer"] == nil ? 0 : 1) } ?? 0)
+            }
         }
-        guard styledCount * max(1, stylesheet.rules.count) * 4 <= 1_000_000 else {
+        let count = styledCount(rawPages.flatMap(\.objects))
+        guard count * max(1, stylesheets.values.map { $0.rules.count }.max() ?? 0) * 4 <= 1_000_000 else {
             throw FormError.limit("Form/CSS combination exceeds 1,000,000 rule matches.")
         }
-        if rawPages.count > 17 { dependencies.warn("Showing page 0 and the first 16 numbered pages of \(rawPages.count - 1).") }
-        if count > 1_000 { dependencies.warn("Showing at most 1,000 form objects per appearance; original JSON retains all objects.") }
         let imageLoader = FormImageLoader(dependencies: dependencies, document: url)
+        let localization = FormLocalization(dependencies: dependencies, preferredLanguages: preferredLanguages)
         var appearances: [FormAppearance] = []
         for theme in FormTheme.allCases {
             var remaining = 1_000
@@ -119,29 +131,8 @@ public struct FormFileAnalyzer: FileAnalyzer {
                 var objects: [FormObject] = []
                 for object in page.objects.prefix(remaining) {
                     var styled = object
-                    let effectiveTheme: FormTheme
-                    if resolved["colorScheme"]?.string == "dark" { effectiveTheme = theme.glass ? .glassDark : .classicDark }
-                    else if resolved["colorScheme"]?.string == "light" { effectiveTheme = theme.glass ? .glassLight : .classicLight }
-                    else { effectiveTheme = theme }
-                    styled.properties = stylesheet.apply(object.properties, name: object.name, type: object.type, theme: effectiveTheme)
-                    if case .array(let columns) = styled.properties["columns"] {
-                        styled.properties["columns"] = .array(columns.map { column in
-                            var result = stylesheet.apply(column, name: column["name"]?.string ?? "", type: "column", theme: effectiveTheme)
-                            for child in ["header", "footer"] {
-                                if let definition = column[child] {
-                                    result[child] = stylesheet.apply(definition, name: definition["name"]?.string ?? "", type: child, theme: effectiveTheme)
-                                }
-                            }
-                            return result
-                        })
-                    }
-                    if styled.properties["visibility"]?.string != "hidden" && styled.properties["display"]?.bool != false {
-                        for property in ["picture", "icon", "customBackgroundPicture"] {
-                            if let path = styled.properties[property]?.string {
-                                if let id = try imageLoader.load(path, dark: effectiveTheme.dark) { styled.images[property] = id }
-                            }
-                        }
-                    }
+                    styled = try style(object, theme: theme, form: resolved, stylesheets: stylesheets,
+                                       fallback: stylesheet, localization: localization, imageLoader: imageLoader)
                     objects.append(styled)
                 }
                 remaining -= objects.count
@@ -150,18 +141,98 @@ public struct FormFileAnalyzer: FileAnalyzer {
             appearances.append(FormAppearance(theme: theme, pages: themedPages))
         }
         let conventional = url.lastPathComponent.lowercased() == "form.4dform"
-        return FormFileInfo(fileName: url.lastPathComponent,
+        var info = FormFileInfo(fileName: url.lastPathComponent,
                             formName: resolved["name"]?.string ?? (conventional ? url.deletingLastPathComponent().lastPathComponent : url.deletingPathExtension().lastPathComponent),
-                            text: String(decoding: data, as: UTF8.self), properties: resolved,
+                            text: String(decoding: data, as: UTF8.self), properties: localization.localize(resolved, source: nil),
                             appearances: appearances, images: imageLoader.images,
                             dependencies: dependencies.loadedPaths, warnings: dependencies.warnings)
+        info.localizationLanguage = localization.language
+        return info
     }
 
-    private func loadCSS(_ url: URL, stylesheet: inout FormStylesheet, dependencies: FormDependencies) throws {
+    private func style(_ object: FormObject, theme: FormTheme, form: FormValue,
+                       stylesheets: [String: FormStylesheet], fallback: FormStylesheet,
+                       localization: FormLocalization, imageLoader: FormImageLoader,
+                       visible: Bool = true) throws -> FormObject {
+        let effectiveTheme: FormTheme
+        if form["colorScheme"]?.string == "dark" { effectiveTheme = theme.glass ? .glassDark : .classicDark }
+        else if form["colorScheme"]?.string == "light" { effectiveTheme = theme.glass ? .glassLight : .classicLight }
+        else { effectiveTheme = theme }
+        let stylesheet = object.stylesheetContext.flatMap { stylesheets[$0] } ?? fallback
+        var styled = object
+        styled.properties = stylesheet.apply(object.properties, name: object.name, type: object.type, theme: effectiveTheme)
+        if case .array(let columns) = styled.properties["columns"] {
+            styled.properties["columns"] = .array(columns.map { column in
+                var result = stylesheet.apply(column, name: column["name"]?.string ?? "", type: "column", theme: effectiveTheme)
+                for child in ["header", "footer"] {
+                    if let definition = column[child] {
+                        result[child] = stylesheet.apply(definition, name: definition["name"]?.string ?? "", type: child, theme: effectiveTheme)
+                    }
+                }
+                return result
+            })
+        }
+        styled.properties = localization.localize(styled.properties, source: object.source, name: object.name)
+        let visible = visible && styled.properties["visibility"]?.string != "hidden" && styled.properties["display"]?.bool != false
+        if visible {
+            for property in ["picture", "icon", "customBackgroundPicture"] {
+                if let path = styled.properties[property]?.string,
+                   let id = try imageLoader.load(path, dark: effectiveTheme.dark) { styled.images[property] = id }
+            }
+        }
+        if let embedded = styled.embeddedProperties {
+            var childForm = embedded
+            if let scheme = embedded["colorScheme"], scheme.string != "light" && scheme.string != "dark" {
+                imageLoader.dependencies.warn("Subform colorScheme is invalid; inheriting the parent preview theme.")
+                childForm["colorScheme"] = form["colorScheme"]
+            } else if embedded["colorScheme"] == nil { childForm["colorScheme"] = form["colorScheme"] }
+            styled.children = try styled.children.map {
+                try style($0, theme: effectiveTheme, form: childForm, stylesheets: stylesheets,
+                          fallback: stylesheet, localization: localization, imageLoader: imageLoader, visible: visible)
+            }
+        }
+        return styled
+    }
+
+    private func loadFormCSS(_ form: FormValue, stylesheet: inout FormStylesheet,
+                             parsed: inout [URL: FormStylesheet],
+                             dependencies: FormDependencies, document: URL) throws {
+        guard let css = form["css"] else { return }
+        let entries: [FormValue]
+        if case .array(let list) = css { entries = list } else { entries = [css] }
+        for entry in entries {
+            if entry["media"]?.string == "windows" { continue }
+            guard let path = entry.string ?? entry["path"]?.string else {
+                dependencies.warn("Invalid form CSS reference.")
+                continue
+            }
+            do {
+                try loadCSS(dependencies.url(path, relativeTo: document), stylesheet: &stylesheet,
+                            parsed: &parsed, dependencies: dependencies)
+            }
+            catch let error as FormError {
+                if case .limit = error { throw error }
+                dependencies.warn("Stylesheet \(path): \(error)")
+            } catch { dependencies.warn("Stylesheet \(path): \(error)") }
+        }
+    }
+
+    private func loadCSS(_ url: URL, stylesheet: inout FormStylesheet,
+                         parsed: inout [URL: FormStylesheet], dependencies: FormDependencies) throws {
         do {
-            let data = try dependencies.read(url)
-            guard let text = String(data: data, encoding: .utf8) else { throw FormError.dependency("CSS is not UTF-8.") }
-            try stylesheet.append(text, document: url)
+            let canonical = url.standardizedFileURL.resolvingSymlinksInPath()
+            let loaded: FormStylesheet
+            if let cached = parsed[canonical] {
+                loaded = cached
+            } else {
+                let data = try dependencies.read(canonical)
+                guard let text = String(data: data, encoding: .utf8) else { throw FormError.dependency("CSS is not UTF-8.") }
+                var newStylesheet = FormStylesheet(dependencies: dependencies)
+                try newStylesheet.append(text, document: canonical)
+                loaded = newStylesheet
+                parsed[canonical] = loaded
+            }
+            try stylesheet.append(contentsOf: loaded)
         } catch let error as FormError {
             if case .limit = error { throw error }
             dependencies.warn("Stylesheet \(url.lastPathComponent): \(error)")

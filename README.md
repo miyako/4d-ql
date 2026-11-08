@@ -13,9 +13,23 @@ file to see what is inside instead of a generic icon.
 | `.4DProject` project file | syntax-highlighted JSON source with indentation and line breaks preserved |
 | `.4df` saved query | condition cards with table/field numbers, comparison labels, AND/OR/EXCEPT connectors, saved values, and selection destination; original JSON folded below |
 | `.4dm` method / class source | syntax-highlighted UTF-8 source with line numbers, line count and file size |
-| `.4DForm` form | approximate macOS form layout, page 0 plus selectable numbered pages, and Classic / Liquid Glass light and dark appearances with local stylesheets and JSON pointers |
+| `.4DForm` form | approximate macOS form layout, page 0 plus selectable numbered pages, Classic / Liquid Glass light and dark appearances, local stylesheets, JSON pointers, static inherited/subforms and XLIFF labels |
 
 Even a 220 MB data file previews in about 30 ms, because only header blocks are read.
+
+### Shared form rendering
+
+This repository ships the macOS Quick Look app and extension. The independent
+form-image CLI belongs to [4d-form](https://github.com/miyako/4d-form), which
+consumes the public `FourDFileKit` and `FourDRender` libraries instead of
+maintaining a second parser or calibrated renderer. The preliminary HTML/JSON-only
+`fourdform` executable is not a Quick Look release product.
+
+`FourDRender.FormRenderer` provides in-process HTML and versioned JSON without
+4D, Quick Look, the hosting app or its XPC service. See the
+[shared API and static-feature contract](docs/FORM-RENDERER.md) and the
+[Windows handover](docs/WINDOWS-HANDOVER.md). The current libraries are
+macOS-specific, not a validated Windows port.
 
 Import/export settings previews preserve field order (which can differ from field
 numbers), display missing values explicitly, and retain unknown field types and
@@ -48,10 +62,32 @@ Form previews use a self-contained SVG canvas, not a running 4D instance.
 They preserve JSON object declaration order (paint order), include page 0
 behind every numbered page, honor saved coordinates and form-size anchors,
 and provide scrollable canvases and script-free page/appearance selectors.
+Text uses CoreText shaping and word-boundary line breaks rather than
+summing individual character widths. Composed characters, explicit blank
+lines and font traits are preserved; text remains clipped to saved bounds.
+The text face is selected consistently for measurement and WebKit SVG output.
 The viewer's appearance is used initially; an explicit form `colorScheme`
 is respected. Liquid Glass buttons and dropdowns use the documented
 27-point rounded-control threshold and measured native height/font variants;
-tall dropdowns retain a rectangular fallback.
+tall dropdowns retain a rectangular fallback. Classic uses its own automatic
+font thresholds, default toggle heights and accented dropdown arrow area.
+Classic and Liquid Glass tabs use compact, centered segments and the native editor
+template's initial selection; that is not a computed runtime value.
+Automatic group titles use the measured 10-point font; the main font theme
+uses 13-point bold, with explicit font size and weight taking precedence.
+Group frames reserve the title band, align captions across the whole frame,
+and do not invent captions for untitled groups. Saved text/input padding and
+explicit top/middle/bottom alignment are applied inside the text viewport;
+automatic alignment retains the native-style defaults. These text/input
+properties were introduced in 21 R5, so older native references cannot verify
+them. Disabling wordwrap preserves explicit line breaks while clipping long
+lines horizontally. Listbox headers use separate native-style resize grips;
+footers retain the input background rather than the header background.
+Rounded text borders expand outside the saved text bounds; single-line input
+rounding is capped by the control height. Input text starts at the saved
+padding without an extra invented inset. Caption/icon layout honors
+`textPlacement` and `imageHugsTitle`, with the measured default icon-above-title
+layout. Justified wrapped paragraphs expand word spaces, not their last lines.
 
 Stylesheets load in 4D order: `Project/Sources/styleSheets.css`,
 `styleSheets_mac.css`, then the form's `css` references (Windows-only
@@ -62,6 +98,8 @@ each appearance. JSON properties beat ordinary CSS, while `!important`
 can override them. Common web-property aliases are mapped to 4D names,
 including styles on listbox columns, headers and footers. Unsupported
 selectors, at-rules and unavailable dependencies produce preview notices.
+Within one analysis, stylesheets are parsed once per canonical dependency
+path and reused across static contexts; repeated references retain cascade order.
 
 Recursive `$ref` pointers support local and external JSON documents,
 RFC 6901 escapes, array indices, and local-property overrides. Relative
@@ -70,52 +108,184 @@ and their `_dark` variants are embedded; picture-button/popup sprite sheets
 show their first frame. Raster images are converted to bounded PNGs.
 Basic passive SVG artwork is supported; active content, external references
 and unsupported SVG constructs are rejected.
+Static pictures with omitted display format retain their intrinsic size and
+are centered in the full object rectangle before container clipping; explicit
+scaled/proportional formats retain their saved behavior.
 Dependencies are confined to the conventional project's package folder,
 or the selected form's folder for standalone files, including after symlink
 resolution. `/PROJECT`, `/SOURCES`, `/RESOURCES` and `/PACKAGE` are mapped
 only when a project is discoverable; runtime `/DATA` and `/LOGS` paths,
 network paths and variable pictures are not loaded.
-**Finder's Quick Look sandbox may grant access only to the selected file**:
-project CSS, external templates and pictures are best-effort, with notices
-when inaccessible. The CLI uses the same logic but can normally read them.
+Static inherited forms contribute their background and initial-page objects
+behind local objects without replacing the receiving form's properties.
+Statically named project subforms show their background and initial page at
+container-local coordinates, clipped to the container. Each source retains its
+own CSS, pointer, picture and localization context. Cycles, dynamic references
+and unavailable forms remain visible as notices or placeholders.
+Inline object-valued form references are approximated with an explicit
+noncanonical-schema notice: dynamic 4D commands accept object descriptions,
+but saved-form schema references are strings and native named captures may
+paint a placeholder instead.
+Project XLIFF labels resolve named, numeric and object-name references using
+preferred-language specificity and documented fallback folders. Ambiguous or
+missing translations retain the reference with a notice; no localization
+method is executed.
+
+**Finder's Quick Look sandbox grants access only to the selected file** by
+default. The CLI uses the same analysis but can normally read project resources.
+Unavailable resources and unsupported features produce a visible warning
+above the canvas, with individual explanations in Preview notices.
 
 Native controls are approximations, not pixel-identical AppKit widgets.
 Bound inputs, dropdowns, combos and dynamic tabs display their saved
 expressions rather than inventing runtime values. Static tab labels and
 listbox headers are shown; listbox bodies show expression placeholders,
-not records. Subforms, inherited forms, web areas, Write Pro, View Pro and
-plug-ins are placeholders or explicitly unexpanded. Methods, dynamic
-styling, translations and application-level appearance settings are not
-executed or resolved. Native animation, focus rings and Liquid Glass
+not records. Dynamic or unavailable subforms, web areas, Write Pro, View Pro and
+plug-ins remain placeholders. Methods, dynamic styling and application-level
+appearance settings are not executed or resolved. Native animation, focus rings and Liquid Glass
 materials are not simulated.
+
+### Authorizing project resources in Finder
+
+A team-signed build on macOS 13 or later provides **Authorize project...** in
+the hosting app. Choose the package folder containing `Project` and `Resources`,
+not the `Project` subfolder. Only the sandboxed service retains a read-only project bookmark.
+The Quick Look extension does not receive a filesystem exception or run 4D.
+**Remove project authorizations...** revokes all saved project grants.
+
+Authorized previews use the app's private, team-owned shared container.
+For each Finder request, an embedded XPC service analyzes the current form and
+its bounded dependencies, then returns self-contained HTML over IPC. The
+extension neither writes to the shared container nor launches the hosting app.
+Requests and replies are tied
+to a fresh nonce, form-content hash and renderer build. A missing helper,
+authorization failure, changed form or timeout produces a visible notice and
+the selected-file-only preview, never a silently stale project preview.
+Role-specific XPC sessions check the signing identity before admission;
+only the hosting app can authorize or revoke projects. The preview role is
+read-only. Each service reuses two listeners, limits work to 32 operations,
+and caps HTML replies at 32 MiB; the client has a four-second deadline,
+including its bounded selected-source hash and both XPC calls.
+
+Actual Finder checks verified persistence after closing the hosting app,
+automatic service activation, static composition/XLIFF, and revocation.
+Changing CSS, an external JSON template and an SVG changed the next Finder
+preview while the selected form's checksum remained unchanged.
+
+Do not grant Full Disk Access or broad access to other apps' data for this
+feature. Ad-hoc builds leave project sharing disabled; they still preview the
+selected file and support the development `fourdql` CLI. Signed macOS builds default to
+the signing team's `<Team ID>.<bundle ID>.ProjectContext` app group. A custom
+`PROJECT_GROUP` must be authorized by the signing configuration.
 
 The rendering reference combines the canonical
 [4D form](https://github.com/miyako/skills/tree/dist/skills/4dform),
 [CSS](https://github.com/miyako/skills/tree/dist/skills/4dcss) and
 [CLI](https://github.com/miyako/skills/tree/dist/skills/4dcli) skills with
-captures from 4D 21 R4 build 100208 on macOS 26.7. Named-form
+captures from 4D 20.8 build 101985, 21.2 LTS build 100653,
+21 R4 build 100208 and 21 R5 build 100156 on macOS 26.7. Named-form
 [`FORM SCREENSHOT`](https://developer.4d.com/docs/commands/form-screenshot)
 captures ignore CSS; a loaded-form screenshot and printed forms can apply
 it, but neither substitutes for a live dialog. The measured light
 Liquid Glass geometry informs the preview's discrete sizes, one listbox
 expression row, page-zero layering and asymmetric single-line input
-rounding. Dark captures were incomplete, classic rendering was unavailable
-on that host, and the bounded GUI
-[`FORM EDIT`](https://developer.4d.com/docs/commands/form-edit) attempt did
-not reach its startup method. Dark/classic styling therefore remains an
-approximation rather than a claimed native-match result.
+rounding. Full LTS applications and LTS tool4d supplied Classic light/dark
+geometry and palettes; full R4/R5 `4D.app` supplied Liquid Glass light/dark
+editor-template captures. Those template palettes inform the preview.
+Live dialogs were also captured in both schemes with all four full
+applications, using both the canonical `DIALOG` / `CALL FORM` chain and a
+blocking `DIALOG` with an `onTimer` form method. Runtime input appearance
+and transparent canvas regions differ from named-form output.
+
+Early crashes and timeouts were inconclusive. After rebooting, serial
+retries produced decoded screenshots, nonblank PDFs and clean exits;
+[`FORM EDIT`](https://developer.4d.com/docs/commands/form-edit) opened
+editor windows in all four full applications, with window screenshots
+retained as evidence. The probe setup must create
+`Project/Sources/dependencies.json` containing `{"dependencies":{}}`
+before launching 4D to prevent the legacy-component import dialog.
+Omitting that preflight step blocked the initial 21.2 GUI retries;
+adding the file alone allowed the original compatibility-version project
+to complete. No engine-capability conclusions are drawn from the
+interrupted runs.
+
+In the retried R4/R5 tool4d probes, SVG decoding returned zero dimensions
+and dark named-form output remained partly light; full GUI captures
+rendered the same SVG and dark controls. These observations are specific
+to the tested builds, inputs and capture modes. All four preview
+appearances remain approximations, not pixel-identical native rendering.
 
 Form JSON is limited to 4 MiB, 64 nesting levels and 100,000 values;
 duplicate keys are rejected to avoid ambiguous paint order. Dependencies
 are limited to 64 regular files, 4 MiB each and 16 MiB total; pointer
-expansion is bounded to 100,000 values and depth 64. CSS is limited to
+and static-form expansion are bounded to 100,000 values and depth 64.
+Embedded objects share the 1,000-object appearance limit. XLIFF parsing is
+limited to 20,000 XML nodes, depth 64 and 1 MiB of text, with external entities
+disabled. CSS is limited to
 5,000 rules, 20,000 declarations per file, 16 nested media blocks and
 1,000,000 object/rule matches. At most 16 numbered pages, 1,000 objects
 per appearance, 64 listbox columns, and 200 grid rows are drawn; canvases
 are cropped at 8,192 points per side. Images are limited to 32 megapixels
 and 2,048-pixel raster thumbnails, with a 24 MiB embedded-image budget.
+Text shaping is capped at 4,096 UTF-16 units and 100 lines per label,
+without splitting a composed character at the input boundary.
 Original JSON is retained in analysis output and displayed up to 256 Ki
 characters in its disclosure. Parsing is not full 4D schema validation.
+
+### Form visual benchmark
+
+`Tests/FourDFileKitTests/Fixtures/FormBenchmarkProject` contains four self-authored forms:
+Typography, Controls, ContactInvoice and References. Two pages in each
+of the four appearances produce 32 cases, with per-object crops for
+typography, controls, listbox headers/footers and project references.
+No external application's form source is included.
+
+```sh
+python3 scripts/form-benchmark.py --validate-only
+caffeinate -di python3 scripts/form-benchmark.py --output /absolute/artifacts/form-benchmark
+python3 scripts/form-benchmark.py --output /absolute/artifacts/form-benchmark \
+  --fourdql build/fourdql --compare-only
+```
+
+The macOS harness uses full 4D applications serially, the installed form
+schema/validator, a WebKit snapshot helper and Pillow. It creates private
+writable projects with the dependency manifest before launching an engine;
+only those copies normalize compatibilityVersion to 2100. Committed forms
+and project references remain unchanged. `--compare-only` reuses verified
+native captures; it never launches 4D. Engine paths, forms and themes can
+be selected with the options shown by `--help`.
+
+`gallery.html` and `metrics.json` contain native/preview comparisons,
+foreground bounds, mask overlap and RGB error. A complete 32-case run
+means capture coverage, not pixel equivalence or a passing visual score.
+Named screenshots ignore CSS; known CSS/pointer capture-context gaps
+remain visible but are excluded from comparable rankings. Loaded-form
+font getters and actual Finder checks are separate evidence, not
+interchangeable screenshot modes. Keep the desktop unlocked for GUI checks;
+`caffeinate -di` temporarily prevents idle display/system sleep for the command's
+lifetime, without changing settings or overriding manual/policy-enforced locks.
+
+Real-HDI calibration additionally covers pinned revisions of
+`4d-depot/HDI_Buttons`, `HDI_RoundedCorner` and
+`HDI_FormObj_VericalAlignAndPadding`. The external corpus is downloaded only
+to the chosen artifact directory, not vendored into this repository. Native
+copies exclude upstream methods/components and use only our capture method.
+The 24 named cases, one separate safe loaded-CSS companion and six R5 padding
+probe cases distinguish saved properties from runtime-only changes. LTS
+captures cannot verify R5 text/input alignment, so those regions are excluded
+by actual engine version. Loaded-offscreen placement is not treated as live
+dialog placement. Arial's measured 15/17-point line advances at 13/15-point
+font sizes do not override other fonts' metrics.
+
+```sh
+caffeinate -di python3 scripts/form-hdi-benchmark.py --output /absolute/artifacts/hdi
+python3 scripts/form-hdi-benchmark.py --output /absolute/artifacts/hdi \
+  --fourdql build/fourdql --compare-only
+caffeinate -di python3 scripts/form-padding-probe.py \
+  --output /absolute/artifacts/padding
+python3 scripts/form-padding-probe.py --output /absolute/artifacts/padding \
+  --fourdql build/fourdql --compare-only
+```
 
 ### What is shown, and what is not
 
@@ -187,14 +357,15 @@ Sources/
     Query/               JSON .4df saved query conditions and metadata
     Method/              bounded UTF-8 .4dm reader and regex lexer
     Form/                ordered JSON, bounded pointers/dependencies,
-                         macOS theme-aware 4D stylesheet cascade
+                         macOS stylesheet cascade, static forms and XLIFF
   FourDRender/           rendering layer: model -> Report -> HTML
     Report.swift         generic page model (stats, badges, tables, bars, disclosures)
     *Presenter.swift     one presenter per model kind
     HTMLRenderer.swift   the only place that knows about HTML/CSS
     PreviewPipeline.swift
   FourDQuickLookExtension/  data-based QLPreviewProvider (returns HTML)
-  FourDQuickLookHost/    minimal host app (extensions must live inside an app)
+  FourDProjectAccess/    read-only authorization and bounded shared-preview exchange
+  FourDQuickLookHost/    hosting app and sandboxed project-preview helper
   fourdql/               CLI using the same pipeline
 Support/                 Info.plist templates, entitlements
 scripts/build.sh         builds and signs "4D Quick Look.app"
@@ -244,6 +415,10 @@ are added automatically):
 ```bash
 SIGN_IDENTITY="Developer ID Application: …" scripts/build.sh
 ```
+
+Team signing enables project-folder authorization without changing the sandbox
+or requiring 4D. The build derives the macOS app-group prefix from the signing
+identity; set `PROJECT_GROUP` only when using another authorized group.
 
 ## Releasing
 
@@ -295,6 +470,30 @@ scripts/make-fixtures.sh                                # regenerate test fixtur
 The test fixtures in `Tests/FourDFileKitTests/Fixtures` (a data file with
 encryptable tables, before and after `Encrypt data file`) are built from the
 small project in `Tests/Fixtures/encfixture` by `scripts/make-fixtures.sh`.
+
+To exercise an installed development extension through actual Finder:
+
+```bash
+scripts/build.sh --register
+swiftc scripts/finder-form-preview.swift -o build/finder-form-preview
+caffeinate -di build/finder-form-preview /path/to/form.4DForm /path/to/finder-preview.png
+```
+
+The harness selects the specified file, opens Quick Look through Finder's File
+menu, verifies that the selection remains unchanged, and captures only its
+Finder preview window while it is foregrounded. Reused unnamed preview windows
+are supported. The hosting app needs
+Automation access to Finder and System Events, Accessibility for UI control,
+and Screen Recording for the screenshot. Locked desktops and transparent OS
+captures are rejected explicitly.
+Test both standalone and project-contained forms: Finder can deny neighboring
+CSS, pointer targets and pictures even when the CLI renders them successfully.
+Final development-build checks rendered both cases in Finder, exercised all four
+appearance selectors and changed numbered pages. Missing project resources
+produced the visible pre-canvas warning. On the tested macOS 26.7 host,
+`qlmanage -p -o` still aborted inside ExtensionFoundation with a nil dictionary
+key after unlocking; actual Finder previews and controls worked. The harness
+uses Finder rather than treating that export-tool failure as a renderer failure.
 
 ## File format notes
 

@@ -6,6 +6,8 @@ public struct FormPreview {
     public var properties: FormValue
     public var appearances: [FormAppearance]
     public var images: [FormImage]
+    public var initialTheme: FormTheme? = nil
+    public var initialPage: Int? = nil
 }
 
 public struct FormPresenter: ReportPresenter {
@@ -14,14 +16,20 @@ public struct FormPresenter: ReportPresenter {
 
     public func report(for model: AnalysisModel) -> Report? {
         guard let form = model as? FormFileInfo else { return nil }
+        return formReport(form)
+    }
+
+    public func formReport(_ form: FormFileInfo, initialTheme: FormTheme? = nil, initialPage: Int? = nil) -> Report {
         var report = Report(title: form.formName, subtitle: "4D Form")
         var blocks: [Block] = [
             .formPreview(FormPreview(name: form.formName, properties: form.properties,
-                                     appearances: form.appearances, images: form.images))
+                                     appearances: form.appearances, images: form.images,
+                                     initialTheme: initialTheme, initialPage: initialPage))
         ]
         var notes = form.warnings
         notes += FormPreviewRenderer.diagnostics(form)
         if !notes.isEmpty {
+            blocks.insert(.note("Some resources or form features could not be reproduced. See Preview notices for details.", .warning), at: 0)
             blocks.append(.disclosure(summary: "Preview notices", detail: "\(notes.count)",
                                       blocks: notes.map { .note($0, .warning) }))
         }
@@ -30,6 +38,7 @@ public struct FormPresenter: ReportPresenter {
                 KeyValue("Pages", "\(max(0, (form.properties["pages"]?.values.count ?? 1) - 1))"),
                 KeyValue("Color scheme", form.properties["colorScheme"]?.string ?? "Inherited"),
                 KeyValue("Destination", form.properties["destination"]?.string ?? "Not specified"),
+                KeyValue("Localization", form.localizationLanguage ?? "No project translation selected"),
                 KeyValue("Dependencies loaded", "\(form.dependencies.count)")
             ]),
             .text("Approximate macOS editor layout with stylesheets applied. Expressions and methods are not executed; bound controls show their saved expressions, not runtime values."),

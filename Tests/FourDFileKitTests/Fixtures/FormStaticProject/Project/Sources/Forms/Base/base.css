@@ -1,0 +1,2 @@
+text { textColor: #778899; }
+@media (prefers-color-scheme: dark) { text { fill: #101010; } }

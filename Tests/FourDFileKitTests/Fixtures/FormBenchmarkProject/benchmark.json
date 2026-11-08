@@ -1,0 +1,25 @@
+{
+  "authorship": "All labels, layouts, JSON and SVG artwork authored for this benchmark; no imported application forms.",
+  "mode": "named-static",
+  "forms": ["Typography", "Controls", "ContactInvoice", "References"],
+  "themes": ["classicLight", "classicDark", "glassLight", "glassDark"],
+  "noncomparableObjects": {
+    "References": {
+      "globalStyle": "Named FORM SCREENSHOT ignores the global stylesheet.",
+      "macStyle": "Named FORM SCREENSHOT ignores the platform stylesheet.",
+      "explicitStyle": "Named FORM SCREENSHOT ignores the explicit local stylesheet.",
+      "pointerCaption": "Observed named capture does not expand the external JSON pointer; preview resolves inherited font and geometry.",
+      "pointerInput": "Observed named capture does not expand the external JSON pointer; preview resolves inherited font and geometry.",
+      "pointerOverride": "Observed named capture does not expand the external JSON pointer; preview resolves inherited height and border."
+    }
+  },
+  "context": [
+    "Pages 1 and 2 include shared page 0; native page 0 alone is not requested because the command interprets it as page 1.",
+    "Input, dropdown and listbox values are unresolved design-time expressions. No runtime data is invented.",
+    "Named screenshots and WebKit SVG snapshots are static comparisons, not live DIALOG, loaded-form, printing or Finder captures.",
+    "Native engines use isolated writable copies. No installed application, global appearance or user settings are modified.",
+    "The authored corpus retains compatibilityVersion 2000. Native writable project metadata defaults to 2100 (21 LTS compatible) to avoid the legacy-component import prompt, even with dependencies.json present; form and resource bytes are unchanged.",
+    "External JSON pointers are a resolved-preview versus named-native context gap, not silently scored renderer errors. Live runtime pointer resolution has not been verified.",
+    "The automaticAlternate rectangle header resolves to black in native named captures. Its live runtime appearance has not been verified."
+  ]
+}

@@ -3,6 +3,18 @@ import XCTest
 @testable import FourDRender
 
 final class QueryTests: XCTestCase {
+    func testQueryConditionMarkupRemainsByteExact() {
+        let condition = QueryCondition(connector: "WHERE", field: "<Field>", operation: "is & equal",
+                                       code: "1", operands: [KeyValue("value", "\"saved\"", mono: true)])
+        var report = Report(title: "Query")
+        report.sections = [Section("", [.queryConditions([condition])])]
+        let html = HTMLRenderer().render(report)
+        let expected = #"<ol class="query-conditions"><li><span class="query-connector">WHERE</span><div class="query-card"><div class="query-field">&lt;Field&gt;</div><div class="query-operation">is &amp; equal <span class="query-code">criterion 1</span></div><dl><dt>value</dt><dd class="mono">&quot;saved&quot;</dd></dl></div></li></ol>"#
+        XCTAssertTrue(html.contains(expected))
+        report.sections = [Section("", [.queryConditions([])])]
+        XCTAssertTrue(HTMLRenderer().render(report).contains(#"<ol class="query-conditions"></ol>"#))
+    }
+
     private func file(_ text: String, ext: String = "4df") throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + ext)
         try text.write(to: url, atomically: true, encoding: .utf8)

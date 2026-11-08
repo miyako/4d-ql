@@ -1,0 +1,12 @@
+{
+  "css": "panel.css",
+  "pages": [
+    {"objects": {"panelBackground": {"type": "text", "text": "Panel background", "left": 0, "top": 0, "width": 100, "height": 20}}},
+    {"objects": {
+      "picture": {"type": "picture", "picture": "Images/tile.svg", "left": -5, "top": 30, "width": 160, "height": 40},
+      "nested": {"type": "subform", "left": 10, "top": 20, "width": 50, "height": 30,
+        "detailForm": {"pages": [null, {"objects": {"inlineText": {"type": "text", "text": ":xliff:save", "left": 2, "top": 3, "width": 70, "height": 20}}}]}}
+    }},
+    {"objects": {"later": {"type": "text", "text": "Not initially visible"}}}
+  ]
+}

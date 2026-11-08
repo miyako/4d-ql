@@ -1,0 +1,29 @@
+{
+  "$4d": {"version": "1", "kind": "form"},
+  "windowTitle": "Project stylesheet and reference benchmark", "destination": "detailScreen",
+  "width": 720, "height": 480, "windowSizingX": "fixed", "windowSizingY": "fixed",
+  "events": ["onLoad", "onUnload"], "css": ["local.css"],
+  "pages": [
+    {"objects": {
+      "heading": {"type": "text", "left": 24, "top": 20, "width": 640, "height": 32, "text": "Project context: references & CSS", "fontSize": 22, "fontWeight": "bold"},
+      "modeWarning": {"type": "text", "left": 24, "top": 424, "width": 640, "height": 40, "text": "Named native captures ignore CSS. CSS objects are excluded from error ranking.\nResolved JSON pointers and resource pictures remain explicit comparison cases.", "fontSize": 11}
+    }},
+    {"objects": {
+      "defaultLabel": {"type": "text", "left": 24, "top": 88, "width": 640, "height": 30, "text": "Default: inherited native font and automatic ink"},
+      "globalStyle": {"type": "text", "class": "globalSample", "left": 24, "top": 144, "width": 640, "height": 32, "text": "Global stylesheet: larger bold blue label"},
+      "macStyle": {"type": "text", "class": "macSample", "left": 24, "top": 200, "width": 640, "height": 32, "text": "Mac stylesheet: italic purple label"},
+      "explicitStyle": {"type": "text", "class": "explicitSample", "left": 24, "top": 256, "width": 640, "height": 36, "text": "Explicit local stylesheet: warm bold label"},
+      "jsonOverridesCSS": {"type": "text", "class": "explicitSample", "left": 24, "top": 316, "width": 640, "height": 32, "text": "JSON wins: 13 pt, normal weight, explicit teal", "fontSize": 13, "fontWeight": "normal", "stroke": "#287C7A"},
+      "staticMark": {"type": "picture", "left": 24, "top": 364, "width": 44, "height": 44, "picture": "/RESOURCES/benchmark-mark.svg", "pictureFormat": "scaled"}
+    }},
+    {"objects": {
+      "pointerCaption": {"$ref": "templates.json#/labels/caption", "type": "text", "left": 24, "top": 92, "text": "External JSON pointer: caption defaults"},
+      "pointerInput": {"$ref": "templates.json#/inputs/contact", "type": "input", "left": 24, "top": 154, "dataSource": "Form.reference.contact"},
+      "pointerOverride": {"$ref": "templates.json#/inputs/contact", "type": "input", "left": 24, "top": 214, "width": 640, "dataSource": "Form.reference.overriddenWidth"},
+      "scaledPicture": {"type": "picture", "left": 24, "top": 292, "width": 96, "height": 96, "picture": "/RESOURCES/benchmark-mark.svg", "pictureFormat": "scaled"},
+      "tiledPicture": {"type": "picture", "left": 160, "top": 292, "width": 160, "height": 96, "picture": "/RESOURCES/benchmark-mark.svg", "pictureFormat": "tiled"},
+      "croppedPicture": {"type": "picture", "left": 360, "top": 292, "width": 48, "height": 48, "picture": "/RESOURCES/benchmark-mark.svg", "pictureFormat": "truncatedTopLeft"},
+      "centeredPicture": {"type": "picture", "left": 456, "top": 292, "width": 48, "height": 48, "picture": "/RESOURCES/benchmark-mark.svg", "pictureFormat": "truncatedCenter"}
+    }}
+  ]
+}

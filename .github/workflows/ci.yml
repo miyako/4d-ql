@@ -27,7 +27,9 @@ jobs:
           swift --version
 
       - name: test
-        run: swift test
+        run: |
+          swift test
+          python3 scripts/test-release-verification.py
 
       - name: build app (universal, ad-hoc signed)
         run: scripts/build.sh

@@ -1,0 +1,17 @@
+{
+  "windowTitle": ":xliff:window",
+  "width": 640,
+  "height": 480,
+  "inheritedForm": "Base",
+  "css": "root.css",
+  "pages": [
+    {"objects": {"shared": {"type": "text", "text": "Local", "left": 0, "top": 0, "width": 80, "height": 20}}},
+    {"objects": {
+      "panel": {"type": "subform", "detailForm": "Panel", "left": 100, "top": 50, "width": 120, "height": 80},
+      "again": {"type": "subform", "detailForm": "Panel", "left": 300, "top": 50, "width": 120, "height": 80},
+      "explicit": {"type": "button", "text": ":xliff:save", "tooltip": ":100,2", "left": 20, "top": 160, "width": 90, "height": 20},
+      "automatic": {"type": "text", "text": "Untranslated automatic", "left": 20, "top": 200, "width": 180, "height": 20}
+    }},
+    {"objects": {"second": {"type": "text", "text": "Second root page", "left": 20, "top": 20, "width": 150, "height": 20}}}
+  ]
+}
