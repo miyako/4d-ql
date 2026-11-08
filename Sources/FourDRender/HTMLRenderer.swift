@@ -105,6 +105,15 @@ public struct HTMLRenderer {
             if let more = t.more { h += "<p class=\"more\">\(esc(more))</p>" }
             return h
 
+        case .queryConditions(let conditions):
+            return "<ol class=\"query-conditions\">" + conditions.map { condition in
+                "<li><span class=\"query-connector\">\(esc(condition.connector))</span>"
+                    + "<div class=\"query-card\"><div class=\"query-field\">\(esc(condition.field))</div>"
+                    + "<div class=\"query-operation\">\(esc(condition.operation))"
+                    + " <span class=\"query-code\">criterion \(esc(condition.code))</span></div>"
+                    + block(.keyValues(condition.operands)) + "</div></li>"
+            }.joined() + "</ol>"
+
         case .structureDiagram(let diagram):
             return StructureDiagramRenderer().render(diagram)
 
@@ -186,6 +195,15 @@ public struct HTMLRenderer {
     h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:20px 0 8px;font-weight:600}
     .sub{margin:2px 0 0;color:var(--muted)}
     .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px}
+    .query-conditions{list-style:none;padding:0;margin:0;max-height:640px;overflow:auto}
+    .query-conditions li{display:grid;grid-template-columns:80px minmax(0,1fr);gap:12px;align-items:start;margin-bottom:10px}
+    .query-connector{color:var(--accent);font-size:11px;font-weight:700;padding-top:12px;overflow-wrap:anywhere}
+    .query-card{padding:12px 14px;background:var(--soft);border:1px solid var(--line);border-radius:8px}
+    .query-field{font-weight:600;font-size:14px;overflow-wrap:anywhere}
+    .query-operation{margin:4px 0 8px;overflow-wrap:anywhere}
+    .query-code{font-size:10px;color:var(--muted)}
+    .query-card dd{white-space:pre-wrap;overflow-wrap:anywhere}
+    @media(max-width:400px){.query-conditions li{grid-template-columns:1fr;gap:4px}.query-card dl{grid-template-columns:1fr}}
     .source-text{white-space:pre;overflow:auto;padding:12px;background:var(--soft);border-radius:8px;tab-size:4}
     .source-text code{font:inherit}
     .source-text .syntax-key,.source-text .syntax-tag{color:#175aa8}
