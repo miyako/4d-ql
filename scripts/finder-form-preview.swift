@@ -36,8 +36,11 @@ tell application "Finder" to activate
 delay 0.5
 tell application "System Events" to tell process "Finder"
     set frontmost to true
-    key code 53
+    if exists menu item "Close Quick Look" of menu "File" of menu bar 1 then
+        click menu item "Close Quick Look" of menu "File" of menu bar 1
+    end if
 end tell
+delay 0.7
 tell application "Finder"
     reveal targetFile
     activate
@@ -59,9 +62,15 @@ if not selectedTarget then error "Finder did not select the requested form."
 tell application "Finder" to activate
 tell application "System Events" to tell process "Finder"
     set frontmost to true
-    keystroke "y" using command down
+end tell
+tell application "Finder" to set selection to {targetFile}
+tell application "System Events" to tell process "Finder"
+    click (first menu item of menu "File" of menu bar 1 whose name starts with "Quick Look")
 end tell
 delay 4
+tell application "Finder" to set picked to selection
+if (count of picked) is not 1 then error "Finder selection changed while opening Quick Look."
+if (item 1 of picked as alias) is not targetFile then error "Finder preview target changed."
 """
 
 func run(_ executable: String, _ arguments: [String]) throws {
@@ -76,8 +85,6 @@ func run(_ executable: String, _ arguments: [String]) throws {
 }
 
 do {
-    let before = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-    let existingNumbers = Set(before.compactMap { $0[kCGWindowNumber as String] as? Int })
     try run("/usr/bin/osascript", ["-e", script])
     guard let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first else {
         fail("Finder is not running.")
@@ -87,10 +94,9 @@ do {
         guard ($0[kCGWindowOwnerPID as String] as? Int) == Int(finder.processIdentifier),
               ($0[kCGWindowAlpha as String] as? Double) == 1 else { return false }
         if ($0[kCGWindowLayer as String] as? Int) == 3 { return true }
-        // Some macOS versions expose the newly opened preview as a normal, unnamed window.
+        // Finder can reuse its normal-level, unnamed preview window between files.
         return ($0[kCGWindowLayer as String] as? Int) == 0
             && ($0[kCGWindowName as String] as? String ?? "").isEmpty
-            && ($0[kCGWindowNumber as String] as? Int).map { !existingNumbers.contains($0) } == true
     }), let number = preview[kCGWindowNumber as String] as? Int else {
         fail("No visible Finder Quick Look window after selecting the form.")
     }

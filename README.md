@@ -479,8 +479,10 @@ swiftc scripts/finder-form-preview.swift -o build/finder-form-preview
 caffeinate -di build/finder-form-preview /path/to/form.4DForm /path/to/finder-preview.png
 ```
 
-The harness selects the specified file, opens Quick Look and captures only
-its Finder preview window while it is foregrounded. The hosting app needs
+The harness selects the specified file, opens Quick Look through Finder's File
+menu, verifies that the selection remains unchanged, and captures only its
+Finder preview window while it is foregrounded. Reused unnamed preview windows
+are supported. The hosting app needs
 Automation access to Finder and System Events, Accessibility for UI control,
 and Screen Recording for the screenshot. Locked desktops and transparent OS
 captures are rejected explicitly.
