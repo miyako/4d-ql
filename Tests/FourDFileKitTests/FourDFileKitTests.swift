@@ -191,6 +191,90 @@ final class FourDFileKitTests: XCTestCase {
         XCTAssertFalse(report.badges.contains { $0.text.contains("Encrypted") })
         XCTAssertTrue(report.sections.contains { $0.title == "Encryption" })
     }
+
+    func testFieldTypeIconsPreserveFamiliesAndCounts() throws {
+        let expected: [(FieldKind, FieldTypeIcon)] = [
+            (.boolean, .boolean), (.byte, .integer), (.integer, .integer),
+            (.longint, .integer), (.integer64, .integer), (.real, .real), (.float, .real),
+            (.date, .date), (.time, .time), (.text, .text), (.legacyBlob, .blob),
+            (.picture, .picture), (.uuid, .uuid), (.legacyText, .text),
+            (.unlimitedText, .text), (.blob, .blob), (.object, .object),
+        ]
+        for (kind, icon) in expected {
+            XCTAssertEqual(DB4DPresenter.icon(for: kind), icon, "\(kind)")
+        }
+        let block = DB4DPresenter.fieldTypes(expected.map { Optional($0.0) } + [nil])
+        guard case .composition(let segments) = block else { return XCTFail("Expected composition") }
+        XCTAssertEqual(segments.map(\.label),
+                       ["Text", "Integer", "Real", "Date & time", "Boolean", "Picture", "BLOB", "Object", "Other"])
+        XCTAssertEqual(segments.map(\.value), [4, 4, 2, 2, 1, 1, 2, 1, 1])
+        XCTAssertEqual(segments.map(\.display), ["4", "4", "2", "2", "1", "1", "2", "1", "1"])
+        XCTAssertEqual(segments.map(\.slot), [1, 2, 3, 4, 5, 6, 7, 8, nil])
+        XCTAssertEqual(segments.map(\.icons),
+                       [[.text, .uuid], [.integer], [.real], [.date, .time], [.boolean],
+                        [.picture], [.blob], [.object], [.unknown]])
+    }
+
+    func testGroupedIconsOnlyShowTypesPresent() {
+        for (kind, icon) in [(FieldKind.uuid, FieldTypeIcon.uuid), (.text, .text), (.date, .date), (.time, .time)] {
+            guard case .composition(let segments) = DB4DPresenter.fieldTypes([kind, kind]) else {
+                return XCTFail("Expected composition")
+            }
+            XCTAssertEqual(segments.filter { $0.value > 0 }.map(\.icons), [[icon]])
+            XCTAssertEqual(segments.reduce(0) { $0 + $1.value }, 2)
+        }
+        var report = Report(title: "Empty")
+        report.sections = [Section("Field types", [DB4DPresenter.fieldTypes([])])]
+        XCTAssertFalse(HTMLRenderer().render(report).contains("<div class=\"comp\">"))
+    }
+
+    func testDataAndStructureChartsUseCatalogIconsAndColors() throws {
+        var info = try fixture("plain")
+        var template = try XCTUnwrap(info.tables.first)
+        let field = try XCTUnwrap(template.fields.first)
+        template.fields = ((1...21).compactMap(FieldKind.init(rawValue:)).map(\.rawValue) + [999]).map { code in
+            var field = field
+            field.typeCode = code
+            return field
+        }
+        info.tables = [template]
+        for role in [DB4DFileInfo.Role.data, .structure] {
+            info.role = role
+            let report = try XCTUnwrap(DB4DPresenter().report(for: info))
+            XCTAssertEqual(report.sections.first?.title, "Tables")
+            XCTAssertEqual(barRows(report, section: "Tables").count, 1)
+            let html = HTMLRenderer().render(report)
+            for icon in FieldTypeIcon.allCases {
+                XCTAssertTrue(html.contains(FieldTypeIconRenderer.render(icon)), "\(role): \(icon)")
+            }
+            XCTAssertTrue(html.contains("Date &amp; time"))
+            XCTAssertTrue(html.contains(".type-icon-text,.type-icon-uuid{color:var(--s1)}"))
+            XCTAssertTrue(html.contains(".type-icon-integer{color:var(--s2)}"))
+            XCTAssertTrue(html.contains(".type-icon-real{color:var(--s3)}"))
+            XCTAssertTrue(html.contains(".type-icon-date,.type-icon-time{color:var(--s4)}"))
+            XCTAssertTrue(html.contains(".type-icon-boolean{color:var(--s5)}"))
+            XCTAssertTrue(html.contains(".type-icon-picture{color:var(--s6)}"))
+            XCTAssertTrue(html.contains(".type-icon-blob{color:var(--s7)}"))
+            XCTAssertTrue(html.contains(".type-icon-object{color:var(--s8)}"))
+            XCTAssertTrue(html.contains(".type-icon-unknown{color:var(--muted)}"))
+            XCTAssertTrue(html.contains("prefers-color-scheme:dark"))
+            XCTAssertFalse(html.contains("<script"))
+        }
+    }
+
+    func testCompositionWithoutIconsKeepsSwatchesAndEscapesLabels() {
+        var report = Report(title: "Chart")
+        report.sections = [Section("Field types", [.composition([
+            Segment(label: "<Text>&", value: 1, display: "\"1\"", slot: 1),
+            Segment(label: "<Other>", value: 1, display: "1", slot: nil, icons: [.unknown]),
+        ])])]
+        let html = HTMLRenderer().render(report)
+        XCTAssertTrue(html.contains("<span class=\"sw s1\"></span>&lt;Text&gt;&amp;"))
+        XCTAssertTrue(html.contains("&quot;1&quot;"))
+        XCTAssertTrue(html.contains("aria-hidden=\"true\" focusable=\"false\""))
+        XCTAssertTrue(html.contains("</svg>&lt;Other&gt;"))
+        XCTAssertFalse(html.contains("<Other>"))
+    }
 }
 
 final class StructurePreviewTests: XCTestCase {

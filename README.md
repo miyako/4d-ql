@@ -61,6 +61,11 @@ Quick Look has little room, so the preview leads with what matters to a user
 or developer, and every block has a fixed size: a file with 500 tables takes
 the same summary space as one with 5 (hover a bar for details).
 
+The `.4DB` and `.4DD` field-type charts use the catalog's original inline SVG
+icons and matching light/dark colors. The eight family counts stay unchanged;
+Text/UUID and Date/Time show distinct icons for the types present. Unknown types
+keep a neutral question-mark icon and the "Other" count.
+
 Catalog previews lead with the diagram, without summary charts or relation
 lists. Metadata remains available in a collapsed **Catalog details** disclosure.
 Catalog diagrams are self-contained SVG with no scripts or network requests.

@@ -116,12 +116,29 @@ public struct DB4DPresenter: ReportPresenter {
 
     static func fieldTypes(_ kinds: [FieldKind?]) -> Block {
         var segments = Self.families.map { fam -> Segment in
-            let n = kinds.filter { $0.map(fam.kinds.contains) ?? false }.count
-            return Segment(label: fam.name, value: Double(n), display: Fmt.n(n), slot: fam.slot)
+            let members = kinds.compactMap { $0 }.filter(fam.kinds.contains)
+            let icons = Set(members.map { icon(for: $0) })
+            return Segment(label: fam.name, value: Double(members.count), display: Fmt.n(members.count),
+                           slot: fam.slot, icons: FieldTypeIcon.allCases.filter(icons.contains))
         }
         let unknown = kinds.filter { $0 == nil }.count
-        if unknown > 0 { segments.append(Segment(label: "Other", value: Double(unknown), display: Fmt.n(unknown), slot: nil)) }
+        if unknown > 0 { segments.append(Segment(label: "Other", value: Double(unknown), display: Fmt.n(unknown), slot: nil, icons: [.unknown])) }
         return .composition(segments)
+    }
+
+    static func icon(for kind: FieldKind) -> FieldTypeIcon {
+        switch kind {
+        case .boolean: return .boolean
+        case .byte, .integer, .longint, .integer64: return .integer
+        case .real, .float: return .real
+        case .text, .legacyText, .unlimitedText: return .text
+        case .date: return .date
+        case .time: return .time
+        case .picture: return .picture
+        case .uuid: return .uuid
+        case .blob, .legacyBlob: return .blob
+        case .object: return .object
+        }
     }
 
     // MARK: Opening and behaviour
