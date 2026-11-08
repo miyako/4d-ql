@@ -94,27 +94,35 @@ The rendering reference combines the canonical
 [4D form](https://github.com/miyako/skills/tree/dist/skills/4dform),
 [CSS](https://github.com/miyako/skills/tree/dist/skills/4dcss) and
 [CLI](https://github.com/miyako/skills/tree/dist/skills/4dcli) skills with
-captures from 4D 21 R4 build 100208, 21.2 LTS build 100653 and
-21 R5 build 100156 on macOS 26.7. Named-form
+captures from 4D 20.8 build 101985, 21.2 LTS build 100653,
+21 R4 build 100208 and 21 R5 build 100156 on macOS 26.7. Named-form
 [`FORM SCREENSHOT`](https://developer.4d.com/docs/commands/form-screenshot)
 captures ignore CSS; a loaded-form screenshot and printed forms can apply
 it, but neither substitutes for a live dialog. The measured light
 Liquid Glass geometry informs the preview's discrete sizes, one listbox
 expression row, page-zero layering and asymmetric single-line input
-rounding. LTS tool4d supplied Classic light/dark geometry and palettes;
-full R5 `4D.app` supplied Liquid Glass light/dark editor-template captures,
-including dark colors and SVG artwork that tool4d did not reproduce reliably.
-Those template palettes inform the preview. A minimal R5 live dialog was
-also captured in both schemes using a blocking `DIALOG` and an `onTimer`
-form method; its transparent canvas and runtime input appearance differ
-from named-form output.
+rounding. Full LTS applications and LTS tool4d supplied Classic light/dark
+geometry and palettes; full R4/R5 `4D.app` supplied Liquid Glass light/dark
+editor-template captures. Those template palettes inform the preview.
+Live dialogs were also captured in both schemes with all four full
+applications, using both the canonical `DIALOG` / `CALL FORM` chain and a
+blocking `DIALOG` with an `onTimer` form method. Runtime input appearance
+and transparent canvas regions differ from named-form output.
 
-Some engines crashed or failed to terminate after writing the captures;
-the resulting PNGs were decoded and inspected, but these were not clean
-CLI runs. Full LTS applications crashed before startup, and the bounded R4 GUI
-[`FORM EDIT`](https://developer.4d.com/docs/commands/form-edit) attempt did
-not reach its startup method. All four appearances remain approximations,
-not native-match or application-lifecycle guarantees.
+Early crashes and timeouts were inconclusive. After rebooting, serial
+retries produced decoded screenshots, nonblank PDFs and clean exits;
+[`FORM EDIT`](https://developer.4d.com/docs/commands/form-edit) opened
+editor windows in all four full applications, with window screenshots
+retained as evidence. A legacy-component import prompt blocked the initial
+21.2 GUI retries; a current-version private project with explicit empty
+dependencies allowed them to complete. No engine-capability conclusions
+are drawn from the interrupted runs.
+
+In the retried R4/R5 tool4d probes, SVG decoding returned zero dimensions
+and dark named-form output remained partly light; full GUI captures
+rendered the same SVG and dark controls. These observations are specific
+to the tested builds, inputs and capture modes. All four preview
+appearances remain approximations, not pixel-identical native rendering.
 
 Form JSON is limited to 4 MiB, 64 nesting levels and 100,000 values;
 duplicate keys are rejected to avoid ambiguous paint order. Dependencies
