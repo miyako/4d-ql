@@ -14,6 +14,11 @@ struct FormPreviewRenderer {
         if !placeholders.isEmpty { notices.append("Placeholder only: \(placeholders.joined(separator: ", ")). Embedded forms, web content, plug-ins, Write Pro and View Pro are not executed.") }
         if objects.contains(where: { !validGeometry($0.properties) }) { notices.append("Objects with invalid or out-of-range coordinates are omitted (coordinate limit: 32,768 points).") }
         if objects.contains(where: { ($0.properties["text"]?.string ?? "").hasPrefix(":xliff:") }) { notices.append("XLIFF labels are shown as references; project translations are not loaded.") }
+        if objects.contains(where: { object in
+            ["text", "dataSource"].contains { (object.properties[$0]?.string?.utf16.count ?? 0) > 4_096 }
+        }) {
+            notices.append("Long form text is clipped to 4,096 UTF-16 units without splitting composed characters.")
+        }
         if form.appearances.contains(where: { canvas($0, properties: form.properties).clipped }) { notices.append("Large form canvas cropped to 8,192 × 8,192 points.") }
         return notices
     }
@@ -237,15 +242,26 @@ struct FormPreviewRenderer {
         case "tab":
             let labels = p["dataSource"]?.string.map { [$0] } ?? listLabels(p["labels"])
             let titles = labels.isEmpty ? ["\"\(object.name)\""] : labels
-            let stripHeight = min(h, theme.glass ? 28 : 24)
-            var x: Double = 0
+            let widths = titles.prefix(32).map { max(28, measure($0, size: fontSize, p: p) + (theme.glass ? 12 : 13)) }
+            let total = widths.reduce(0, +)
+            let scale = total > w ? w / total : 1
+            let stripWidth = min(w, total)
+            let stripHeight = min(h, theme.glass ? 24 : 21)
+            let y = p["labelsPlacement"]?.string == "bottom" ? h-stripHeight : min(theme.glass ? 1 : 2.5, h-stripHeight)
+            var x = max(0, (w-stripWidth)/2)
+            svg += "<rect x=\"\(n(x))\" y=\"\(n(y))\" width=\"\(n(stripWidth))\" height=\"\(n(stripHeight))\" rx=\"5\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-tab)"))\" stroke=\"\(theme.glass ? "none" : "var(--form-border)")\"/>"
             for (index, title) in titles.prefix(32).enumerated() {
-                let width = min(max(0,w-x), max(40, measure(title, size: fontSize, p: p)+24))
-                let y = p["labelsPlacement"]?.string == "bottom" ? h-stripHeight : 0
-                svg += "<rect x=\"\(n(x))\" y=\"\(n(y))\" width=\"\(n(width))\" height=\"\(n(stripHeight))\" rx=\"\(theme.glass ? "8" : "4")\" fill=\"\(index == 0 ? "var(--form-control)" : "var(--form-bg)")\" stroke=\"var(--form-border)\"/>"
-                svg += text(title, x: x, y: y, width: width, height: stripHeight, center: true)
+                let width = widths[index] * scale
+                let selected = index == 0
+                if selected {
+                    svg += "<rect x=\"\(n(x))\" y=\"\(n(y))\" width=\"\(n(width))\" height=\"\(n(stripHeight))\" rx=\"4\" fill=\"\(theme.glass ? "var(--form-accent)" : "var(--form-tab-selected)")\"/>"
+                } else if index > 1 {
+                    svg += "<line x1=\"\(n(x))\" y1=\"\(n(y+4))\" x2=\"\(n(x))\" y2=\"\(n(y+max(4,stripHeight-4)))\" stroke=\"var(--form-border)\"/>"
+                }
+                svg += text(title, x: x, y: p["labelsPlacement"]?.string == "bottom" ? y : theme.glass ? 0 : 1,
+                            width: width, height: p["labelsPlacement"]?.string == "bottom" ? stripHeight : h, center: true,
+                            ink: selected && theme.glass && (p["stroke"] == nil || p["stroke"]?.string == "automatic") ? "white" : stroke)
                 x += width
-                if x >= w { break }
             }
         case "picture", "pictureButton", "picturePopup", "buttonGrid":
             if object.images["picture"] != nil {
@@ -288,6 +304,7 @@ struct FormPreviewRenderer {
         let headerHeight = p["showHeaders"]?.bool == false ? 0 : unit(p["headerHeight"], size: fontSize, fallback: 22)
         let footerHeight = p["showFooters"]?.bool == true ? unit(p["footerHeight"], size: fontSize, fallback: 22) : 0
         let rowHeight = max(1, unit(p["rowHeight"], size: fontSize, fallback: 20))
+        let contentWidth = max(0, width - (p["scrollbarVertical"]?.string == "hidden" ? 0 : 14))
         var svg = "<g clip-path=\"url(#form-clip-\(id))\"><rect width=\"\(n(width))\" height=\"\(n(height))\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-input)"))\" stroke=\"var(--form-border)\"/>"
         let columns = p["columns"]?.values ?? []
         let rowCount = min(200, Int(max(0,height-headerHeight-footerHeight)/rowHeight)+1)
@@ -302,88 +319,79 @@ struct FormPreviewRenderer {
         for (index, column) in columns.prefix(64).enumerated() {
             if column["visibility"]?.string == "hidden" { continue }
             var w = column["width"]?.double ?? 100
-            if index == columns.count-1 && p["resizingMode"]?.string != "rightToLeft" { w = max(w,width-x) }
-            w = max(0,min(8_192,w))
+            if index == columns.count-1 && p["resizingMode"]?.string != "rightToLeft" { w = max(w,contentWidth-x) }
+            w = max(0,min(8_192,w,contentWidth-x))
             if headerHeight > 0 {
                 let header = column["header"] ?? .object([])
                 svg += "<rect x=\"\(n(x))\" width=\"\(n(w))\" height=\"\(n(headerHeight))\" fill=\"\(color(header["fill"]?.string, fallback: "var(--form-header)"))\" stroke=\"var(--form-grid)\"/>"
-                svg += text(header["text"]?.string ?? column["name"]?.string ?? "", p: header, x: x+5, y: 0,
-                            width: max(0,w-10), height: headerHeight, size: font(header, height: headerHeight),
-                            center: false, ink: color(header["stroke"]?.string, fallback: ink))
+                svg += text(header["text"]?.string ?? column["name"]?.string ?? "", p: header, x: x+2, y: 1,
+                            width: max(0,w-4), height: headerHeight, size: font(header, height: headerHeight),
+                            center: false, ink: color(header["stroke"]?.string, fallback: ink),
+                            singleLine: header["multiline"]?.string != "yes" && header["wordwrap"]?.string != "normal")
             }
             let expression = column["dataSource"]?.string ?? column["name"]?.string ?? ""
             svg += text(expression, p: column, x: x+5, y: headerHeight, width: max(0,w-10),
                         height: rowHeight, size: font(column,height:rowHeight), center: false,
-                        ink: color(column["stroke"]?.string, fallback: "var(--form-muted)"))
+                        ink: color(column["stroke"]?.string, fallback: "var(--form-muted)"),
+                        singleLine: column["multiline"]?.string != "yes" && column["wordwrap"]?.string != "normal")
             svg += "<line x1=\"\(n(x+w))\" y1=\"\(n(headerHeight))\" x2=\"\(n(x+w))\" y2=\"\(n(height))\" stroke=\"\(color(p["verticalLineStroke"]?.string, fallback: "var(--form-grid)"))\"/>"
             if footerHeight > 0 {
                 let footer = column["footer"] ?? .object([])
                 svg += "<rect x=\"\(n(x))\" y=\"\(n(height-footerHeight))\" width=\"\(n(w))\" height=\"\(n(footerHeight))\" fill=\"\(color(footer["fill"]?.string, fallback: "var(--form-header)"))\" stroke=\"var(--form-grid)\"/>"
-                svg += text(footer["text"]?.string ?? footer["dataSource"]?.string ?? "", p: footer, x: x+5, y: height-footerHeight,
-                            width: max(0,w-10), height: footerHeight, size: font(footer,height:footerHeight), center: false,
-                            ink: color(footer["stroke"]?.string, fallback: ink))
+                svg += text(footer["text"]?.string ?? footer["dataSource"]?.string ?? "", p: footer, x: x+2, y: height-footerHeight+1,
+                            width: max(0,w-4), height: footerHeight, size: font(footer,height:footerHeight), center: false,
+                            ink: color(footer["stroke"]?.string, fallback: ink),
+                            singleLine: footer["multiline"]?.string != "yes" && footer["wordwrap"]?.string != "normal")
             }
             x += w
-            if x >= width { break }
+            if x >= contentWidth { break }
+        }
+        if contentWidth < width {
+            svg += "<rect x=\"\(n(contentWidth))\" width=\"\(n(width-contentWidth))\" height=\"\(n(height))\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-input)"))\"/><line x1=\"\(n(contentWidth))\" y1=\"0\" x2=\"\(n(contentWidth))\" y2=\"\(n(height))\" stroke=\"var(--form-grid)\"/>"
         }
         return svg + "</g>"
     }
 
     private func text(_ value: String, p: FormValue, x: Double, y: Double, width: Double, height: Double,
-                      size: Double, center: Bool, ink: String) -> String {
+                      size: Double, center: Bool, ink: String, singleLine: Bool = false) -> String {
         guard width > 0, height > 0 else { return "" }
         let alignment = p["textAlign"]?.string ?? (center ? "center" : "left")
         let anchor = alignment == "center" ? "middle" : alignment == "right" ? "end" : "start"
         let origin = anchor == "middle" ? width/2 : anchor == "end" ? width : 0
-        let family = p["fontFamily"]?.string.flatMap { $0.hasPrefix("%") ? nil : $0 } ?? "-apple-system, Helvetica Neue, sans-serif"
-        let weight = p["fontWeight"]?.string == "bold" ? "bold" : "normal"
+        let family = p["fontFamily"]?.string.flatMap {
+            !$0.hasPrefix("%") && NSFont(name: $0, size: size) != nil ? $0 + ", " + FormTextLayout.fallbackFamily : nil
+        } ?? FormTextLayout.fallbackFamily
+        let weight = p["fontWeight"]?.string == "bold"
+            || p["fontWeight"] == nil && p["fontTheme"]?.string == "main" ? "bold" : "normal"
         let italic = p["fontStyle"]?.string == "italic" ? "italic" : "normal"
         let decoration = p["textDecoration"]?.string == "underline" ? "underline" : "none"
-        let lines = wrapped(value, width: width, size: size, p: p, maxLines: Int(max(1,min(100,height/(size*1.2)))))
-        let vertical = p["type"]?.string == "text" || lines.count > 1 ? size : (height-size)/2+size*0.8
-        var svg = "<svg x=\"\(n(x))\" y=\"\(n(y))\" width=\"\(n(width))\" height=\"\(n(height))\" overflow=\"hidden\"><text x=\"\(n(origin))\" y=\"\(n(vertical))\" fill=\"\(ink)\" font-family=\"\(esc(family))\" font-size=\"\(n(size))\" font-weight=\"\(weight)\" font-style=\"\(italic)\" text-decoration=\"\(decoration)\" text-anchor=\"\(anchor)\""
+        let layout = FormTextLayout(text: value, width: width, size: size, properties: p,
+                                    maxLines: singleLine ? 1 : Int(max(1, min(100, ceil(height / max(1, size * 1.2))))))
+        let ascent = layout.lines.first?.ascent ?? size
+        let descent = layout.lines.first?.descent ?? 0
+        let capHeight = Double(FormTextLayout.font(size: size, properties: p).capHeight)
+        let vertical = ["text", "groupBox"].contains(p["type"]?.string ?? "") || layout.lines.count > 1
+            ? max(size, ceil(ascent)) : (height-capHeight-descent)/2+capHeight
+        var svg = "<svg x=\"\(n(x))\" y=\"\(n(y))\" width=\"\(n(width))\" height=\"\(n(height))\" overflow=\"hidden\"><text x=\"\(n(origin))\" y=\"\(n(vertical))\" fill=\"\(ink)\" font-family=\"\(esc(family))\" font-size=\"\(n(size))\" font-weight=\"\(weight)\" font-style=\"\(italic)\" text-decoration=\"\(decoration)\" text-anchor=\"\(anchor)\" xml:space=\"preserve\""
         if let angle = p["textAngle"]?.double, [90.0,180.0,270.0].contains(angle) {
             svg += " transform=\"rotate(\(n(-angle)) \(n(width/2)) \(n(height/2)))\""
         }
         svg += ">"
-        for (index,line) in lines.enumerated() {
-            svg += "<tspan x=\"\(n(origin))\"\(index == 0 ? "" : " dy=\"\(n(size*1.2))\"")>\(esc(line))</tspan>"
+        for (index,line) in layout.lines.enumerated() {
+            svg += "<tspan x=\"\(n(origin))\" y=\"\(n(vertical+Double(index)*layout.lineHeight))\">\(esc(line.text))</tspan>"
         }
         return svg + "</text></svg>"
     }
 
-    private func wrapped(_ text: String, width: Double, size: Double, p: FormValue, maxLines: Int) -> [String] {
-        let input = String(text.prefix(4_096)).replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
-        if p["multiline"]?.string == "no" || p["wordwrap"]?.string == "none" || maxLines == 1 { return [input.components(separatedBy: "\n").first ?? ""] }
-        var lines: [String] = []
-        var current = ""
-        let font = p["fontFamily"]?.string.flatMap { NSFont(name: $0, size: size) }
-            ?? NSFont.systemFont(ofSize: size, weight: p["fontWeight"]?.string == "bold" ? .bold : .regular)
-        var advances: [Character: Double] = [:]
-        var lineWidth: Double = 0
-        for character in input {
-            let advance = advances[character] ?? (String(character) as NSString).size(withAttributes: [.font: font]).width
-            advances[character] = advance
-            if character == "\n" {
-                lines.append(current); current = ""; lineWidth = 0
-            } else if !current.isEmpty && lineWidth + advance > width {
-                lines.append(current); current = String(character); lineWidth = advance
-            } else { current.append(character); lineWidth += advance }
-            if lines.count >= maxLines { return Array(lines.prefix(maxLines)) }
-        }
-        if !current.isEmpty || lines.isEmpty { lines.append(current) }
-        return Array(lines.prefix(maxLines))
-    }
-
     private func measure(_ text: String, size: Double, p: FormValue) -> Double {
-        let font = p["fontFamily"]?.string.flatMap { NSFont(name: $0, size: size) }
-            ?? NSFont.systemFont(ofSize: size, weight: p["fontWeight"]?.string == "bold" ? .bold : .regular)
-        return (text as NSString).size(withAttributes: [.font: font]).width
+        let font = FormTextLayout.font(size: size, properties: p)
+        return (FormTextLayout.bounded(text) as NSString).size(withAttributes: [.font: font]).width
     }
 
     private func font(_ properties: FormValue, height: Double, glass: Bool = true) -> Double {
         if let size = properties["fontSize"]?.double, size > 0, size.isFinite { return max(1,min(256,size)) }
-        if properties["fontTheme"]?.string == "main" { return 14 }
+        if properties["fontTheme"]?.string == "main" { return 13 }
+        if properties["fontTheme"]?.string == "normal" { return 13 }
         if properties["fontTheme"]?.string == "additional" { return 11 }
         if properties["height"] == nil && properties["bottom"] == nil {
             if ["checkbox", "radio"].contains(properties["type"]?.string ?? "") { return 13 }
@@ -393,6 +401,7 @@ struct FormPreviewRenderer {
         case "button", "dropdown": return height <= 16 ? 9 : (glass ? height <= 20 : height < 20) ? 11 : 13
         case "checkbox": return height <= 13 ? 9 : height <= 16 ? 11 : 13
         case "radio": return height <= 13 ? 11 : 13
+        case "groupBox": return 10
         default: return height < 18 ? 11 : 13
         }
     }
@@ -465,9 +474,9 @@ struct FormPreviewRenderer {
     .theme-choice:focus-visible ~ .form-themes,.page-choice:focus-visible ~ .form-pages{outline:2px solid var(--accent)}
     .form-appearance,.form-page{display:none}.form-scroll{overflow:auto;max-height:680px;border:1px solid var(--border);border-radius:6px}
     .form-scroll>svg{display:block;max-width:none}.form-caption{font-size:11px;color:var(--muted);margin-top:7px}
-    .form-appearance.light{color-scheme:light;--form-bg:#ececec;--form-ink:#202020;--form-muted:#777;--form-input:#fff;--form-control:#fff;--form-toggle:#fff;--form-group:transparent;--form-border:#b8b8b8;--form-header:#f1f1f1;--form-alternate:#f3f5f7;--form-grid:#ddd;--form-accent:#007aff;--form-office:#e2effc}
-    .form-appearance.dark{color-scheme:dark;--form-bg:#323232;--form-ink:#eee;--form-muted:#a0a0a0;--form-input:#1e1e1e;--form-control:#656565;--form-toggle:#535353;--form-group:transparent;--form-border:#737373;--form-header:#363636;--form-alternate:#272a2e;--form-grid:#444;--form-accent:#0a84ff;--form-office:#32455a}
-    .form-appearance.glass.light{--form-bg:#fff;--form-control:#e1e1e1;--form-group:#f3f3f3;--form-border:#cecece}
-    .form-appearance.glass.dark{--form-bg:#1e1e1e;--form-control:#383838;--form-toggle:#2a2a2a;--form-group:#282828;--form-border:#777}
+    .form-appearance.light{color-scheme:light;--form-bg:#ececec;--form-ink:#202020;--form-muted:#777;--form-input:#fff;--form-control:#fff;--form-toggle:#fff;--form-group:#e1e1e1;--form-tab:#f2f2f2;--form-tab-selected:#fff;--form-border:#b8b8b8;--form-header:#f1f1f1;--form-alternate:#f3f5f7;--form-grid:#ddd;--form-accent:#007aff;--form-office:#e2effc}
+    .form-appearance.dark{color-scheme:dark;--form-bg:#323232;--form-ink:#eee;--form-muted:#a0a0a0;--form-input:#1e1e1e;--form-control:#656565;--form-toggle:#535353;--form-group:#3b3b3b;--form-tab:#3c3c3c;--form-tab-selected:#6c6c6c;--form-border:#737373;--form-header:#363636;--form-alternate:#272a2e;--form-grid:#444;--form-accent:#0a84ff;--form-office:#32455a}
+    .form-appearance.glass.light{--form-bg:#fff;--form-control:#e1e1e1;--form-group:#f3f3f3;--form-tab:#ebebeb;--form-border:#cecece;--form-accent:#0077f9}
+    .form-appearance.glass.dark{--form-bg:#1e1e1e;--form-control:#383838;--form-toggle:#2a2a2a;--form-group:#282828;--form-tab:#303030;--form-border:#777;--form-accent:#067dff}
     """
 }

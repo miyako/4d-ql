@@ -1,0 +1,4 @@
+.macSample { fontSize: 15; fontStyle: italic; stroke: #7C357D; }
+@media (form-theme: liquid-glass) {
+  .macSample { fontSize: 18; }
+}

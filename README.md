@@ -48,11 +48,19 @@ Form previews use a self-contained SVG canvas, not a running 4D instance.
 They preserve JSON object declaration order (paint order), include page 0
 behind every numbered page, honor saved coordinates and form-size anchors,
 and provide scrollable canvases and script-free page/appearance selectors.
+Text uses CoreText shaping and word-boundary line breaks rather than
+summing individual character widths. Composed characters, explicit blank
+lines and font traits are preserved; text remains clipped to saved bounds.
+The text face is selected consistently for measurement and WebKit SVG output.
 The viewer's appearance is used initially; an explicit form `colorScheme`
 is respected. Liquid Glass buttons and dropdowns use the documented
 27-point rounded-control threshold and measured native height/font variants;
 tall dropdowns retain a rectangular fallback. Classic uses its own automatic
 font thresholds, default toggle heights and accented dropdown arrow area.
+Classic and Liquid Glass tabs use compact, centered segments and the native editor
+template's initial selection; that is not a computed runtime value.
+Automatic group titles use the measured 10-point font; the main font theme
+uses 13-point bold, with explicit font size and weight taking precedence.
 
 Stylesheets load in 4D order: `Project/Sources/styleSheets.css`,
 `styleSheets_mac.css`, then the form's `css` references (Windows-only
@@ -79,6 +87,8 @@ network paths and variable pictures are not loaded.
 **Finder's Quick Look sandbox may grant access only to the selected file**:
 project CSS, external templates and pictures are best-effort, with notices
 when inaccessible. The CLI uses the same logic but can normally read them.
+Unavailable resources and unsupported features produce a visible warning
+above the canvas, with individual explanations in Preview notices.
 
 Native controls are approximations, not pixel-identical AppKit widgets.
 Bound inputs, dropdowns, combos and dynamic tabs display their saved
@@ -136,8 +146,43 @@ expansion is bounded to 100,000 values and depth 64. CSS is limited to
 per appearance, 64 listbox columns, and 200 grid rows are drawn; canvases
 are cropped at 8,192 points per side. Images are limited to 32 megapixels
 and 2,048-pixel raster thumbnails, with a 24 MiB embedded-image budget.
+Text shaping is capped at 4,096 UTF-16 units and 100 lines per label,
+without splitting a composed character at the input boundary.
 Original JSON is retained in analysis output and displayed up to 256 Ki
 characters in its disclosure. Parsing is not full 4D schema validation.
+
+### Form visual benchmark
+
+`Tests/FourDFileKitTests/Fixtures/FormBenchmarkProject` contains four self-authored forms:
+Typography, Controls, ContactInvoice and References. Two pages in each
+of the four appearances produce 32 cases, with per-object crops for
+typography, controls, listbox headers/footers and project references.
+No external application's form source is included.
+
+```sh
+python3 scripts/form-benchmark.py --validate-only
+caffeinate -di python3 scripts/form-benchmark.py --output /absolute/artifacts/form-benchmark
+python3 scripts/form-benchmark.py --output /absolute/artifacts/form-benchmark \
+  --fourdql build/fourdql --compare-only
+```
+
+The macOS harness uses full 4D applications serially, the installed form
+schema/validator, a WebKit snapshot helper and Pillow. It creates private
+writable projects with the dependency manifest before launching an engine;
+only those copies normalize compatibilityVersion to 2100. Committed forms
+and project references remain unchanged. `--compare-only` reuses verified
+native captures; it never launches 4D. Engine paths, forms and themes can
+be selected with the options shown by `--help`.
+
+`gallery.html` and `metrics.json` contain native/preview comparisons,
+foreground bounds, mask overlap and RGB error. A complete 32-case run
+means capture coverage, not pixel equivalence or a passing visual score.
+Named screenshots ignore CSS; known CSS/pointer capture-context gaps
+remain visible but are excluded from comparable rankings. Loaded-form
+font getters and actual Finder checks are separate evidence, not
+interchangeable screenshot modes. Keep the desktop unlocked for GUI checks;
+`caffeinate -di` temporarily prevents idle display/system sleep for the command's
+lifetime, without changing settings or overriding manual/policy-enforced locks.
 
 ### What is shown, and what is not
 
@@ -317,6 +362,28 @@ scripts/make-fixtures.sh                                # regenerate test fixtur
 The test fixtures in `Tests/FourDFileKitTests/Fixtures` (a data file with
 encryptable tables, before and after `Encrypt data file`) are built from the
 small project in `Tests/Fixtures/encfixture` by `scripts/make-fixtures.sh`.
+
+To exercise an installed development extension through actual Finder:
+
+```bash
+scripts/build.sh --register
+swiftc scripts/finder-form-preview.swift -o build/finder-form-preview
+caffeinate -di build/finder-form-preview /path/to/form.4DForm /path/to/finder-preview.png
+```
+
+The harness selects the specified file, opens Quick Look and captures only
+its Finder preview window while it is foregrounded. The hosting app needs
+Automation access to Finder and System Events, Accessibility for UI control,
+and Screen Recording for the screenshot. Locked desktops and transparent OS
+captures are rejected explicitly.
+Test both standalone and project-contained forms: Finder can deny neighboring
+CSS, pointer targets and pictures even when the CLI renders them successfully.
+Final development-build checks rendered both cases in Finder, exercised all four
+appearance selectors and changed numbered pages. Missing project resources
+produced the visible pre-canvas warning. On the tested macOS 26.7 host,
+`qlmanage -p -o` still aborted inside ExtensionFoundation with a nil dictionary
+key after unlocking; actual Finder previews and controls worked. The harness
+uses Finder rather than treating that export-tool failure as a renderer failure.
 
 ## File format notes
 

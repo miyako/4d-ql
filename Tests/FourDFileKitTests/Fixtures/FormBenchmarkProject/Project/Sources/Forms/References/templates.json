@@ -1,0 +1,8 @@
+{
+  "inputs": {
+    "contact": {"type": "input", "width": 480, "height": 23, "fontFamily": "Helvetica", "fontSize": 13, "borderStyle": "solid"}
+  },
+  "labels": {
+    "caption": {"type": "text", "width": 640, "height": 32, "fontFamily": "Helvetica", "fontSize": 14}
+  }
+}

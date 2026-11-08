@@ -1,0 +1,34 @@
+{
+  "$4d": {"version": "1", "kind": "form"},
+  "windowTitle": "Typography benchmark",
+  "destination": "detailScreen",
+  "windowSizingX": "fixed", "windowSizingY": "fixed",
+  "width": 720, "height": 520, "events": ["onLoad", "onUnload"],
+  "pages": [
+    {"objects": {
+      "heading": {"type": "text", "left": 24, "top": 18, "width": 620, "height": 32, "text": "Type laboratory — self-authored", "fontFamily": "Helvetica", "fontSize": 22, "fontWeight": "bold"},
+      "rule": {"type": "line", "left": 24, "top": 58, "width": 672, "height": 0, "stroke": "#83929B", "strokeWidth": 1},
+      "pageZeroFooter": {"type": "text", "left": 24, "top": 486, "width": 672, "height": 20, "text": "Shared page 0 · static labels, not runtime values", "fontFamily": "Helvetica", "fontSize": 11}
+    }},
+    {"objects": {
+      "latinWrap": {"type": "text", "left": 24, "top": 80, "width": 304, "height": 110, "text": "A small observatory records bright stars before sunrise. Narrow columns should wrap words naturally, without losing the final line or widening the frame.", "fontFamily": "Helvetica", "fontSize": 15},
+      "japaneseWrap": {"type": "text", "left": 376, "top": 80, "width": 320, "height": 110, "text": "朝の図書館で、新しい資料を整理しています。文字の折り返し、句読点、行間を確認するための自作文章です。予約は午後三時まで受け付けます。", "fontFamily": "Hiragino Sans", "fontSize": 15},
+      "arabicRTL": {"type": "text", "left": 24, "top": 218, "width": 304, "height": 94, "text": "هذه رسالة قصيرة لاختبار عرض النص العربي واتجاه الكتابة. نرتب الملاحظات قبل بداية الاجتماع.", "fontFamily": "Arial", "fontSize": 18, "textAlign": "right"},
+      "accentsEmoji": {"type": "text", "left": 376, "top": 218, "width": 320, "height": 94, "text": "Café · Ångström · naïve\n🧑🏽‍🔬 🔭 🌗 👨‍👩‍👧‍👦\nA + combining ring: Å", "fontFamily": "Helvetica", "fontSize": 18},
+      "boldLabel": {"type": "text", "left": 24, "top": 342, "width": 304, "height": 32, "text": "Bold: optical alignment 012345", "fontFamily": "Helvetica", "fontSize": 16, "fontWeight": "bold"},
+      "italicLabel": {"type": "text", "left": 376, "top": 342, "width": 320, "height": 32, "text": "Italic: gentle arcs & descenders", "fontFamily": "Helvetica", "fontSize": 16, "fontStyle": "italic"},
+      "crlfBlankLines": {"type": "text", "left": 24, "top": 394, "width": 304, "height": 80, "text": "First line\r\n\r\nThird line\r\nFourth line", "fontFamily": "Helvetica", "fontSize": 14},
+      "centeredMultiline": {"type": "text", "left": 376, "top": 394, "width": 320, "height": 80, "text": "Centered heading\nSecond centered line\nShort", "fontFamily": "Helvetica", "fontSize": 14, "textAlign": "center"}
+    }},
+    {"objects": {
+      "leftAlignment": {"type": "text", "left": 24, "top": 84, "width": 200, "height": 80, "text": "Left aligned\nTwo lines", "fontSize": 16, "fontFamily": "Helvetica", "textAlign": "left", "borderStyle": "solid", "stroke": "#7A8993"},
+      "centerAlignment": {"type": "text", "left": 260, "top": 84, "width": 200, "height": 80, "text": "Centered\nTwo lines", "fontSize": 16, "fontFamily": "Helvetica", "textAlign": "center", "borderStyle": "solid", "stroke": "#7A8993"},
+      "rightAlignment": {"type": "text", "left": 496, "top": 84, "width": 200, "height": 80, "text": "Right aligned\nTwo lines", "fontSize": 16, "fontFamily": "Helvetica", "textAlign": "right", "borderStyle": "solid", "stroke": "#7A8993"},
+      "longSingleLine": {"type": "input", "left": 24, "top": 205, "width": 672, "height": 23, "dataSource": "Form.longSingleLine_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789", "multiline": "no", "wordwrap": "none", "borderStyle": "solid", "fontFamily": "Helvetica", "fontSize": 14},
+      "size11": {"type": "text", "left": 24, "top": 274, "width": 640, "height": 26, "text": "11 pt: Clear skies, quiet rooms, precise typography.", "fontFamily": "Helvetica", "fontSize": 11},
+      "size13": {"type": "text", "left": 24, "top": 310, "width": 640, "height": 28, "text": "13 pt: Clear skies, quiet rooms, precise typography.", "fontFamily": "Helvetica", "fontSize": 13},
+      "size18": {"type": "text", "left": 24, "top": 350, "width": 640, "height": 34, "text": "18 pt: Clear skies, quiet rooms, precise typography.", "fontFamily": "Helvetica", "fontSize": 18},
+      "size24": {"type": "text", "left": 24, "top": 402, "width": 640, "height": 42, "text": "24 pt: Clear skies, quiet rooms.", "fontFamily": "Helvetica", "fontSize": 24}
+    }}
+  ]
+}

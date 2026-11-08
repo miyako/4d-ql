@@ -57,6 +57,76 @@ final class FormTests: XCTestCase {
         XCTAssertEqual(html.components(separatedBy: "data:image/svg+xml;base64,").count - 1, 1)
     }
 
+    func testUnavailableResourcesAreVisibleBeforeTheCanvas() throws {
+        let folder = try folder()
+        let url = try write(form(#"{"label":{"type":"text","left":0,"top":0,"width":100,"height":20,"text":"Contact"}}"#,
+                                 extra: #","css":"missing.css""#), "form.4DForm", in: folder)
+        let info = try analyze(url)
+        XCTAssertFalse(info.warnings.isEmpty)
+        let html = PreviewPipeline().html(for: url)
+        let notice = try XCTUnwrap(html.range(of: "Some resources or form features could not be reproduced."))
+        let canvas = try XCTUnwrap(html.range(of: "class=\"form-preview\""))
+        XCTAssertLessThan(notice.lowerBound, canvas.lowerBound)
+        XCTAssertTrue(html.contains("Preview notices"))
+        XCTAssertTrue(html.contains("missing.css"))
+    }
+
+    func testLiquidGlassTabsUseCenteredEditorTemplateSegments() throws {
+        let folder = try folder()
+        let url = try write(form(#"{"tabs":{"type":"tab","left":0,"top":0,"width":200,"height":30,"labels":["A","B"]},"bound":{"type":"tab","left":0,"top":40,"width":200,"height":30,"dataSource":"Form.tabs"}}"#),
+                             "form.4DForm", in: folder)
+        let info = try analyze(url)
+        let glass = try XCTUnwrap(info.appearances.first { $0.theme == .glassLight })
+        let html = FormPreviewRenderer().render(FormPreview(name: "Tabs", properties: info.properties,
+                                                            appearances: [glass], images: []))
+        XCTAssertTrue(html.contains("x=\"72\" y=\"1\" width=\"56\" height=\"24\" rx=\"5\""))
+        XCTAssertTrue(html.contains("x=\"72\" y=\"1\" width=\"28\" height=\"24\" rx=\"4\" fill=\"var(--form-accent)\""))
+        let bound = try XCTUnwrap(html.components(separatedBy: "<title>bound · tab").dropFirst().first)
+        XCTAssertTrue(bound.components(separatedBy: "</svg></div>").first?.contains("fill=\"var(--form-accent)\"") ?? false)
+        XCTAssertTrue(bound.contains(">Form.tabs</tspan>"))
+    }
+
+    func testClassicTabsUseCenteredSelectedSegments() throws {
+        let folder = try folder()
+        let url = try write(form(#"{"tabs":{"type":"tab","left":0,"top":0,"width":200,"height":30,"labels":["A","B"]}}"#),
+                             "form.4DForm", in: folder)
+        let info = try analyze(url)
+        let classic = try XCTUnwrap(info.appearances.first { $0.theme == .classicLight })
+        let html = FormPreviewRenderer().render(FormPreview(name: "Tabs", properties: info.properties,
+                                                            appearances: [classic], images: []))
+        XCTAssertTrue(html.contains("x=\"72\" y=\"2.50\" width=\"56\" height=\"21\" rx=\"5\""))
+        XCTAssertTrue(html.contains("x=\"72\" y=\"2.50\" width=\"28\" height=\"21\" rx=\"4\" fill=\"var(--form-tab-selected)\""))
+    }
+
+    func testBlankLinesUseAbsoluteSVGPositions() throws {
+        let folder = try folder()
+        let url = try write(form(#"{"label":{"type":"text","left":0,"top":0,"width":200,"height":100,"fontSize":13,"text":"First\r\n\r\nLast"}}"#),
+                             "form.4DForm", in: folder)
+        let html = PreviewPipeline().html(for: url)
+        XCTAssertTrue(html.contains("<tspan x=\"0\" y=\"29\"></tspan>"))
+        XCTAssertTrue(html.contains("<tspan x=\"0\" y=\"45\">Last</tspan>"))
+        XCTAssertFalse(html.contains(" dy=\""))
+    }
+
+    func testListboxColumnsReserveTheVerticalScrollbarArea() throws {
+        let folder = try folder()
+        for (scrollbar, width) in [("visible", "186"), ("hidden", "200")] {
+            let url = try write(form(#"{"grid":{"type":"listbox","left":0,"top":0,"width":200,"height":100,"scrollbarVertical":"\#(scrollbar)","headerHeight":30,"columns":[{"name":"total","width":100,"header":{"text":"Total"}}]}}"#),
+                                 scrollbar+".4DForm", in: folder)
+            let html = PreviewPipeline().html(for: url)
+            XCTAssertTrue(html.contains("<rect x=\"0\" width=\"\(width)\" height=\"30\""))
+        }
+    }
+
+    func testListboxFootersClipToOneLineUnlessWrappingIsRequested() throws {
+        let folder = try folder()
+        for wrapping in ["", #","multiline":"yes""#] {
+            let url = try write(form(#"{"grid":{"type":"listbox","left":0,"top":0,"width":118,"height":100,"scrollbarVertical":"hidden","showFooters":true,"footerHeight":28,"columns":[{"name":"price","width":118,"footer":{"dataSource":"Form.invoice.currency"\#(wrapping)}}]}}"#),
+                                 UUID().uuidString+".4DForm", in: folder)
+            XCTAssertEqual(PreviewPipeline().html(for: url).contains(">Form.invoice.currency</tspan>"), wrapping.isEmpty)
+        }
+    }
+
     func testOrderedObjectKeysAndUnicodeBOM() throws {
         let folder = try folder()
         let objects = #"{"z":{"type":"rectangle","left":0,"top":0,"width":100,"height":100},"あ":{"type":"text","left":0,"top":0,"width":100,"height":20,"text":"日本語"},"a":{"type":"button","left":20,"top":30,"text":"Last"}}"#

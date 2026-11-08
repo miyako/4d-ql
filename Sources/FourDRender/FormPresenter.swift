@@ -22,6 +22,7 @@ public struct FormPresenter: ReportPresenter {
         var notes = form.warnings
         notes += FormPreviewRenderer.diagnostics(form)
         if !notes.isEmpty {
+            blocks.insert(.note("Some resources or form features could not be reproduced. See Preview notices for details.", .warning), at: 0)
             blocks.append(.disclosure(summary: "Preview notices", detail: "\(notes.count)",
                                       blocks: notes.map { .note($0, .warning) }))
         }

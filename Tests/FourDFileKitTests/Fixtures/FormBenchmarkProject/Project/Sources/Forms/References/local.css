@@ -1,0 +1,4 @@
+.explicitSample { fontSize: 19; stroke: #A74D22; fontWeight: bold; }
+@media (prefers-color-scheme: dark) {
+  .explicitSample { stroke: #F0B58B; }
+}
