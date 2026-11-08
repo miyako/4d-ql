@@ -106,6 +106,8 @@ public indirect enum Block {
     /// A 100% stacked bar with a legend that always names every segment.
     case composition([Segment])
     case table(Table)
+    /// A bounded, format-independent table/field relationship diagram.
+    case structureDiagram(StructureDiagram)
     /// Collapsible group with a summary line.
     case disclosure(summary: String, detail: String?, blocks: [Block])
     case note(String, Badge.Tone)
@@ -127,6 +129,83 @@ public struct CodeSpan {
         self.text = text
         self.style = style
     }
+}
+
+public struct StructureDiagram {
+    public var nodes: [DiagramNode]
+    public var edges: [DiagramEdge]
+    public var omittedTables: Int
+    public var omittedRelations: Int
+
+    public init(nodes: [DiagramNode], edges: [DiagramEdge],
+                omittedTables: Int = 0, omittedRelations: Int = 0) {
+        self.nodes = nodes
+        self.edges = edges
+        self.omittedTables = omittedTables
+        self.omittedRelations = omittedRelations
+    }
+}
+
+public struct DiagramNode {
+    public var id: String
+    public var title: String
+    public var fields: [DiagramField]
+    public var position: DiagramPosition?
+    public var omittedFields: Int
+    public var hidden: Bool
+
+    public init(id: String, title: String, fields: [DiagramField],
+                position: DiagramPosition? = nil, omittedFields: Int = 0, hidden: Bool = false) {
+        self.id = id
+        self.title = title
+        self.fields = fields
+        self.position = position
+        self.omittedFields = omittedFields
+        self.hidden = hidden
+    }
+}
+
+public struct DiagramField {
+    public var id: String
+    public var name: String
+    public var type: String
+    public var primaryKey: Bool
+    public var hidden: Bool
+    public var indexed: Bool
+
+    public init(id: String, name: String, type: String,
+                primaryKey: Bool = false, hidden: Bool = false, indexed: Bool = false) {
+        self.id = id
+        self.name = name
+        self.type = type
+        self.primaryKey = primaryKey
+        self.hidden = hidden
+        self.indexed = indexed
+    }
+}
+
+public struct DiagramEdge {
+    public var sourceNode: String
+    public var sourceField: String
+    public var destinationNode: String
+    public var destinationField: String
+    public var label: String
+
+    public init(sourceNode: String, sourceField: String, destinationNode: String,
+                destinationField: String, label: String) {
+        self.sourceNode = sourceNode
+        self.sourceField = sourceField
+        self.destinationNode = destinationNode
+        self.destinationField = destinationField
+        self.label = label
+    }
+}
+
+/// Saved diagram coordinates; the renderer validates and normalizes these.
+public struct DiagramPosition {
+    public var x: Double
+    public var y: Double
+    public init(x: Double, y: Double) { self.x = x; self.y = y }
 }
 
 public struct Table {

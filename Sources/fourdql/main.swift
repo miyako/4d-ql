@@ -88,6 +88,11 @@ func printBlock(_ b: Block, indent: String) {
     case .note(let t, _): print("\(indent)! \(t)")
     case .text(let t), .sourceCode(let t, _): print(indent + t)
     case .code(let spans): print(spans.map(\.text).joined())
+    case .structureDiagram(let diagram):
+        print("\(indent)\(diagram.nodes.count) tables, \(diagram.edges.count) relations in diagram")
+        if diagram.omittedTables > 0 || diagram.omittedRelations > 0 {
+            print("\(indent)\(diagram.omittedTables) tables and \(diagram.omittedRelations) relations omitted")
+        }
     }
 }
 

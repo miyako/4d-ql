@@ -105,6 +105,9 @@ public struct HTMLRenderer {
             if let more = t.more { h += "<p class=\"more\">\(esc(more))</p>" }
             return h
 
+        case .structureDiagram(let diagram):
+            return StructureDiagramRenderer().render(diagram)
+
         case .disclosure(let summary, let detail, let blocks):
             var h = "<details><summary><span class=\"st\">\(esc(summary))</span>"
             if let d = detail { h += "<span class=\"sd\">\(esc(d))</span>" }
@@ -147,6 +150,10 @@ public struct HTMLRenderer {
     private func align(_ a: Table.Align) -> String { a == .trailing ? "num" : "" }
 
     private func esc(_ s: String) -> String {
+        Self.escape(s)
+    }
+
+    static func escape(_ s: String) -> String {
         var o = ""
         o.reserveCapacity(s.count)
         for ch in s.unicodeScalars {
@@ -233,6 +240,7 @@ public struct HTMLRenderer {
     .st{font-weight:500}.sd{color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap}
     .note{padding:8px 10px;border-radius:6px;background:var(--soft);margin:8px 0 0;font-size:12px;color:var(--muted)}
     .note.warning{color:var(--warn)}.note.danger{color:var(--bad)}.note.good{color:var(--good)}
+    \(StructureDiagramRenderer.css)
     .source{margin:0;padding:12px 0;background:var(--soft);border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:760px;font:12px/1.6 ui-monospace,"SF Mono",Menlo,monospace;tab-size:4}
     .source-line{display:inline-flex;min-width:100%}
     .line-number{display:inline-block;flex-shrink:0;width:5em;padding:0 1em;color:var(--faint);text-align:right;user-select:none}

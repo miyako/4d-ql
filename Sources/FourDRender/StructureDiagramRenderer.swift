@@ -1,0 +1,180 @@
+import Foundation
+
+/// Script-free SVG rendering. Presentation models contain no HTML or SVG.
+struct StructureDiagramRenderer {
+    private let width = 300.0
+    private let header = 38.0
+    private let row = 26.0
+    private let margin = 32.0
+
+    private struct Box {
+        var node: DiagramNode
+        var x: Double
+        var y: Double
+        var height: Double
+    }
+
+    func render(_ diagram: StructureDiagram) -> String {
+        // Bound even hand-built reports, not just reports produced by presenters.
+        let nodes = diagram.nodes.prefix(24).map { node -> DiagramNode in
+            var node = node
+            node.omittedFields = max(0, node.omittedFields) + max(0, node.fields.count - 8)
+            node.fields = Array(node.fields.prefix(8))
+            return node
+        }
+        let boxes = layout(nodes)
+        var indices: [String: Int] = [:]
+        for (index, box) in boxes.enumerated() where indices[box.node.id] == nil {
+            indices[box.node.id] = index
+        }
+        let edges = diagram.edges.prefix(64).filter {
+            indices[$0.sourceNode] != nil && indices[$0.destinationNode] != nil
+        }
+        let omittedTables = max(0, diagram.omittedTables) + max(0, diagram.nodes.count - nodes.count)
+        let omittedRelations = max(0, diagram.omittedRelations) + diagram.edges.count - edges.count
+        var summary = "\(nodes.count) tables · \(edges.count) relations"
+        var omissions: [String] = []
+        if omittedTables > 0 { omissions.append("\(omittedTables) tables omitted") }
+        if omittedRelations > 0 { omissions.append("\(omittedRelations) relations omitted") }
+        let omittedFields = nodes.reduce(0) { $0 + $1.omittedFields }
+        if omittedFields > 0 { omissions.append("\(omittedFields) fields omitted") }
+        if !omissions.isEmpty { summary += " · " + omissions.joined(separator: " · ") }
+        var html = "<div class=\"structure-diagram\">"
+        guard !boxes.isEmpty else { return html + "<p class=\"more\" title=\"\(esc(summary))\">No tables to display.</p></div>" }
+
+        let canvasWidth = max(364, (boxes.map { $0.x + width }.max() ?? 0) + 100)
+        let canvasHeight = max(120, (boxes.map { $0.y + $0.height }.max() ?? 0) + margin)
+        let description = "Structure diagram: \(summary). Relations connect field rows; unavailable fields connect to table headers. Underlined fields are primary keys; bold fields are indexed; italic table and field names are hidden."
+        html += "<div class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"Scrollable structure diagram\">"
+        html += "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"diagram-svg\" role=\"img\" aria-label=\"\(esc(description))\" width=\"\(n(canvasWidth))\" height=\"\(n(canvasHeight))\" viewBox=\"0 0 \(n(canvasWidth)) \(n(canvasHeight))\"><title>\(esc(description))</title>"
+        for (index, edge) in edges.enumerated() {
+            guard let source = indices[edge.sourceNode], let destination = indices[edge.destinationNode] else { continue }
+            html += connector(edge, index: index, source: boxes[source], destination: boxes[destination],
+                              selfRelation: source == destination)
+        }
+        for box in boxes { html += table(box) }
+        return html + "</svg></div></div>"
+    }
+
+    private func layout(_ nodes: [DiagramNode]) -> [Box] {
+        var boxes = nodes.map {
+            Box(node: $0, x: 0, y: 0,
+                height: header + row * Double($0.fields.count + ($0.omittedFields > 0 ? 1 : 0)) + 8)
+        }
+        let valid = nodes.map { node -> DiagramPosition? in
+            guard let p = node.position, p.x.isFinite, p.y.isFinite,
+                  abs(p.x) <= 10_000, abs(p.y) <= 10_000 else { return nil }
+            return p
+        }
+        // Preserve a mostly complete saved layout only if the cards do not collide.
+        let enoughCoverage = !nodes.isEmpty && valid.compactMap { $0 }.count * 4 >= nodes.count * 3
+        if enoughCoverage {
+            let minX = valid.compactMap { $0?.x }.min() ?? 0
+            let minY = valid.compactMap { $0?.y }.min() ?? 0
+            for i in boxes.indices {
+                if let p = valid[i] { boxes[i].x = p.x - minX + margin; boxes[i].y = p.y - minY + margin }
+            }
+            let saved = boxes.indices.filter { valid[$0] != nil }
+            var overlapping = false
+            for (offset, i) in saved.enumerated() {
+                for j in saved.dropFirst(offset + 1) {
+                    if boxes[i].x < boxes[j].x + width + 24 && boxes[j].x < boxes[i].x + width + 24
+                        && boxes[i].y < boxes[j].y + boxes[j].height + 24
+                        && boxes[j].y < boxes[i].y + boxes[i].height + 24 { overlapping = true }
+                }
+            }
+            let extentX = saved.map { boxes[$0].x + width }.max() ?? 0
+            let extentY = saved.map { boxes[$0].y + boxes[$0].height }.max() ?? 0
+            if !overlapping && extentX <= 12_000 && extentY <= 12_000 {
+                var bottom = extentY + 64
+                for i in boxes.indices where valid[i] == nil {
+                    boxes[i].x = margin
+                    boxes[i].y = bottom
+                    bottom += boxes[i].height + 64
+                }
+                return boxes
+            }
+        }
+        let strideY = (boxes.map(\.height).max() ?? header) + 64
+        for i in boxes.indices {
+            boxes[i].x = margin + Double(i % 3) * (width + 100)
+            boxes[i].y = margin + Double(i / 3) * strideY
+        }
+        return boxes
+    }
+
+    private func anchor(_ field: String, in box: Box) -> Double {
+        guard let index = box.node.fields.firstIndex(where: { $0.id == field }) else { return box.y + header / 2 }
+        return box.y + header + row * (Double(index) + 0.5)
+    }
+
+    private func connector(_ edge: DiagramEdge, index: Int, source: Box, destination: Box,
+                           selfRelation: Bool) -> String {
+        let sy = anchor(edge.sourceField, in: source)
+        let dy = anchor(edge.destinationField, in: destination)
+        let rightward = destination.x > source.x
+        let sameColumn = destination.x == source.x
+        let sx = source.x + (rightward || sameColumn ? width : 0)
+        let dx = destination.x + (rightward && !selfRelation ? 0 : width)
+        let lane = 36.0 + Double(index % 5) * 8
+        let path: String
+        if selfRelation {
+            let outside = sx + lane
+            let middleY = sy == dy ? sy - 22 : (sy + dy) / 2
+            path = "M \(n(sx)) \(n(sy)) C \(n(outside)) \(n(sy)), \(n(outside)) \(n(middleY)), \(n(outside)) \(n(middleY)) C \(n(outside)) \(n(dy)), \(n(outside)) \(n(dy)), \(n(dx)) \(n(dy))"
+        } else {
+            let bend = sameColumn ? sx + lane : (sx + dx) / 2
+            path = "M \(n(sx)) \(n(sy)) C \(n(bend)) \(n(sy)), \(n(bend)) \(n(dy)), \(n(dx)) \(n(dy))"
+        }
+        let sourceName = source.node.fields.first(where: { $0.id == edge.sourceField })?.name ?? edge.sourceField
+        let destinationName = destination.node.fields.first(where: { $0.id == edge.destinationField })?.name ?? edge.destinationField
+        let tip = "\(edge.label): \(source.node.title).\(sourceName) → \(destination.node.title).\(destinationName)"
+        let arrowX = dx + (rightward && !selfRelation ? -7 : 7)
+        let arrow = "M \(n(arrowX)) \(n(dy - 4)) L \(n(dx)) \(n(dy)) L \(n(arrowX)) \(n(dy + 4))"
+        return "<g class=\"diagram-edge\" data-source-node=\"\(esc(edge.sourceNode))\" data-source-field=\"\(esc(edge.sourceField))\" data-destination-node=\"\(esc(edge.destinationNode))\" data-destination-field=\"\(esc(edge.destinationField))\"><title>\(esc(tip))</title><path d=\"\(path)\"/><path d=\"\(arrow)\"/><circle cx=\"\(n(sx))\" cy=\"\(n(sy))\" r=\"3\"/><circle cx=\"\(n(dx))\" cy=\"\(n(dy))\" r=\"3\"/></g>"
+    }
+
+    private func table(_ box: Box) -> String {
+        let node = box.node
+        var svg = "<g class=\"diagram-node\" data-node-id=\"\(esc(node.id))\" transform=\"translate(\(n(box.x)) \(n(box.y)))\"><title>\(esc(node.title))\(node.hidden ? " (hidden table)" : "")</title>"
+        svg += "<rect class=\"diagram-card\" width=\"\(n(width))\" height=\"\(n(box.height))\" rx=\"7\"/>"
+        svg += "<path class=\"diagram-header-line\" d=\"M 0 \(n(header)) H \(n(width))\"/>"
+        svg += "<text class=\"diagram-heading\(node.hidden ? " diagram-hidden" : "")\" x=\"\(n(width / 2))\" y=\"24\" text-anchor=\"middle\">\(esc(short(node.title, limit: 34)))</text>"
+        for (index, field) in node.fields.enumerated() {
+            let y = header + row * Double(index)
+            let full = "\(field.name): \(field.type)\(field.primaryKey ? " (primary key)" : "")\(field.indexed ? " (indexed)" : "")\(field.hidden ? " (hidden)" : "")"
+            svg += "<g class=\"diagram-field\(field.hidden ? " diagram-hidden" : "")\" data-field-id=\"\(esc(field.id))\"><title>\(esc(full))</title>"
+            let nameClass = "diagram-field-name" + (field.primaryKey ? " diagram-primary-key" : "") + (field.indexed ? " diagram-indexed" : "")
+            svg += "<text class=\"\(nameClass)\" x=\"12\" y=\"\(n(y + 18))\">\(esc(short(field.name, limit: 22)))</text>"
+            svg += "<text class=\"diagram-type\" x=\"288\" y=\"\(n(y + 18))\" text-anchor=\"end\">\(esc(short(field.type, limit: 12)))</text></g>"
+        }
+        if node.omittedFields > 0 {
+            svg += "<text class=\"diagram-omitted\" x=\"12\" y=\"\(n(header + row * Double(node.fields.count) + 18))\">\(node.omittedFields) fields omitted</text>"
+        }
+        return svg + "</g>"
+    }
+
+    private func short(_ text: String, limit: Int) -> String {
+        text.count > limit ? String(text.prefix(limit - 1)) + "…" : text
+    }
+
+    private func esc(_ text: String) -> String { HTMLRenderer.escape(text) }
+    private func n(_ value: Double) -> String {
+        String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+
+    static let css = """
+    .diagram-viewport{max-width:100%;max-height:max(320px,calc(100vh - 180px));overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+    .diagram-viewport:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+    .diagram-svg{display:block;max-width:none;font:12px -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
+    .diagram-card{fill:var(--soft);stroke:var(--faint);stroke-width:1}
+    .diagram-header-line{stroke:var(--line)}
+    .diagram-node text{fill:var(--fg)}.diagram-heading{font-weight:600;font-size:14px}
+    .diagram-node .diagram-type,.diagram-node .diagram-omitted{fill:var(--muted);font-size:11px}
+    .diagram-hidden{font-style:italic}
+    .diagram-primary-key{text-decoration:underline}
+    .diagram-indexed{font-weight:700}
+    .diagram-edge path{fill:none;stroke:var(--accent);stroke-width:1.5}
+    .diagram-edge circle{fill:var(--accent)}
+    """
+}

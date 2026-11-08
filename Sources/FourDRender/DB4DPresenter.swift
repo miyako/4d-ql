@@ -103,23 +103,26 @@ public struct DB4DPresenter: ReportPresenter {
 
     /// Field types grouped into eight families, each with a fixed colour slot.
     static let families: [(name: String, slot: Int, kinds: Set<FieldKind>)] = [
-        ("Text", 1, [.text, .legacyText, .uuid]),
-        ("Integer", 2, [.integer, .longint, .integer64]),
+        ("Text", 1, [.text, .legacyText, .unlimitedText, .uuid]),
+        ("Integer", 2, [.byte, .integer, .longint, .integer64]),
         ("Real", 3, [.real, .float]),
         ("Date & time", 4, [.date, .time]),
         ("Boolean", 5, [.boolean]),
         ("Picture", 6, [.picture]),
-        ("BLOB", 7, [.blob]),
+        ("BLOB", 7, [.blob, .legacyBlob]),
         ("Object", 8, [.object]),
     ]
 
     private func fieldTypes(_ info: DB4DFileInfo) -> Block {
-        let fields = info.tables.flatMap(\.fields)
+        Self.fieldTypes(info.tables.flatMap(\.fields).map(\.kind))
+    }
+
+    static func fieldTypes(_ kinds: [FieldKind?]) -> Block {
         var segments = Self.families.map { fam -> Segment in
-            let n = fields.filter { $0.kind.map(fam.kinds.contains) ?? false }.count
+            let n = kinds.filter { $0.map(fam.kinds.contains) ?? false }.count
             return Segment(label: fam.name, value: Double(n), display: Fmt.n(n), slot: fam.slot)
         }
-        let unknown = fields.filter { $0.kind == nil }.count
+        let unknown = kinds.filter { $0 == nil }.count
         if unknown > 0 { segments.append(Segment(label: "Other", value: Double(unknown), display: Fmt.n(unknown), slot: nil)) }
         return .composition(segments)
     }

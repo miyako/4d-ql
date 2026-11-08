@@ -23,6 +23,7 @@ public final class AnalyzerRegistry {
     public static let `default` = AnalyzerRegistry([
         DataFileAnalyzer(),
         StructureFileAnalyzer(),
+        CatalogAnalyzer(),
         TextFileAnalyzer(format: .xml),
         TextFileAnalyzer(format: .json),
         MethodFileAnalyzer(),

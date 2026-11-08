@@ -59,13 +59,13 @@ final class FourDFileKitTests: XCTestCase {
         XCTAssertTrue(html.contains("&quot;v&quot;"))
     }
 
-    /// Runs every *.4DD / *.4DB in $FOURD_SAMPLES through the full pipeline.
+    /// Runs every supported file in $FOURD_SAMPLES through the full pipeline.
     func testSampleFiles() throws {
         guard let dir = ProcessInfo.processInfo.environment["FOURD_SAMPLES"] else {
             throw XCTSkip("set FOURD_SAMPLES to a folder of sample files")
         }
         let files = try FileManager.default.contentsOfDirectory(atPath: dir)
-            .filter { ["4dd", "4db"].contains(($0 as NSString).pathExtension.lowercased()) }
+            .filter { ["4dd", "4db", "4dcatalog"].contains(($0 as NSString).pathExtension.lowercased()) }
         for f in files {
             let url = URL(fileURLWithPath: dir).appendingPathComponent(f)
             _ = PreviewPipeline().html(for: url) // must not crash
