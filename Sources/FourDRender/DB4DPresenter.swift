@@ -117,7 +117,7 @@ public struct DB4DPresenter: ReportPresenter {
     static func fieldTypes(_ kinds: [FieldKind?]) -> Block {
         var segments = Self.families.map { fam -> Segment in
             let members = kinds.compactMap { $0 }.filter(fam.kinds.contains)
-            let icons = Set(members.map { icon(for: $0) })
+            let icons = Set(members.map { $0 == .time ? .date : icon(for: $0) })
             return Segment(label: fam.name, value: Double(members.count), display: Fmt.n(members.count),
                            slot: fam.slot, icons: FieldTypeIcon.allCases.filter(icons.contains))
         }

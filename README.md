@@ -63,7 +63,8 @@ the same summary space as one with 5 (hover a bar for details).
 
 The `.4DB` and `.4DD` field-type charts use the catalog's original inline SVG
 icons and matching light/dark colors. The eight family counts stay unchanged;
-Text/UUID and Date/Time show distinct icons for the types present. Unknown types
+Text/UUID show distinct icons for the types present; Date/Time use a single
+calendar icon, including time-only charts. Unknown types
 keep a neutral question-mark icon and the "Other" count.
 
 Catalog previews lead with the diagram, without summary charts or relation
