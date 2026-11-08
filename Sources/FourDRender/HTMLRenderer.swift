@@ -122,13 +122,16 @@ public struct HTMLRenderer {
             }.joined() + "</ol>"
 
         case .queryConditions(let conditions):
-            return "<ol class=\"query-conditions\">" + conditions.map { condition in
-                "<li><span class=\"query-connector\">\(esc(condition.connector))</span>"
-                    + "<div class=\"query-card\"><div class=\"query-field\">\(esc(condition.field))</div>"
-                    + "<div class=\"query-operation\">\(esc(condition.operation))"
-                    + " <span class=\"query-code\">criterion \(esc(condition.code))</span></div>"
-                    + block(.keyValues(condition.operands)) + "</div></li>"
-            }.joined() + "</ol>"
+            var h = "<ol class=\"query-conditions\">"
+            for condition in conditions {
+                h += "<li><span class=\"query-connector\">\(esc(condition.connector))</span>"
+                h += "<div class=\"query-card\"><div class=\"query-field\">\(esc(condition.field))</div>"
+                h += "<div class=\"query-operation\">\(esc(condition.operation))"
+                h += " <span class=\"query-code\">criterion \(esc(condition.code))</span></div>"
+                h += block(.keyValues(condition.operands))
+                h += "</div></li>"
+            }
+            return h + "</ol>"
 
         case .structureDiagram(let diagram):
             return StructureDiagramRenderer().render(diagram)
