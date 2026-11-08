@@ -13,6 +13,7 @@ file to see what is inside instead of a generic icon.
 | `.4DProject` project file | syntax-highlighted JSON source with indentation and line breaks preserved |
 | `.4df` saved query | condition cards with table/field numbers, comparison labels, AND/OR/EXCEPT connectors, saved values, and selection destination; original JSON folded below |
 | `.4dm` method / class source | syntax-highlighted UTF-8 source with line numbers, line count and file size |
+| `.4DForm` form | approximate macOS form layout, page 0 plus selectable numbered pages, and Classic / Liquid Glass light and dark appearances with local stylesheets and JSON pointers |
 
 Even a 220 MB data file previews in about 30 ms, because only header blocks are read.
 
@@ -42,6 +43,79 @@ and its [tree-sitter grammar](https://github.com/miyako/tree-sitter-fourd).
 Previews read at most 256 KiB and show at most 1,000 lines, with a visible
 notice when truncated (including in CLI `--thorough` mode). UTF-8 BOMs and
 Windows/classic Mac line endings are supported; invalid UTF-8 is reported.
+
+Form previews use a self-contained SVG canvas, not a running 4D instance.
+They preserve JSON object declaration order (paint order), include page 0
+behind every numbered page, honor saved coordinates and form-size anchors,
+and provide scrollable canvases and script-free page/appearance selectors.
+The viewer's appearance is used initially; an explicit form `colorScheme`
+is respected. Liquid Glass buttons and dropdowns use the documented
+27-point rounded-control threshold and measured native height/font variants;
+tall dropdowns retain a rectangular fallback.
+
+Stylesheets load in 4D order: `Project/Sources/styleSheets.css`,
+`styleSheets_mac.css`, then the form's `css` references (Windows-only
+references are ignored). Supported selectors are object types, names,
+classes, compounds, universal and attribute selectors; nested
+`prefers-color-scheme` / `form-theme` media queries are evaluated for
+each appearance. JSON properties beat ordinary CSS, while `!important`
+can override them. Common web-property aliases are mapped to 4D names,
+including styles on listbox columns, headers and footers. Unsupported
+selectors, at-rules and unavailable dependencies produce preview notices.
+
+Recursive `$ref` pointers support local and external JSON documents,
+RFC 6901 escapes, array indices, and local-property overrides. Relative
+paths retain the referring document's base. Local pictures, button icons
+and their `_dark` variants are embedded; picture-button/popup sprite sheets
+show their first frame. Raster images are converted to bounded PNGs.
+Basic passive SVG artwork is supported; active content, external references
+and unsupported SVG constructs are rejected.
+Dependencies are confined to the conventional project's package folder,
+or the selected form's folder for standalone files, including after symlink
+resolution. `/PROJECT`, `/SOURCES`, `/RESOURCES` and `/PACKAGE` are mapped
+only when a project is discoverable; runtime `/DATA` and `/LOGS` paths,
+network paths and variable pictures are not loaded.
+**Finder's Quick Look sandbox may grant access only to the selected file**:
+project CSS, external templates and pictures are best-effort, with notices
+when inaccessible. The CLI uses the same logic but can normally read them.
+
+Native controls are approximations, not pixel-identical AppKit widgets.
+Bound inputs, dropdowns, combos and dynamic tabs display their saved
+expressions rather than inventing runtime values. Static tab labels and
+listbox headers are shown; listbox bodies show expression placeholders,
+not records. Subforms, inherited forms, web areas, Write Pro, View Pro and
+plug-ins are placeholders or explicitly unexpanded. Methods, dynamic
+styling, translations and application-level appearance settings are not
+executed or resolved. Native animation, focus rings and Liquid Glass
+materials are not simulated.
+
+The rendering reference combines the canonical
+[4D form](https://github.com/miyako/skills/tree/dist/skills/4dform),
+[CSS](https://github.com/miyako/skills/tree/dist/skills/4dcss) and
+[CLI](https://github.com/miyako/skills/tree/dist/skills/4dcli) skills with
+captures from 4D 21 R4 build 100208 on macOS 26.7. Named-form
+[`FORM SCREENSHOT`](https://developer.4d.com/docs/commands/form-screenshot)
+captures ignore CSS; a loaded-form screenshot and printed forms can apply
+it, but neither substitutes for a live dialog. The measured light
+Liquid Glass geometry informs the preview's discrete sizes, one listbox
+expression row, page-zero layering and asymmetric single-line input
+rounding. Dark captures were incomplete, classic rendering was unavailable
+on that host, and the bounded GUI
+[`FORM EDIT`](https://developer.4d.com/docs/commands/form-edit) attempt did
+not reach its startup method. Dark/classic styling therefore remains an
+approximation rather than a claimed native-match result.
+
+Form JSON is limited to 4 MiB, 64 nesting levels and 100,000 values;
+duplicate keys are rejected to avoid ambiguous paint order. Dependencies
+are limited to 64 regular files, 4 MiB each and 16 MiB total; pointer
+expansion is bounded to 100,000 values and depth 64. CSS is limited to
+5,000 rules, 20,000 declarations per file, 16 nested media blocks and
+1,000,000 object/rule matches. At most 16 numbered pages, 1,000 objects
+per appearance, 64 listbox columns, and 200 grid rows are drawn; canvases
+are cropped at 8,192 points per side. Images are limited to 32 megapixels
+and 2,048-pixel raster thumbnails, with a 24 MiB embedded-image budget.
+Original JSON is retained in analysis output and displayed up to 256 Ki
+characters in its disclosure. Parsing is not full 4D schema validation.
 
 ### What is shown, and what is not
 
@@ -112,6 +186,8 @@ Sources/
                          structured .4si import/export settings
     Query/               JSON .4df saved query conditions and metadata
     Method/              bounded UTF-8 .4dm reader and regex lexer
+    Form/                ordered JSON, bounded pointers/dependencies,
+                         macOS theme-aware 4D stylesheet cascade
   FourDRender/           rendering layer: model -> Report -> HTML
     Report.swift         generic page model (stats, badges, tables, bars, disclosures)
     *Presenter.swift     one presenter per model kind

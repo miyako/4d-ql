@@ -1,0 +1,9 @@
+@media (form-theme: mac-classic) {
+    .primary { height: 23px; }
+}
+@media (form-theme: liquid-glass) {
+    .primary { height: 27px; }
+    @media (prefers-color-scheme: dark) {
+        listbox { alternateFill: #30343B; }
+    }
+}

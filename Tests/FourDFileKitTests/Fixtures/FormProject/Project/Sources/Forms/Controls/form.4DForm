@@ -1,0 +1,38 @@
+{
+  "$4d": {"version": "1", "kind": "form"},
+  "windowTitle": "Contact",
+  "destination": "detailScreen",
+  "width": 600,
+  "height": 420,
+  "css": ["local.css", {"path": "windows.css", "media": "windows"}],
+  "pages": [
+    {"objects": {
+      "background": {"type": "rectangle", "left": 0, "top": 0, "width": 600, "height": 52, "fill": "automaticAlternate", "borderStyle": "none"},
+      "heading": {"type": "text", "left": 20, "top": 17, "width": 460, "height": 25, "text": "Contact", "fontSize": 20, "fontWeight": "bold"},
+      "logo": {"type": "picture", "left": 550, "top": 12, "width": 26, "height": 26, "picture": "/RESOURCES/logo.svg", "pictureFormat": "scaled"},
+      "cancel": {"type": "button", "left": 380, "top": 372, "width": 90, "height": 27, "text": "Cancel"},
+      "save": {"type": "button", "class": "primary", "left": 482, "top": 372, "width": 90, "text": "Save", "defaultButton": true}
+    }},
+    {"objects": {
+      "tabs": {"type": "tab", "left": 20, "top": 65, "width": 320, "height": 28, "labels": ["Details", "Notes"]},
+      "nameLabel": {"type": "text", "left": 24, "top": 112, "width": 80, "height": 22, "text": "Name"},
+      "name": {"$ref": "templates.json#/input", "type": "input", "left": 120, "top": 110, "dataSource": "Form.contact.name"},
+      "role": {"type": "dropdown", "left": 120, "top": 149, "width": 200, "height": 27, "dataSource": "Form.contact.role"},
+      "active": {"type": "checkbox", "left": 120, "top": 190, "width": 160, "height": 22, "text": "Active contact"},
+      "work": {"type": "radio", "left": 330, "top": 190, "width": 120, "height": 22, "text": "Work"},
+      "emails": {
+        "type": "listbox", "left": 24, "top": 234, "width": 550, "height": 112,
+        "listboxType": "collection", "dataSource": "Form.contact.emails",
+        "rowHeight": "24px", "headerHeight": "24px", "showHeaders": true,
+        "columns": [
+          {"name": "email", "width": 320, "dataSource": "This.address", "header": {"name": "emailHeader", "text": "Email address"}},
+          {"name": "kind", "width": 180, "dataSource": "This.kind", "header": {"text": "Kind"}}
+        ]
+      },
+      "hidden": {"type": "button", "left": 24, "top": 350, "width": 100, "height": 20, "visibility": "hidden", "text": "Hidden"}
+    }},
+    {"objects": {
+      "notes": {"type": "input", "left": 24, "top": 112, "width": 550, "height": 232, "dataSource": "Form.contact.notes", "borderStyle": "solid", "multiline": "yes"}
+    }}
+  ]
+}

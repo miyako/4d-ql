@@ -3,3 +3,4 @@ build/
 .swiftpm/
 .DS_Store
 .claude/
+/tools/4dform/

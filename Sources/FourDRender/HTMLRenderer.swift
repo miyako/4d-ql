@@ -10,6 +10,9 @@ public struct HTMLRenderer {
 
     public func render(_ report: Report) -> String {
         var h = "<!doctype html><html><head><meta charset=\"utf-8\">"
+        if report.sections.flatMap(\.blocks).contains(where: { if case .formPreview = $0 { return true }; return false }) {
+            h += "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'\">"
+        }
         h += "<meta name=\"color-scheme\" content=\"light dark\">"
         h += "<title>\(esc(report.title))</title><style>\(Self.css)</style></head><body>"
         h += "<header><h1>\(esc(report.title))</h1>"
@@ -41,7 +44,7 @@ public struct HTMLRenderer {
     }
 
     private func section(_ s: Section) -> String {
-        "<section><h2>\(esc(s.title))</h2>" + s.blocks.map(block).joined() + "</section>"
+        "<section>" + (s.title.isEmpty ? "" : "<h2>\(esc(s.title))</h2>") + s.blocks.map(block).joined() + "</section>"
     }
 
     private func block(_ b: Block) -> String {
@@ -129,6 +132,9 @@ public struct HTMLRenderer {
 
         case .structureDiagram(let diagram):
             return StructureDiagramRenderer().render(diagram)
+
+        case .formPreview(let preview):
+            return FormPreviewRenderer().render(preview)
 
         case .disclosure(let summary, let detail, let blocks):
             var h = "<details><summary><span class=\"st\">\(esc(summary))</span>"
