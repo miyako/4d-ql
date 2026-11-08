@@ -24,6 +24,7 @@ public final class AnalyzerRegistry {
         DataFileAnalyzer(),
         StructureFileAnalyzer(),
         CatalogAnalyzer(),
+        ImportExportSettingsAnalyzer(),
         TextFileAnalyzer(format: .xml),
         TextFileAnalyzer(format: .json),
         QueryFileAnalyzer(),
