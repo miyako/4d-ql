@@ -20,6 +20,13 @@
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.queryFile</string>
+			<key>UTTypeDescription</key><string>4D Saved Query</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>4df</string><string>4DF</string></array></dict>
+		</dict>
+		<dict>
 			<key>UTTypeIdentifier</key><string>com.4d.4d.ie-settings</string>
 			<key>UTTypeDescription</key><string>4D Import/Export Settings</string>
 			<key>UTTypeConformsTo</key><array><string>public.data</string></array>

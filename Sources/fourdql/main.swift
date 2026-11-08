@@ -77,6 +77,11 @@ func printBlock(_ b: Block, indent: String) {
         print(indent + t.columns.map(\.0).joined(separator: " | "))
         t.rows.forEach { print(indent + $0.joined(separator: " | ")) }
         if let more = t.more { print(indent + more) }
+    case .queryConditions(let conditions):
+        for condition in conditions {
+            print("\(indent)\(condition.connector) \(condition.field) \(condition.operation) [criterion \(condition.code)]")
+            condition.operands.forEach { print("\(indent)  \($0.key): \($0.value)") }
+        }
     case .bars(let rows, let valueHeader, let extraHeader):
         print("\(indent)(\(valueHeader)\(extraHeader.isEmpty ? "" : " / \(extraHeader)"))")
         rows.forEach { print("\(indent)\($0.label)\($0.marker.map { " \($0)" } ?? ""): \($0.display)\($0.extra.isEmpty ? "" : " / \($0.extra)")") }

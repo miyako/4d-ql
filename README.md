@@ -11,6 +11,7 @@ file to see what is inside instead of a generic icon.
 | `.4DSettings` settings file | syntax-highlighted XML source with indentation and line breaks preserved |
 | `.4si` import/export settings | fields in saved import/export order, readable field types, table and format settings, and text/other options in tables |
 | `.4DProject` project file | syntax-highlighted JSON source with indentation and line breaks preserved |
+| `.4df` saved query | condition cards with table/field numbers, comparison labels, AND/OR/EXCEPT connectors, saved values, and selection destination; original JSON folded below |
 | `.4dm` method / class source | syntax-highlighted UTF-8 source with line numbers, line count and file size |
 
 Even a 220 MB data file previews in about 30 ms, because only header blocks are read.
@@ -37,6 +38,18 @@ notice when truncated (including in CLI `--thorough` mode). UTF-8 BOMs and
 Windows/classic Mac line endings are supported; invalid UTF-8 is reported.
 
 ### What is shown, and what is not
+
+Saved-query previews decode version 3 UTF-8 JSON (including BOMs), limited
+to 4 MiB. They show at most 200 condition cards; the original JSON and CLI
+JSON output retain all lines and properties, including unfamiliar inputs.
+Table/field names and types are not present in standalone `.4df` files.
+Type-dependent criterion codes therefore show alternatives rather than
+guessing a field type; unknown codes remain labeled with their saved number.
+Values are displayed as saved, not executed or interpreted as 4D formulas.
+Only the version number accompanies the Original JSON disclosure; additional
+metadata is available in the JSON rather than explanatory footnotes.
+Other versions show a notice and the original JSON; legacy binary queries
+and malformed JSON report an error.
 
 Quick Look has little room, so the preview leads with what matters to a user
 or developer, and every block has a fixed size: a file with 500 tables takes
@@ -80,6 +93,7 @@ Sources/
     Catalog/             .4DCatalog XML definitions and relation references
     Text/                XML .4DSettings / JSON .4DProject source text,
                          structured .4si import/export settings
+    Query/               JSON .4df saved query conditions and metadata
     Method/              bounded UTF-8 .4dm reader and regex lexer
   FourDRender/           rendering layer: model -> Report -> HTML
     Report.swift         generic page model (stats, badges, tables, bars, disclosures)

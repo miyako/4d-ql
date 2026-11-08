@@ -106,6 +106,7 @@ public indirect enum Block {
     /// A 100% stacked bar with a legend that always names every segment.
     case composition([Segment])
     case table(Table)
+    case queryConditions([QueryCondition])
     /// A bounded, format-independent table/field relationship diagram.
     case structureDiagram(StructureDiagram)
     /// Collapsible group with a summary line.
@@ -115,6 +116,22 @@ public indirect enum Block {
     /// Source text with its whitespace preserved.
     case sourceCode(String, language: CodeLanguage = .plain)
     case code([CodeSpan])
+}
+
+public struct QueryCondition {
+    public var connector: String
+    public var field: String
+    public var operation: String
+    public var code: String
+    public var operands: [KeyValue]
+
+    public init(connector: String, field: String, operation: String, code: String, operands: [KeyValue]) {
+        self.connector = connector
+        self.field = field
+        self.operation = operation
+        self.code = code
+        self.operands = operands
+    }
 }
 
 public struct CodeSpan {
