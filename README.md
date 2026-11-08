@@ -17,21 +17,19 @@ file to see what is inside instead of a generic icon.
 
 Even a 220 MB data file previews in about 30 ms, because only header blocks are read.
 
-### Standalone form rendering
+### Shared form rendering
 
-`fourdform` and the public `FourDRender.FormRenderer` API reuse the calibrated
-form pipeline without 4D, Quick Look, the hosting app or its XPC service.
-Generate one self-contained HTML preview or versioned JSON export:
+This repository ships the macOS Quick Look app and extension. The independent
+form-image CLI belongs to [4d-form](https://github.com/miyako/4d-form), which
+consumes the public `FourDFileKit` and `FourDRender` libraries instead of
+maintaining a second parser or calibrated renderer. The preliminary HTML/JSON-only
+`fourdform` executable is not a Quick Look release product.
 
-```sh
-scripts/build-form-renderer.sh
-build/standalone/fourdform --language en --output preview.html path/to/form.4DForm
-build/standalone/fourdform --json --language fr path/to/form.4DForm > form-reference.json
-```
-
-The current executable is macOS-specific, not a validated Windows port.
-See [standalone API/CLI and static-feature contract](docs/FORM-RENDERER.md)
-and the [Windows handover](docs/WINDOWS-HANDOVER.md).
+`FourDRender.FormRenderer` provides in-process HTML and versioned JSON without
+4D, Quick Look, the hosting app or its XPC service. See the
+[shared API and static-feature contract](docs/FORM-RENDERER.md) and the
+[Windows handover](docs/WINDOWS-HANDOVER.md). The current libraries are
+macOS-specific, not a validated Windows port.
 
 Import/export settings previews preserve field order (which can differ from field
 numbers), display missing values explicitly, and retain unknown field types and
@@ -173,7 +171,7 @@ preview while the selected form's checksum remained unchanged.
 
 Do not grant Full Disk Access or broad access to other apps' data for this
 feature. Ad-hoc builds leave project sharing disabled; they still preview the
-selected file and support the standalone CLI. Signed macOS builds default to
+selected file and support the development `fourdql` CLI. Signed macOS builds default to
 the signing team's `<Team ID>.<bundle ID>.ProjectContext` app group. A custom
 `PROJECT_GROUP` must be authorized by the signing configuration.
 

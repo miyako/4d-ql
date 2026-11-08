@@ -138,14 +138,14 @@ final class AppDelegate: NSResponder, NSApplicationDelegate, QLPreviewPanelDataS
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Project access failed"
-        alert.informativeText = "\(error.localizedDescription)\n\n\(error as NSError)"
+        alert.informativeText = error.localizedDescription
         alert.runModal()
     }
 
     static let welcome = """
     4D Quick Look is installed
 
-    Select a .4DForm, .4DD, .4DB, or .4dm file in Finder and press Space.
+    Select a .4DForm, .4DD, .4DB, .4DCatalog, .4DSettings, .4si, .4DProject, .4df or .4dm file in Finder and press Space.
 
     Use Authorize project... to let the sandboxed service read that project's CSS, JSON pointers, pictures and static form resources. Finder receives a fresh, self-contained preview. Access is read-only and does not run 4D or project methods.
 

@@ -1,59 +1,41 @@
-# Standalone form renderer
+# Shared form renderer
 
-`fourdform` renders one saved form to self-contained HTML or a versioned JSON
-document. It uses the same `FourDFileKit` analysis, `FormPresenter` and
-`FormPreviewRenderer` as the macOS extension. There is no separate drawing
-implementation.
+The public `FourDRender.FormRenderer` API renders one saved form to
+self-contained HTML and a versioned JSON document. It uses the same
+`FourDFileKit` analysis, `FormPresenter` and `FormPreviewRenderer` as the macOS
+extension. There is no separate drawing implementation.
+
+This repository releases the Quick Look app/extension.
+The independent image CLI is developed and released in
+[4d-form](https://github.com/miyako/4d-form), using these library products.
+The preliminary HTML/JSON-only `fourdform` executable and its packaging have
+been removed; reusable API, static behavior and calibration tests remain here.
 
 **Runtime:** macOS 12 or later; no 4D installation, hosting app, Quick Look,
 XPC service, browser automation or network connection is required to generate
 output. Viewing the HTML requires a browser. AppKit, CoreText, ImageIO and
 Foundation are system dependencies. This is not yet a native Windows binary.
 
-## Build and run
+## Build
 
 From the repository root with Swift 5.9 or later and the macOS SDK:
 
 ```sh
-swift build --product fourdform
-.build/debug/fourdform --help
-.build/debug/fourdform --language en --output preview.html \
-  Tests/FourDFileKitTests/Fixtures/FormProject/Project/Sources/Forms/Controls/form.4DForm
+swift build --target FourDRender
 ```
 
-Build the universal release executable without building or registering the
-Quick Look app:
+External Swift packages can depend on this repository at a pinned release
+revision and select the `FourDFileKit` and `FourDRender` products; they do not
+need the Quick Look executable targets. Project-dependent forms still need
+their project files at input time; generated HTML embeds pictures and styles
+and can be moved independently.
 
-```sh
-scripts/build-form-renderer.sh
-build/standalone/fourdform --language fr --theme classic-dark --page 2 \
-  --output preview.html \
-  Tests/FourDFileKitTests/Fixtures/FormStaticProject/Project/Sources/Forms/Root/form.4DForm
-```
-
-This script ad-hoc signs a local development artifact; it does not notarize a
-downloadable distribution.
-
-The executable can be copied away from the app/repository. Project-dependent
-forms still need their project files at input time; the generated HTML embeds
-its pictures and styles and can be moved independently.
-
-The CLI emits one document per invocation. HTML is the default. `--json`
-selects the versioned analysis export; `--html` selects HTML. `--output`/`-o`
-writes atomically to an existing parent directory; without it, output goes to
-stdout. Output cannot replace the input form. Warnings go to stderr as well
-as the HTML notices or JSON `notices`. Exit status is 0 for a rendered
-approximation, 1 for analysis/render/output failure, and 2 for invalid command
-syntax. Failures do not produce success-shaped error HTML.
-
-`--language` may be repeated in preference order. Without it, the macOS
-preferred languages are used, with the analyzer's project fallback rules.
-`--theme` accepts `classic-light`, `classic-dark`, `glass-light` or `glass-dark`.
-It chooses the initial appearance; all permitted appearance selectors remain
-in the HTML. A form's explicit `colorScheme` is honored, so a conflicting
-requested theme is an error. `--page N` chooses an existing initial page,
-including page 0. With no explicit selection, the calibrated viewer defaults
-remain unchanged. Use `--` before a path beginning with `-`.
+Language preferences are ordered, defaulting to macOS preferred languages
+and the analyzer's project fallback rules. `FormRenderOptions` selects an
+initial appearance and page (including page 0). All permitted appearance
+selectors remain in the HTML. A form's explicit `colorScheme` is honored;
+a conflicting requested theme is an error. Without explicit selections,
+the calibrated viewer defaults remain unchanged.
 
 ## Swift API
 
@@ -83,14 +65,14 @@ let result = try renderer.render(form: form, options: FormRenderOptions(initialP
 
 `FormFileAnalyzer.analyzeForm(_:options:)` is the typed analyzer entry point
 for callers already holding a `ByteSource`. Existing registry-based analysis
-continues to use the same implementation. The standalone API throws parse,
+continues to use the same implementation. The shared API throws parse,
 dependency-budget and invalid-selection errors; missing or unsupported static
 resources that can be approximated remain explicit notices.
 
 Language selection occurs during analysis. Rendering an already analyzed
 `FormFileInfo` does not reread project files or change its localization.
 Callers are responsible for filesystem access. Only Finder uses the separate
-folder-authorization/XPC boundary; standalone callers do not need it.
+folder-authorization/XPC boundary; library callers do not need it.
 
 ## JSON boundary: schema version 1
 
@@ -143,22 +125,20 @@ The existing limits remain: 4 MiB JSON, depth 64/100,000 values, 64 dependency
 files/16 MiB total, 16 numbered pages, 1,000 objects per appearance, 8,192-point
 canvas sides, bounded CSS matching, 32-megapixel pictures/2,048-pixel thumbnails,
 24 MiB embedded images, and 4,096 UTF-16 units/100 lines per text label.
-Dependency confinement and passive-SVG/entity rejection apply to standalone
+Dependency confinement and passive-SVG/entity rejection apply to library
 rendering just as they do in Finder.
 
 ## Verification
 
 ```sh
 swift test --filter FormRendererTests
-python3 scripts/test-form-renderer.py --renderer .build/debug/fourdform
-scripts/build-form-renderer.sh
-python3 scripts/test-form-renderer.py --renderer build/standalone/fourdform
+swift test --filter 'FormStatic|FormTextLayout|FormBenchmark'
 ```
 
-The CLI check copies only the executable to a temporary directory, runs with
-an empty `PATH`, and checks CSS/pointers/pictures, inherited/subform order,
-French XLIFF, HTML/JSON output, initial selections and error exit statuses.
-Default standalone HTML is tested byte-for-byte against the shared preview
-pipeline. Native-reference tools in the main README are development-only.
+The API tests check CSS/pointers/pictures, inherited/subform order, French
+XLIFF, HTML/JSON output, initial selections and thrown errors.
+Default API HTML is tested byte-for-byte against the shared preview pipeline.
+Image CLI output and isolated-executable checks belong to `4d-form`.
+Native-reference tools in the main README are development-only.
 
 See [Windows handover](WINDOWS-HANDOVER.md) for the remaining platform work.

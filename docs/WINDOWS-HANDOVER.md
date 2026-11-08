@@ -2,9 +2,11 @@
 
 ## Status and entry point
 
-The calibrated macOS implementation is shared by a standalone Swift API,
-`fourdform`, and the Quick Look extension. The macOS phase baseline is
-`16d44b6`; the standalone interface is documented in
+The calibrated macOS implementation is shared by a public Swift API and the
+Quick Look extension. The independent image CLI lives in
+[4d-form](https://github.com/miyako/4d-form) and consumes the same libraries;
+the preliminary HTML/JSON-only executable is no longer packaged here.
+The macOS phase baseline is `16d44b6`; the shared interface is documented in
 [FORM-RENDERER.md](FORM-RENDERER.md).
 
 **No Windows executable, Windows native screenshot, Explorer integration or
@@ -29,7 +31,7 @@ validated Windows-native renderer nor a substitute for Windows font metrics.
 | `FormFileAnalyzer.analyzeForm` | Typed analysis seam and image-ID mapping | Extract/replace Apple image conversion |
 | `FormRenderer`, `FormPresenter` | Throwing API, versioned document, notices, shared report construction | Retain the API contract while selecting an actual Windows backend |
 | `FormPreviewRenderer` | Script-free SVG structure, ordering, clipping, sprites and control dispatch | Isolate font/control/palette policy; calibrate it on Windows |
-| `fourdform` | Single-document options, stdout/file output and exit contracts | Replace platform build packaging; keep source input unchanged |
+| `4d-form` (separate repository) | Independent image-product packaging around the shared API | Establish its Windows backend and image/output/error contracts separately |
 
 Do not fork the entire SVG renderer or start a second JSON/CSS parser.
 Introduce narrow platform services around the existing seams once a Windows
@@ -47,10 +49,10 @@ rather than treating macOS effective styles as Windows output.
 | CoreText for non-form reports | `FourDRender/DiagramTypography.swift` | Split or adapt this dependency too if retaining the whole render target |
 | Foundation/macOS locale/XML facilities | `FormLocalization.swift` and related analyzers | Check Windows Swift/Foundation support and import boundaries rather than assuming parity |
 | QuickLookUI/AppKit, Security, NSXPC, app groups, scoped bookmarks | Host, extension, `FourDProjectAccess`, `FourDProjectPreviewService` | Exclude these from a Windows standalone target; they are macOS integration, not required rendering algorithms |
-| Bash, `codesign`, `lipo`, universal architectures | `scripts/build-form-renderer.sh`, `scripts/build.sh` | Separate Windows build/package instructions and executable signing |
+| Bash, `codesign`, `lipo`, universal architectures | `scripts/build.sh` | Separate Windows build/package instructions and executable signing |
 
-The standalone target already has no dependency on the host, Quick Look or
-project-access service. It still depends on Apple rendering/image frameworks.
+The shared library products have no dependency on the host, Quick Look or
+project-access service. They still depend on Apple rendering/image frameworks.
 An `#if os(Windows)` branch returning guessed metrics or skipping pictures is
 not an acceptable completed port.
 
@@ -66,14 +68,15 @@ real Windows environment.
 From this checkout:
 
 ```sh
-scripts/build-form-renderer.sh
-build/standalone/fourdform --language en --output controls.html \
+.build/debug/fourdql --html \
   Tests/FourDFileKitTests/Fixtures/FormProject/Project/Sources/Forms/Controls/form.4DForm
-build/standalone/fourdform --json --language fr --output static-reference.json \
-  Tests/FourDFileKitTests/Fixtures/FormStaticProject/Project/Sources/Forms/Root/form.4DForm
-python3 scripts/test-form-renderer.py --renderer build/standalone/fourdform
+swift test --filter FormRendererTests
 ```
 
+Build the development tool first with `swift build --product fourdql`.
+For explicit language selection and versioned JSON, use `FormRenderer` as
+documented in [FORM-RENDERER.md](FORM-RENDERER.md); `fourdql --json` exports the
+analyzer model, not the versioned renderer document.
 Explicit languages reduce dependence on the machine's locale. For fixed
 macOS reference screenshots, select a permitted theme and numbered page.
 Copy HTML/JSON reference outputs, not a macOS executable, to Windows.
@@ -86,22 +89,20 @@ It requires the appropriate Visual Studio C++ build tools and Windows SDK;
 install an architecture-matched supported Swift toolchain. Python is needed
 for the CLI contract harness, not by the renderer at runtime.
 
-The following is the intended SPM/CLI smoke-test shape **after** implementing
-the adapters and excluding macOS-only targets. It is not a claim these commands
-work against the current package on Windows:
+The following is the intended shared-library smoke-test shape **after**
+implementing the adapters and excluding macOS-only targets. It is not a claim
+these commands work against the current package on Windows:
 
 ```powershell
 swift --version
-swift build -c release --product fourdform
-$bin = swift build -c release --show-bin-path
-& (Join-Path $bin "fourdform.exe") --html --language en --output controls.html `
-  Tests/FourDFileKitTests/Fixtures/FormProject/Project/Sources/Forms/Controls/form.4DForm
-python scripts/test-form-renderer.py --renderer (Join-Path $bin "fourdform.exe")
+swift build -c release --target FourDRender
+swift test --filter FormRendererTests
 ```
 
-Keep HTML/JSON/output/error behavior intact. Decide Windows appearance
+Image CLI packaging and commands belong in `4d-form`, not the Quick Look
+release workflow. Keep the shared HTML/JSON/error behavior intact. Decide Windows appearance
 selection only with Windows evidence; do not silently redefine `glass-light`
-or label the existing macOS styles as Windows. Adjust the contract harness's
+or label the existing macOS styles as Windows. Adjust the API tests'
 platform/theme assertions explicitly when adding a Windows export version or
 appearance schema.
 
@@ -117,8 +118,6 @@ appearance schema.
 - `FormTests`, `FormStaticTests`, `FormTextLayoutTests`, `FormStaticRenderTests`,
   `FormRendererTests`: ordering, confinement, budgets, source/data preservation,
   wrapping, pictures, localization, clipping and API regression contracts.
-- `scripts/test-form-renderer.py`: isolated executable/empty-PATH CLI checks.
-  Its current platform assertions target the macOS reference export.
 - `scripts/form-benchmark.py`, `form-hdi-benchmark.py`,
   `form-padding-probe.py`, `form-static-benchmark.py`,
   `form-subform-clip-probe.py`: macOS-only native-reference tooling. Do not run
@@ -138,8 +137,9 @@ All committed form fixtures above are self-authored.
 
 ## Windows acceptance sequence
 
-1. Build the standalone target on Windows without 4D, the macOS host or an
-   Explorer extension. Run parsing, confinement, XML rejection and CLI failures.
+1. Build the shared libraries and the separate image product on Windows without
+   4D, the macOS host or an Explorer extension. Run parsing, confinement,
+   XML rejection and CLI failures in their owning repositories.
 2. Check generated JSON ordering, source provenance, dependency/image IDs,
    localization and limits against the self-authored reference contracts.
 3. Generate purpose-built static native forms on Windows using a supported
