@@ -147,11 +147,17 @@ materials are not simulated.
 
 ### Authorizing project resources in Finder
 
-A team-signed build on macOS 13 or later provides **Authorize project...** in
-the hosting app. Choose the package folder containing `Project` and `Resources`,
-not the `Project` subfolder. Only the sandboxed service retains a read-only project bookmark.
+A team-signed build on macOS 13 or later provides **Choose Desktop...**,
+**Choose Documents...**, and **Choose Downloads...** shortcuts in the hosting
+app's welcome window. Each opens a folder-selection panel; confirm the folder
+to grant read-only access to all projects beneath it. **Choose another folder...**
+lets you authorize any other projects folder or an individual package folder
+containing `Project` and `Resources`, not the `Project` subfolder.
+Only the sandboxed service retains a read-only folder bookmark.
 The Quick Look extension does not receive a filesystem exception or run 4D.
-**Remove project authorizations...** revokes all saved project grants.
+Grants persist after the app closes. Launch **4D Quick Look** again to add more
+paths; folder authorization is unavailable from the Quick Look preview window.
+**Remove folder authorizations...** revokes all saved folder grants.
 
 Authorized previews use the app's private, team-owned shared container.
 For each Finder request, an embedded XPC service analyzes the current form and

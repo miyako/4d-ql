@@ -26,6 +26,48 @@ final class ProjectAccessTests: XCTestCase {
         try exchange.prepareRequest(fileURL: source, rendererBuild: "test-build")
     }
 
+    func testAuthorizationRootAcceptsParentFolderWithoutProjectSources() throws {
+        XCTAssertEqual(try ProjectAccessStore.authorizationRoot(for: root),
+                       root.resolvingSymlinksInPath().standardizedFileURL)
+        let link = root.appendingPathComponent("folder-link")
+        let folder = root.appendingPathComponent("projects", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
+        XCTAssertEqual(try ProjectAccessStore.authorizationRoot(for: link).path,
+                       folder.resolvingSymlinksInPath().standardizedFileURL.path)
+    }
+
+    func testAuthorizationRootRejectsFilesFilesystemRootAndRemoteURLs() throws {
+        for url in [source!, URL(fileURLWithPath: "/", isDirectory: true),
+                    URL(string: "https://example.invalid/projects")!] {
+            XCTAssertThrowsError(try ProjectAccessStore.authorizationRoot(for: url)) {
+                guard case ProjectAccessError.invalidFolder = $0 else {
+                    return XCTFail("Expected invalid-folder error, got \($0)")
+                }
+            }
+        }
+        XCTAssertThrowsError(try ProjectAccessStore.authorizationRoot(for: root.appendingPathComponent("missing")))
+    }
+
+    func testSavedParentFolderCoversMultipleProjectsButNotSiblingPaths() throws {
+        let store = ProjectAccessStore(containerURL: root)
+        let folder = root.appendingPathComponent("projects", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        XCTAssertEqual(try store.authorize(folder), folder.standardizedFileURL)
+        let reopened = ProjectAccessStore(containerURL: root)
+        for project in ["First", "Second"] {
+            let form = folder.appendingPathComponent("\(project)/Project/Sources/Forms/Test/form.4DForm")
+            XCTAssertTrue(try reopened.hasAuthorization(for: form))
+        }
+        XCTAssertFalse(try reopened.hasAuthorization(for:
+            root.appendingPathComponent("projects-other/Project/Sources/form.4DForm")))
+        XCTAssertFalse(try reopened.hasAuthorization(for: source))
+        _ = try reopened.authorize(folder)
+        XCTAssertEqual(try reopened.entries().count, 1)
+        try reopened.removeAll()
+        XCTAssertFalse(try store.hasAuthorization(for: folder.appendingPathComponent("First/form.4DForm")))
+    }
+
     private func writeReply(_ reply: ProjectPreviewReply, named id: String) throws {
         try JSONEncoder().encode(reply).write(to: exchange.replyURL(id: id), options: .atomic)
     }

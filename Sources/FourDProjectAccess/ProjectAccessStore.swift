@@ -3,6 +3,7 @@ import Foundation
 public enum ProjectAccessError: LocalizedError {
     case unavailable
     case invalidProject
+    case invalidFolder
     case oversizedIndex
     case tooManyProjects
     case invalidBookmark
@@ -13,11 +14,12 @@ public enum ProjectAccessError: LocalizedError {
         switch self {
         case .unavailable: return "The shared project-access container is unavailable. Check the app-group signing configuration."
         case .invalidProject: return "Choose a project folder containing Project/Sources, or its Project folder."
+        case .invalidFolder: return "Choose a local folder, not a file or the filesystem root."
         case .oversizedIndex: return "The project-access index exceeds its size limit."
-        case .tooManyProjects: return "At most 64 projects can be authorized. Remove an authorization before adding another."
+        case .tooManyProjects: return "At most 64 folders can be authorized. Remove an authorization before adding another."
         case .invalidBookmark: return "The saved project authorization does not match this project."
-        case .staleBookmark: return "The project authorization is stale. Authorize the project again in 4D Quick Look."
-        case .denied: return "The project authorization could not be activated. Authorize the project again in 4D Quick Look."
+        case .staleBookmark: return "The folder authorization is stale. Authorize its folder again in 4D Quick Look."
+        case .denied: return "Project-resource access is unavailable. Launch 4D Quick Look and authorize a folder containing this project."
         }
     }
 }
@@ -27,7 +29,7 @@ public struct ProjectAccessEntry: Codable {
     public let bookmark: Data
 }
 
-/// Saved read-only project authorizations, separate from the user's project.
+/// Saved read-only folder authorizations, separate from the user's project.
 public struct ProjectAccessStore {
     public let documentURL: URL
     private let maximumIndexBytes = 1_048_576
@@ -66,7 +68,7 @@ public struct ProjectAccessStore {
     }
 
     public func authorize(_ selectedURL: URL) throws -> URL {
-        let root = try Self.projectRoot(for: selectedURL)
+        let root = try Self.authorizationRoot(for: selectedURL)
         var existing = try entries()
         if !FileManager.default.fileExists(atPath: documentURL.path) {
             try save([])
@@ -115,6 +117,17 @@ public struct ProjectAccessStore {
               Self.contains(sources.resolvingSymlinksInPath().path, in: root.path) else {
             throw ProjectAccessError.invalidProject
         }
+        return root
+    }
+
+    public static func authorizationRoot(for selectedURL: URL) throws -> URL {
+        guard selectedURL.isFileURL else { throw ProjectAccessError.invalidFolder }
+        let root = selectedURL.resolvingSymlinksInPath().standardizedFileURL
+        guard root.pathComponents.count > 1,
+              root.path.utf8.count <= 4_096,
+              !root.path.contains("\0") else { throw ProjectAccessError.invalidFolder }
+        let values = try root.resourceValues(forKeys: [.isDirectoryKey])
+        guard values.isDirectory == true else { throw ProjectAccessError.invalidFolder }
         return root
     }
 

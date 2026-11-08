@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import FourDProjectAccess
 import QuickLookUI
 
@@ -36,34 +37,67 @@ final class AppDelegate: NSResponder, NSApplicationDelegate, QLPreviewPanelDataS
 
     func makeWindow() {
         NSApp.setActivationPolicy(.regular)
-        dropView = DropView(frame: .zero, textContainer: nil)
+        let dropView = DropView(frame: .zero, textContainer: nil)
+        self.dropView = dropView
         dropView.onDrop = { [weak self] url in self?.show(url) }
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 760),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "4D Quick Look"
         window.nextResponder = self
-        let authorize = NSButton(title: "Authorize project...", target: self, action: #selector(authorizeProject))
-        let remove = NSButton(title: "Remove project authorizations...", target: self, action: #selector(removeAuthorizations))
+        let authorize = NSButton(title: "Choose another folder...", target: self, action: #selector(authorizeProject))
+        let remove = NSButton(title: "Remove folder authorizations...", target: self, action: #selector(removeAuthorizations))
         let projectAccessEnabled = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 13
             && !(Bundle.main.object(forInfoDictionaryKey: "FourDProjectGroupIdentifier") as? String ?? "").isEmpty
-        authorize.isEnabled = projectAccessEnabled
-        remove.isEnabled = projectAccessEnabled
-        if !projectAccessEnabled {
-            authorize.toolTip = "Project-resource access requires macOS 13 or later and a team-signed build with its own app group."
+        let folders = ["Desktop", "Documents", "Downloads"].enumerated().map { index, name in
+            let button = NSButton(title: "Choose \(name)...", target: self, action: #selector(authorizeStandardFolder(_:)))
+            button.tag = index
+            return button
         }
+        for button in folders + [authorize, remove] {
+            button.isEnabled = projectAccessEnabled
+            if !projectAccessEnabled {
+                button.toolTip = "Project-resource access requires macOS 13 or later and a team-signed build with its own app group."
+            }
+        }
+        let image = NSImageView()
+        image.image = NSImage(systemSymbolName: "folder.badge.plus", accessibilityDescription: "Authorize folders for project previews")
+        image.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 72, weight: .regular)
+        image.contentTintColor = .controlAccentColor
+        image.setAccessibilityElement(true)
+        let title = NSTextField(labelWithString: "4D Quick Look is installed")
+        title.font = .systemFont(ofSize: 26, weight: .semibold)
+        let description = welcomeLabel("""
+        Select a supported 4D file in Finder and press Space to preview it.
+
+        Choose folders containing your projects to include their CSS, referenced JSON, pictures and static form resources. One folder authorization covers all projects beneath it and is saved after this app closes. Access is read-only; no 4D or project methods are run.
+        """)
+        let shortcuts = NSStackView(views: folders)
+        shortcuts.orientation = .horizontal
+        shortcuts.spacing = 12
         let buttons = NSStackView(views: [authorize, remove])
         buttons.orientation = .horizontal
         buttons.spacing = 12
-        let content = NSStackView(views: [buttons, dropView])
+        let note = welcomeLabel("""
+        To add more paths later, launch 4D Quick Look again. Folder authorization is not available from the Quick Look preview window.
+        """)
+        note.textColor = .secondaryLabelColor
+        let availability = welcomeLabel("Folder authorization requires macOS 13 or later and a team-signed build. Selected-file previews remain available.")
+        availability.isHidden = projectAccessEnabled
+        let content = NSStackView(views: [image, title, description, shortcuts, buttons, note, availability, dropView])
         content.orientation = .vertical
         content.alignment = .leading
-        content.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        content.spacing = 20
+        content.edgeInsets = NSEdgeInsets(top: 32, left: 32, bottom: 32, right: 32)
         dropView.translatesAutoresizingMaskIntoConstraints = false
         window.contentView = content
-        dropView.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -24).isActive = true
+        for view in [description, note, availability, dropView] {
+            view.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -64).isActive = true
+        }
+        dropView.heightAnchor.constraint(greaterThanOrEqualToConstant: 110).isActive = true
+        window.contentMinSize = NSSize(width: 740, height: 720)
         window.center()
         window.makeKeyAndOrderFront(nil)
-        dropView.string = Self.welcome + (projectAccessEnabled ? "" : "\n\nProject authorization requires macOS 13 or later and a team-signed build. Selected-file previews remain available.")
+        dropView.string = "Drop a 4D file here to open its Quick Look preview.\n\nIf Finder still shows the old preview, run qlmanage -r in Terminal."
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -80,12 +114,31 @@ final class AppDelegate: NSResponder, NSApplicationDelegate, QLPreviewPanelDataS
     }
 
     @objc func authorizeProject() {
+        selectFolder(startingAt: nil)
+    }
+
+    @objc func authorizeStandardFolder(_ sender: NSButton) {
+        let folders = ["Desktop", "Documents", "Downloads"]
+        guard folders.indices.contains(sender.tag) else { return }
+        // NSHomeDirectory points inside the container in a sandboxed app.
+        guard let home = getpwuid(getuid())?.pointee.pw_dir else {
+            showError(NSError(domain: "FourDQuickLookHost", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "The user's home folder could not be located. Use Choose another folder instead."]))
+            return
+        }
+        let url = URL(fileURLWithPath: String(cString: home), isDirectory: true)
+            .appendingPathComponent(folders[sender.tag], isDirectory: true)
+        selectFolder(startingAt: url)
+    }
+
+    func selectFolder(startingAt url: URL?) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.prompt = "Authorize"
-        panel.message = "Choose the folder containing Project and Resources. The preview helper gains read-only access; Finder receives self-contained previews. No project code is executed."
+        panel.directoryURL = url
+        panel.message = "Authorize this folder, or choose another folder containing your projects. All projects beneath the selected folder gain read-only resource access. No project code is executed."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { @MainActor in
             let scoped = url.startAccessingSecurityScopedResource()
@@ -93,8 +146,8 @@ final class AppDelegate: NSResponder, NSApplicationDelegate, QLPreviewPanelDataS
             do {
                 let root = try await ProjectServiceClient().authorize(url)
                 let alert = NSAlert()
-                alert.messageText = "Project authorized"
-                alert.informativeText = "\(root.path)\n\nClose and reopen its Finder preview to use project CSS, JSON pointers, pictures and static form resources. The service prepares a fresh, self-contained preview for each request."
+                alert.messageText = "Folder authorized"
+                alert.informativeText = "\(root.path)\n\nProjects beneath this folder can now use CSS, referenced JSON, pictures and static form resources. Close and reopen their Finder previews to apply this access. You can close this app; the read-only authorization is saved."
                 alert.runModal()
             } catch {
                 showError(error)
@@ -107,8 +160,8 @@ final class AppDelegate: NSResponder, NSApplicationDelegate, QLPreviewPanelDataS
             let store = try ProjectAccessStore.configured()
             let entries = try store.entries()
             let alert = NSAlert()
-            alert.messageText = "Remove all project authorizations?"
-            alert.informativeText = entries.isEmpty ? "No projects are authorized." : entries.map(\.path).joined(separator: "\n")
+            alert.messageText = "Remove all folder authorizations?"
+            alert.informativeText = entries.isEmpty ? "No folders are authorized." : entries.map(\.path).joined(separator: "\n")
             alert.addButton(withTitle: "Cancel")
             alert.addButton(withTitle: "Remove")
             guard alert.runModal() == .alertSecondButtonReturn else { return }
@@ -142,17 +195,13 @@ final class AppDelegate: NSResponder, NSApplicationDelegate, QLPreviewPanelDataS
         alert.runModal()
     }
 
-    static let welcome = """
-    4D Quick Look is installed
-
-    Select a .4DForm, .4DD, .4DB, .4DCatalog, .4DSettings, .4si, .4DProject, .4df or .4dm file in Finder and press Space.
-
-    Use Authorize project... to let the sandboxed service read that project's CSS, JSON pointers, pictures and static form resources. Finder receives a fresh, self-contained preview. Access is read-only and does not run 4D or project methods.
-
-    You can also drop a file on this window to open its Quick Look preview.
-
-    If Finder still shows the old preview, run qlmanage -r in Terminal.
-    """
+    private func welcomeLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: text)
+        label.font = .systemFont(ofSize: 14)
+        label.isSelectable = true
+        label.setContentCompressionResistancePriority(.required, for: .vertical)
+        return label
+    }
 }
 
 let app = NSApplication.shared

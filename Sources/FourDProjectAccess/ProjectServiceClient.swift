@@ -39,8 +39,9 @@ public struct ProjectServiceClient {
     }
 
     public func authorize(_ selectedURL: URL) async throws -> URL {
-        let root = try ProjectAccessStore.projectRoot(for: selectedURL)
-        guard root.path == selectedURL.resolvingSymlinksInPath().standardizedFileURL.path else {
+        let root = try ProjectAccessStore.authorizationRoot(for: selectedURL)
+        if root.lastPathComponent == "Project",
+           FileManager.default.fileExists(atPath: root.appendingPathComponent("Sources").path) {
             throw Self.error("Choose the package folder containing Project and Resources, not the Project subfolder, so the read-only grant includes its resources.")
         }
         let bookmark = try ProjectPreviewServiceTransport.authorizationBookmark(for: selectedURL)
