@@ -1,0 +1,5 @@
+* { fontFamily: "Helvetica Neue"; }
+text { stroke: automatic; }
+@media (prefers-color-scheme: dark) {
+    input { fill: #20242A; stroke: #E7EDF5; }
+}

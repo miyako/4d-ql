@@ -103,6 +103,13 @@ func printBlock(_ b: Block, indent: String) {
         if diagram.omittedTables > 0 || diagram.omittedRelations > 0 {
             print("\(indent)\(diagram.omittedTables) tables and \(diagram.omittedRelations) relations omitted")
         }
+    case .formPreview(let preview):
+        for appearance in preview.appearances {
+            print("\(indent)\(appearance.theme.label): \(appearance.pages.count - 1) pages")
+            for page in appearance.pages {
+                print("\(indent)  Page \(page.number): \(page.objects.count) objects")
+            }
+        }
     }
 }
 
