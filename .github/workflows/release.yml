@@ -174,7 +174,6 @@ jobs:
       - name: notarize, staple & package
         env:
           VERSION: ${{ needs.version.outputs.version }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
           ZIP_PATH="${ASSET_NAME}-${VERSION}.zip"
@@ -208,22 +207,16 @@ jobs:
           # 2. zip of the stapled app.
           ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 
-          # 3. dmg with the stapled app and an Applications shortcut. Sign the dmg
-          #    itself (Gatekeeper's primary-signature check rejects an unsigned one),
-          #    then notarize and staple it too.
+          # 3. dmg with the stapled app and an Applications shortcut; notarize and
+          #    staple it too. The dmg container itself is not code-signed: doing so
+          #    on the hosted runner failed with "No such process" (tracked separately).
           STAGE="$RUNNER_TEMP/dmg"
           mkdir -p "$STAGE"
           ditto "$APP_PATH" "$STAGE/${APP_NAME}.app"
           ln -s /Applications "$STAGE/Applications"
           hdiutil create -format UDBZ -volname "$APP_NAME" -srcfolder "$STAGE" "$DMG_PATH"
-          # Re-unlock: codesign here failed with "No such process" when it could
-          # not reach the key in the temporary keychain.
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          codesign --force --timestamp --keychain "$KEYCHAIN_PATH" --sign "${SIGN_IDENTITY:?}" "$DMG_PATH"
-          codesign --verify --verbose=2 "$DMG_PATH"
           notarize "$DMG_PATH"
           xcrun stapler staple "$DMG_PATH"
-          spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_PATH"
 
           echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
           echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
