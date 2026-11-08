@@ -69,10 +69,10 @@ final class StructureDiagramTests: XCTestCase {
             node("D")
         ], edges: [])
         let html = render(diagram)
-        XCTAssertTrue(html.contains("data-node-id=\"A\" transform=\"translate(32.0 32.0)\""))
-        XCTAssertTrue(html.contains("data-node-id=\"B\" transform=\"translate(632.0 32.0)\""))
-        XCTAssertTrue(html.contains("data-node-id=\"C\" transform=\"translate(32.0 332.0)\""))
-        XCTAssertTrue(html.contains("data-node-id=\"D\" transform=\"translate(32.0 494.0)\""))
+        XCTAssertTrue(html.contains("data-node-id=\"A\" transform=\"translate(24.0 24.0)\""))
+        XCTAssertTrue(html.contains("data-node-id=\"B\" transform=\"translate(624.0 24.0)\""))
+        XCTAssertTrue(html.contains("data-node-id=\"C\" transform=\"translate(24.0 324.0)\""))
+        XCTAssertTrue(html.contains("data-node-id=\"D\" transform=\"translate(24.0 448.0)\""))
     }
 
     func testHiddenTablesHaveItalicHeadingsWithoutHidingVisibleFields() {
@@ -100,7 +100,7 @@ final class StructureDiagramTests: XCTestCase {
         ], edges: []))
         XCTAssertEqual(grid, overlap)
         XCTAssertEqual(grid, sparse)
-        XCTAssertTrue(grid.contains("data-node-id=\"B\" transform=\"translate(432.0 32.0)\""))
+        XCTAssertTrue(grid.contains("data-node-id=\"B\" transform=\"translate(232.0 24.0)\""))
     }
 
     func testInvalidAndExtremeCoordinatesNeverReachSVG() {
@@ -151,8 +151,8 @@ final class StructureDiagramTests: XCTestCase {
             DiagramEdge(sourceNode: "A", sourceField: "omitted", destinationNode: "B",
                         destinationField: "omitted", label: "Header relation")
         ]))
-        XCTAssertTrue(html.contains("M 332.0 109.0 C 382.0 109.0, 382.0 83.0, 432.0 83.0"))
-        XCTAssertTrue(html.contains("M 332.0 51.0 C 382.0 51.0, 382.0 51.0, 432.0 51.0"))
+        XCTAssertTrue(html.contains("M 168.0 83.5 C 200.0 83.5, 200.0 62.5, 232.0 62.5"))
+        XCTAssertTrue(html.contains("M 168.0 38.0 C 200.0 38.0, 200.0 38.0, 232.0 38.0"))
         XCTAssertTrue(html.contains("<title>Field relation: Table A.Parent → Table B.ID</title>"))
     }
 
@@ -166,8 +166,8 @@ final class StructureDiagramTests: XCTestCase {
         let connector = html[start.lowerBound..<end.upperBound]
         XCTAssertTrue(connector.contains("<title>Parent relation: Table A.Parent → Table B.ID</title>"))
         XCTAssertFalse(connector.contains("<text"))
-        XCTAssertTrue(html.contains("<text class=\"diagram-heading\" x=\"150.0\" y=\"24\" text-anchor=\"middle\">Table A</text>"))
-        XCTAssertTrue(html.contains("<text class=\"diagram-field-name diagram-primary-key\" x=\"12\" y=\"56.0\">ID</text>"))
+        XCTAssertTrue(html.contains("<text class=\"diagram-heading\" x=\"72.0\" y=\"18\" text-anchor=\"middle\">Table A</text>"))
+        XCTAssertTrue(html.contains("<text class=\"diagram-field-name diagram-primary-key\" x=\"30\" y=\"42.0\">ID</text>"))
     }
 
     func testPrimaryKeysAreUnderlinedAndIndexedFieldNamesAreBold() {
@@ -179,10 +179,10 @@ final class StructureDiagramTests: XCTestCase {
                 DiagramField(id: "plain", name: "Plain", type: "Text")
             ])
         ], edges: []))
-        XCTAssertTrue(html.contains("<text class=\"diagram-field-name diagram-primary-key\" x=\"12\" y=\"56.0\">Primary</text>"))
-        XCTAssertTrue(html.contains("<text class=\"diagram-field-name diagram-indexed\" x=\"12\" y=\"82.0\">Indexed</text>"))
-        XCTAssertTrue(html.contains("<text class=\"diagram-field-name diagram-primary-key diagram-indexed\" x=\"12\" y=\"108.0\">Both</text>"))
-        XCTAssertTrue(html.contains("<text class=\"diagram-field-name\" x=\"12\" y=\"134.0\">Plain</text>"))
+        XCTAssertTrue(html.contains("<text class=\"diagram-field-name diagram-primary-key\" x=\"30\" y=\"42.0\">Primary</text>"))
+        XCTAssertTrue(html.contains("<text class=\"diagram-field-name diagram-indexed\" x=\"30\" y=\"63.0\">Indexed</text>"))
+        XCTAssertTrue(html.contains("<text class=\"diagram-field-name diagram-primary-key diagram-indexed\" x=\"30\" y=\"84.0\">Both</text>"))
+        XCTAssertTrue(html.contains("<text class=\"diagram-field-name\" x=\"30\" y=\"105.0\">Plain</text>"))
         XCTAssertTrue(html.contains("<title>Both: Integer (primary key) (indexed) (hidden)</title>"))
         XCTAssertTrue(html.contains("diagram-primary-key{text-decoration:underline}"))
         XCTAssertTrue(html.contains("diagram-indexed{font-weight:700}"))
@@ -196,7 +196,61 @@ final class StructureDiagramTests: XCTestCase {
             DiagramEdge(sourceNode: "A", sourceField: "id", destinationNode: "A",
                         destinationField: "id", label: "Same field")
         ]))
-        XCTAssertTrue(html.contains("M 332.0 109.0 C 368.0 109.0, 368.0 96.0, 368.0 96.0 C 368.0 83.0, 368.0 83.0, 332.0 83.0"))
-        XCTAssertTrue(html.contains("M 332.0 83.0 C 376.0 83.0, 376.0 61.0, 376.0 61.0 C 376.0 83.0, 376.0 83.0, 332.0 83.0"))
+        XCTAssertTrue(html.contains("M 168.0 83.5 C 204.0 83.5, 204.0 73.0, 204.0 73.0 C 204.0 62.5, 204.0 62.5, 168.0 62.5"))
+        XCTAssertTrue(html.contains("M 168.0 62.5 C 212.0 62.5, 212.0 40.5, 212.0 40.5 C 212.0 62.5, 212.0 62.5, 168.0 62.5"))
+    }
+
+    func testCardsAreCompactWithoutClipping31CharacterNames() {
+        let renderer = StructureDiagramRenderer()
+        XCTAssertEqual(renderer.cardWidth(node("A")), 144)
+        XCTAssertTrue(render(StructureDiagram(nodes: [node("A")], edges: [])).contains("width=\"144.0\" height=\"76.0\""))
+        for name in [
+            String(repeating: "W", count: 31),
+            String(repeating: "顧", count: 31),
+            "A_31_Character_Field_Name_12345",
+        ] {
+            XCTAssertLessThanOrEqual(name.count, 31)
+            let table = DiagramNode(id: "A", title: name, fields: [
+                DiagramField(id: "id", name: name, type: "Text", hidden: true, indexed: true, icon: .text)
+            ])
+            let width = renderer.cardWidth(table)
+            XCTAssertGreaterThanOrEqual(width - 40, DiagramTypography.width(name, bold: true, italic: true))
+            XCTAssertGreaterThanOrEqual(width - 20, DiagramTypography.width(name, bold: true))
+            let html = render(StructureDiagram(nodes: [table], edges: []))
+            XCTAssertTrue(html.contains("text-anchor=\"middle\">\(name)</text>"))
+            XCTAssertTrue(html.contains("y=\"42.0\">\(name)</text>"))
+            XCTAssertFalse(html.contains("…"))
+            XCTAssertTrue(html.contains("diagram-icon-text"))
+        }
+    }
+
+    func testEveryTypeIconIsInlineAccessibleAndKeepsFullTypeInTooltip() {
+        for icon in DiagramField.Icon.allCases {
+            let label = "Full <type> & \"details\""
+            let html = render(StructureDiagram(nodes: [
+                DiagramNode(id: "A", title: "A", fields: [DiagramField(id: "id", name: "Field", type: label, icon: icon)])
+            ], edges: []))
+            XCTAssertTrue(html.contains("class=\"diagram-icon diagram-icon-\(icon.rawValue)\""))
+            XCTAssertTrue(html.contains("role=\"img\" aria-label=\"\(HTMLRenderer.escape(label))\""))
+            XCTAssertTrue(html.contains("<title>\(HTMLRenderer.escape(label))</title>"))
+            XCTAssertFalse(html.contains("<image"))
+            XCTAssertFalse(html.contains("diagram-type\""))
+            XCTAssertFalse(html.contains("<type>"))
+        }
+    }
+
+    func testVariableWidthCardsHaveCorrectPortsAndNonoverlappingColumns() {
+        let renderer = StructureDiagramRenderer()
+        let wide = DiagramNode(id: "A", title: "A", fields: [
+            DiagramField(id: "id", name: String(repeating: "W", count: 31), type: "Text")
+        ])
+        let width = renderer.cardWidth(wide)
+        let html = render(StructureDiagram(nodes: [wide, node("B")], edges: [
+            DiagramEdge(sourceNode: "A", sourceField: "id", destinationNode: "B", destinationField: "id", label: "Join")
+        ]))
+        func n(_ value: Double) -> String { String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value) }
+        XCTAssertGreaterThan(width, 300)
+        XCTAssertTrue(html.contains("data-node-id=\"B\" transform=\"translate(\(n(24 + width + 64)) 24.0)\""))
+        XCTAssertTrue(html.contains("M \(n(24 + width)) 62.5 C \(n(24 + width + 32)) 62.5, \(n(24 + width + 32)) 62.5, \(n(24 + width + 64)) 62.5"))
     }
 }

@@ -154,6 +154,8 @@ final class CatalogTests: XCTestCase {
         guard case .structureDiagram(let diagram) = firstBlock else { return XCTFail("Diagram must be the first block") }
         XCTAssertTrue(diagram.nodes[0].fields[0].indexed)
         XCTAssertTrue(diagram.nodes[0].fields[0].primaryKey)
+        XCTAssertEqual(diagram.nodes[0].fields.map(\.icon), [.integer, .text, .text, .object])
+        XCTAssertEqual(diagram.nodes[1].fields.map(\.icon), [.integer, .integer, .unknown])
         XCTAssertFalse(diagram.nodes[0].fields[1].indexed)
         XCTAssertTrue(diagram.nodes[1].fields[0].primaryKey)
         XCTAssertFalse(diagram.nodes[1].fields[0].indexed)
@@ -253,5 +255,21 @@ final class CatalogTests: XCTestCase {
         }
         XCTAssertEqual(FieldInfo.typeName(code: 21, limitingLength: nil), "Object")
         XCTAssertEqual(FieldInfo.typeName(code: 11, limitingLength: nil), "BLOB")
+    }
+
+    func testCatalogTypesMapToDiagramIcons() throws {
+        let types: [(Int, DiagramField.Icon)] = [
+            (1, .boolean), (2, .integer), (3, .integer), (4, .integer), (5, .integer),
+            (6, .real), (7, .real), (8, .date), (9, .time), (10, .text),
+            (11, .blob), (12, .picture), (13, .uuid), (14, .text), (17, .text),
+            (18, .blob), (21, .object), (999, .unknown),
+        ]
+        for (code, expected) in types {
+            let info = try analyze("<base><table name=\"A\"><field name=\"Field\" type=\"\(code)\"/></table></base>")
+            let report = try XCTUnwrap(CatalogPresenter().report(for: info))
+            let block = try XCTUnwrap(report.sections.first?.blocks.first)
+            guard case .structureDiagram(let diagram) = block else { return XCTFail("Expected a diagram") }
+            XCTAssertEqual(diagram.nodes[0].fields[0].icon, expected, "Type \(code)")
+        }
     }
 }
