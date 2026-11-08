@@ -113,10 +113,13 @@ Early crashes and timeouts were inconclusive. After rebooting, serial
 retries produced decoded screenshots, nonblank PDFs and clean exits;
 [`FORM EDIT`](https://developer.4d.com/docs/commands/form-edit) opened
 editor windows in all four full applications, with window screenshots
-retained as evidence. A legacy-component import prompt blocked the initial
-21.2 GUI retries; a current-version private project with explicit empty
-dependencies allowed them to complete. No engine-capability conclusions
-are drawn from the interrupted runs.
+retained as evidence. The probe setup must create
+`Project/Sources/dependencies.json` containing `{"dependencies":{}}`
+before launching 4D to prevent the legacy-component import dialog.
+Omitting that preflight step blocked the initial 21.2 GUI retries;
+adding the file alone allowed the original compatibility-version project
+to complete. No engine-capability conclusions are drawn from the
+interrupted runs.
 
 In the retried R4/R5 tool4d probes, SVG decoding returned zero dimensions
 and dark named-form output remained partly light; full GUI captures
