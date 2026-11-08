@@ -13,7 +13,7 @@ file to see what is inside instead of a generic icon.
 | `.4DProject` project file | syntax-highlighted JSON source with indentation and line breaks preserved |
 | `.4df` saved query | condition cards with table/field numbers, comparison labels, AND/OR/EXCEPT connectors, saved values, and selection destination; original JSON folded below |
 | `.4dm` method / class source | syntax-highlighted UTF-8 source with line numbers, line count and file size |
-| `.4DForm` form | approximate macOS form layout, page 0 plus selectable numbered pages, and Classic / Liquid Glass light and dark appearances with local stylesheets and JSON pointers |
+| `.4DForm` form | approximate macOS form layout, page 0 plus selectable numbered pages, Classic / Liquid Glass light and dark appearances, local stylesheets, JSON pointers, static inherited/subforms and XLIFF labels |
 
 Even a 220 MB data file previews in about 30 ms, because only header blocks are read.
 
@@ -92,14 +92,31 @@ and their `_dark` variants are embedded; picture-button/popup sprite sheets
 show their first frame. Raster images are converted to bounded PNGs.
 Basic passive SVG artwork is supported; active content, external references
 and unsupported SVG constructs are rejected.
+Static pictures with omitted display format retain their intrinsic size and
+are centered in the full object rectangle before container clipping; explicit
+scaled/proportional formats retain their saved behavior.
 Dependencies are confined to the conventional project's package folder,
 or the selected form's folder for standalone files, including after symlink
 resolution. `/PROJECT`, `/SOURCES`, `/RESOURCES` and `/PACKAGE` are mapped
 only when a project is discoverable; runtime `/DATA` and `/LOGS` paths,
 network paths and variable pictures are not loaded.
-**Finder's Quick Look sandbox may grant access only to the selected file**:
-project CSS, external templates and pictures are best-effort, with notices
-when inaccessible. The CLI uses the same logic but can normally read them.
+Static inherited forms contribute their background and initial-page objects
+behind local objects without replacing the receiving form's properties.
+Statically named project subforms show their background and initial page at
+container-local coordinates, clipped to the container. Each source retains its
+own CSS, pointer, picture and localization context. Cycles, dynamic references
+and unavailable forms remain visible as notices or placeholders.
+Inline object-valued form references are approximated with an explicit
+noncanonical-schema notice: dynamic 4D commands accept object descriptions,
+but saved-form schema references are strings and native named captures may
+paint a placeholder instead.
+Project XLIFF labels resolve named, numeric and object-name references using
+preferred-language specificity and documented fallback folders. Ambiguous or
+missing translations retain the reference with a notice; no localization
+method is executed.
+
+**Finder's Quick Look sandbox grants access only to the selected file** by
+default. The CLI uses the same analysis but can normally read project resources.
 Unavailable resources and unsupported features produce a visible warning
 above the canvas, with individual explanations in Preview notices.
 
@@ -107,11 +124,42 @@ Native controls are approximations, not pixel-identical AppKit widgets.
 Bound inputs, dropdowns, combos and dynamic tabs display their saved
 expressions rather than inventing runtime values. Static tab labels and
 listbox headers are shown; listbox bodies show expression placeholders,
-not records. Subforms, inherited forms, web areas, Write Pro, View Pro and
-plug-ins are placeholders or explicitly unexpanded. Methods, dynamic
-styling, translations and application-level appearance settings are not
-executed or resolved. Native animation, focus rings and Liquid Glass
+not records. Dynamic or unavailable subforms, web areas, Write Pro, View Pro and
+plug-ins remain placeholders. Methods, dynamic styling and application-level
+appearance settings are not executed or resolved. Native animation, focus rings and Liquid Glass
 materials are not simulated.
+
+### Authorizing project resources in Finder
+
+A team-signed build on macOS 13 or later provides **Authorize project...** in
+the hosting app. Choose the package folder containing `Project` and `Resources`,
+not the `Project` subfolder. Only the sandboxed service retains a read-only project bookmark.
+The Quick Look extension does not receive a filesystem exception or run 4D.
+**Remove project authorizations...** revokes all saved project grants.
+
+Authorized previews use the app's private, team-owned shared container.
+For each Finder request, an embedded XPC service analyzes the current form and
+its bounded dependencies, then returns self-contained HTML over IPC. The
+extension neither writes to the shared container nor launches the hosting app.
+Requests and replies are tied
+to a fresh nonce, form-content hash and renderer build. A missing helper,
+authorization failure, changed form or timeout produces a visible notice and
+the selected-file-only preview, never a silently stale project preview.
+Role-specific XPC sessions check the signing identity before admission;
+only the hosting app can authorize or revoke projects. The preview role is
+read-only. Each service reuses two listeners, limits work to 32 operations,
+and caps HTML replies at 32 MiB; the client has a four-second deadline.
+
+Actual Finder checks verified persistence after closing the hosting app,
+automatic service activation, static composition/XLIFF, and revocation.
+Changing CSS, an external JSON template and an SVG changed the next Finder
+preview while the selected form's checksum remained unchanged.
+
+Do not grant Full Disk Access or broad access to other apps' data for this
+feature. Ad-hoc builds leave project sharing disabled; they still preview the
+selected file and support the standalone CLI. Signed macOS builds default to
+the signing team's `<Team ID>.<bundle ID>.ProjectContext` app group. A custom
+`PROJECT_GROUP` must be authorized by the signing configuration.
 
 The rendering reference combines the canonical
 [4D form](https://github.com/miyako/skills/tree/dist/skills/4dform),
@@ -153,7 +201,10 @@ appearances remain approximations, not pixel-identical native rendering.
 Form JSON is limited to 4 MiB, 64 nesting levels and 100,000 values;
 duplicate keys are rejected to avoid ambiguous paint order. Dependencies
 are limited to 64 regular files, 4 MiB each and 16 MiB total; pointer
-expansion is bounded to 100,000 values and depth 64. CSS is limited to
+and static-form expansion are bounded to 100,000 values and depth 64.
+Embedded objects share the 1,000-object appearance limit. XLIFF parsing is
+limited to 20,000 XML nodes, depth 64 and 1 MiB of text, with external entities
+disabled. CSS is limited to
 5,000 rules, 20,000 declarations per file, 16 nested media blocks and
 1,000,000 object/rule matches. At most 16 numbered pages, 1,000 objects
 per appearance, 64 listbox columns, and 200 grid rows are drawn; canvases
@@ -289,14 +340,15 @@ Sources/
     Query/               JSON .4df saved query conditions and metadata
     Method/              bounded UTF-8 .4dm reader and regex lexer
     Form/                ordered JSON, bounded pointers/dependencies,
-                         macOS theme-aware 4D stylesheet cascade
+                         macOS stylesheet cascade, static forms and XLIFF
   FourDRender/           rendering layer: model -> Report -> HTML
     Report.swift         generic page model (stats, badges, tables, bars, disclosures)
     *Presenter.swift     one presenter per model kind
     HTMLRenderer.swift   the only place that knows about HTML/CSS
     PreviewPipeline.swift
   FourDQuickLookExtension/  data-based QLPreviewProvider (returns HTML)
-  FourDQuickLookHost/    minimal host app (extensions must live inside an app)
+  FourDProjectAccess/    read-only authorization and bounded shared-preview exchange
+  FourDQuickLookHost/    hosting app and sandboxed project-preview helper
   fourdql/               CLI using the same pipeline
 Support/                 Info.plist templates, entitlements
 scripts/build.sh         builds and signs "4D Quick Look.app"
@@ -346,6 +398,10 @@ are added automatically):
 ```bash
 SIGN_IDENTITY="Developer ID Application: …" scripts/build.sh
 ```
+
+Team signing enables project-folder authorization without changing the sandbox
+or requiring 4D. The build derives the macOS app-group prefix from the signing
+identity; set `PROJECT_GROUP` only when using another authorized group.
 
 ## Releasing
 

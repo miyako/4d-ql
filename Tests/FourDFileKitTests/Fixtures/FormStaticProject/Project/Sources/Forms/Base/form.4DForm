@@ -1,0 +1,12 @@
+{
+  "inheritedForm": "Grand",
+  "windowTitle": "Must not override root",
+  "width": 900,
+  "colorScheme": "dark",
+  "css": "base.css",
+  "pages": [
+    {"objects": {"shared": {"type": "text", "text": ":xliff:base", "left": 0, "top": 0, "width": 90, "height": 20}}},
+    {"objects": {"basePageOne": {"type": "text", "text": "Inherited page one", "left": 0, "top": 24, "width": 150, "height": 20}}},
+    {"objects": {"omitted": {"type": "text", "text": "Do not inherit page two"}}}
+  ]
+}

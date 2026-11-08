@@ -31,6 +31,7 @@ public struct FormPresenter: ReportPresenter {
                 KeyValue("Pages", "\(max(0, (form.properties["pages"]?.values.count ?? 1) - 1))"),
                 KeyValue("Color scheme", form.properties["colorScheme"]?.string ?? "Inherited"),
                 KeyValue("Destination", form.properties["destination"]?.string ?? "Not specified"),
+                KeyValue("Localization", form.localizationLanguage ?? "No project translation selected"),
                 KeyValue("Dependencies loaded", "\(form.dependencies.count)")
             ]),
             .text("Approximate macOS editor layout with stylesheets applied. Expressions and methods are not executed; bound controls show their saved expressions, not runtime values."),

@@ -170,7 +170,7 @@ final class FormPointerResolver {
             var object = FormValue.object(try members.map {
                 FormMember(name: $0.name, value: try walk($0.value, document: document, stack: stack, depth: depth + 1))
             })
-            for key in ["picture", "icon", "customBackgroundPicture", "path"] {
+            for key in ["picture", "icon", "customBackgroundPicture", "path", "inheritedForm", "detailForm", "listForm"] {
                 if let value = object[key] { object[key] = rebaseProperty(key, value: value, document: document) }
             }
             if let css = object["css"] {
@@ -182,11 +182,13 @@ final class FormPointerResolver {
     }
 
     private func rebaseProperty(_ name: String, value: FormValue, document: URL) -> FormValue {
-        guard ["picture", "icon", "customBackgroundPicture", "path", "css"].contains(name) else { return value }
+        guard ["picture", "icon", "customBackgroundPicture", "path", "css", "inheritedForm", "detailForm", "listForm"].contains(name) else { return value }
         if name == "css", case .array(let entries) = value {
             return .array(entries.map { rebaseProperty("css", value: $0, document: document) })
         }
         guard let path = value.string else { return value }
+        if ["inheritedForm", "detailForm", "listForm"].contains(name),
+           !path.contains("/"), !["json", "4dform"].contains((path as NSString).pathExtension.lowercased()) { return value }
         do { return .string(try dependencies.rebase(path, from: document)) }
         catch { dependencies.warn("Cannot rebase \(name) \(path): \(error)"); return value }
     }

@@ -8,12 +8,18 @@ struct FormPreviewRenderer {
                                           "spinner", "stepper", "list", "buttonGrid", "pictureButton", "picturePopup"]
 
     static func diagnostics(_ form: FormFileInfo) -> [String] {
-        let objects = form.appearances.flatMap(\.pages).flatMap(\.objects)
+        var objects = form.appearances.flatMap(\.pages).flatMap(\.objects)
+        var cursor = 0
+        while cursor < objects.count && objects.count < 4_000 {
+            objects.append(contentsOf: objects[cursor].children.prefix(4_000 - objects.count))
+            cursor += 1
+        }
         var notices: [String] = []
-        let placeholders = Set(objects.filter { !supported.contains($0.type) }.map(\.type)).sorted()
-        if !placeholders.isEmpty { notices.append("Placeholder only: \(placeholders.joined(separator: ", ")). Embedded forms, web content, plug-ins, Write Pro and View Pro are not executed.") }
+        let placeholders = Set(objects.filter {
+            !supported.contains($0.type) && !($0.type == "subform" && $0.embeddedProperties != nil)
+        }.map(\.type)).sorted()
+        if !placeholders.isEmpty { notices.append("Placeholder only: \(placeholders.joined(separator: ", ")). Dynamic or unavailable subforms, web content, plug-ins, Write Pro and View Pro are not executed.") }
         if objects.contains(where: { !validGeometry($0.properties) }) { notices.append("Objects with invalid or out-of-range coordinates are omitted (coordinate limit: 32,768 points).") }
-        if objects.contains(where: { ($0.properties["text"]?.string ?? "").hasPrefix(":xliff:") }) { notices.append("XLIFF labels are shown as references; project translations are not loaded.") }
         if objects.contains(where: { object in
             ["text", "dataSource"].contains { (object.properties[$0]?.string?.utf16.count ?? 0) > 4_096 }
         }) {
@@ -130,9 +136,9 @@ struct FormPreviewRenderer {
         return (max(1, min(8_192, width)), max(1, min(8_192, height)), width > 8_192 || height > 8_192)
     }
 
-    private func draw(_ object: FormObject, theme: FormTheme, images: [FormImage], id: String) -> String {
+    private func draw(_ object: FormObject, theme: FormTheme, images: [FormImage], id: String, depth: Int = 0) -> String {
         let p = object.properties
-        guard Self.validGeometry(p), p["visibility"]?.string != "hidden", p["display"]?.bool != false else { return "" }
+        guard depth < 64, Self.validGeometry(p), p["visibility"]?.string != "hidden", p["display"]?.bool != false else { return "" }
         let b = Self.bounds(p, theme: theme)
         let nativeStyle = p["style"]?.string ?? "regular"
         let quantized = theme.glass && (object.type == "dropdown" || object.type == "button" && nativeStyle == "regular")
@@ -328,7 +334,7 @@ struct FormPreviewRenderer {
             }
         case "picture", "pictureButton", "picturePopup", "buttonGrid":
             if object.images["picture"] != nil {
-                svg += image("picture", format: p["pictureFormat"]?.string ?? "scaled")
+                svg += image("picture", format: p["pictureFormat"]?.string ?? (object.type == "picture" ? "truncatedCenter" : "scaled"))
             } else {
                 svg += rect("var(--form-input)") + text(p["picture"]?.string ?? object.type, x: 5, width: max(0,w-10), center: true, ink: "var(--form-muted)")
             }
@@ -356,6 +362,18 @@ struct FormPreviewRenderer {
             }
         case "splitter":
             svg += rect("var(--form-border)", outline: "none")
+        case "subform" where object.embeddedProperties != nil:
+            let scheme = object.embeddedProperties?["colorScheme"]?.string
+            let childTheme: FormTheme = scheme == "light" ? (theme.glass ? .glassLight : .classicLight)
+                : scheme == "dark" ? (theme.glass ? .glassDark : .classicDark) : theme
+            svg += "<g class=\"static-subform \(childTheme.dark ? "dark" : "light") \(childTheme.glass ? "glass" : "classic")\" clip-path=\"url(#\(clip))\"><rect width=\"\(n(w))\" height=\"\(n(h))\" fill=\"var(--form-bg)\"/>"
+            for (index, child) in object.children.enumerated() {
+                svg += draw(child, theme: childTheme, images: images, id: "\(id)-child-\(index)", depth: depth + 1)
+            }
+            svg += "</g>"
+            if p["borderStyle"] != nil && border != "none" {
+                svg += rect("transparent", outline: color(p["borderColor"]?.string, fallback: "var(--form-border)"))
+            }
         default:
             svg += "<rect width=\"\(n(w))\" height=\"\(n(h))\" fill=\"var(--form-input)\" stroke=\"var(--form-border)\" stroke-dasharray=\"4 3\"/>" + text("\(object.type)\n\(label)", x: 6, width: max(0,w-12), center: true, ink: "var(--form-muted)")
         }
@@ -578,9 +596,9 @@ struct FormPreviewRenderer {
     .theme-choice:focus-visible ~ .form-themes,.page-choice:focus-visible ~ .form-pages{outline:2px solid var(--accent)}
     .form-appearance,.form-page{display:none}.form-scroll{overflow:auto;max-height:680px;border:1px solid var(--border);border-radius:6px}
     .form-scroll>svg{display:block;max-width:none}.form-caption{font-size:11px;color:var(--muted);margin-top:7px}
-    .form-appearance.light{color-scheme:light;--form-bg:#ececec;--form-ink:#202020;--form-muted:#777;--form-input:#fff;--form-control:#fff;--form-toggle:#fff;--form-group:#e1e1e1;--form-tab:#f2f2f2;--form-tab-selected:#fff;--form-border:#b8b8b8;--form-header:#f6f6f6;--form-header-divider:#d3d3d3;--form-footer-border:#bcbcbc;--form-alternate:#f3f5f7;--form-grid:#ddd;--form-accent:#007aff;--form-office:#e2effc}
-    .form-appearance.dark{color-scheme:dark;--form-bg:#323232;--form-ink:#eee;--form-muted:#a0a0a0;--form-input:#1e1e1e;--form-control:#656565;--form-toggle:#535353;--form-group:#3b3b3b;--form-tab:#3c3c3c;--form-tab-selected:#6c6c6c;--form-border:#737373;--form-header:#2e3032;--form-header-divider:#45484a;--form-footer-border:#3f3f3f;--form-alternate:#272a2e;--form-grid:#444;--form-accent:#0a84ff;--form-office:#32455a}
-    .form-appearance.glass.light{--form-bg:#fff;--form-control:#e1e1e1;--form-group:#f3f3f3;--form-tab:#ebebeb;--form-border:#cecece;--form-accent:#0077f9}
-    .form-appearance.glass.dark{--form-bg:#1e1e1e;--form-control:#383838;--form-toggle:#2a2a2a;--form-group:#282828;--form-tab:#303030;--form-border:#777;--form-accent:#067dff}
+    .form-appearance.light,.static-subform.light{color-scheme:light;--form-bg:#ececec;--form-ink:#202020;--form-muted:#777;--form-input:#fff;--form-control:#fff;--form-toggle:#fff;--form-group:#e1e1e1;--form-tab:#f2f2f2;--form-tab-selected:#fff;--form-border:#b8b8b8;--form-header:#f6f6f6;--form-header-divider:#d3d3d3;--form-footer-border:#bcbcbc;--form-alternate:#f3f5f7;--form-grid:#ddd;--form-accent:#007aff;--form-office:#e2effc}
+    .form-appearance.dark,.static-subform.dark{color-scheme:dark;--form-bg:#323232;--form-ink:#eee;--form-muted:#a0a0a0;--form-input:#1e1e1e;--form-control:#656565;--form-toggle:#535353;--form-group:#3b3b3b;--form-tab:#3c3c3c;--form-tab-selected:#6c6c6c;--form-border:#737373;--form-header:#2e3032;--form-header-divider:#45484a;--form-footer-border:#3f3f3f;--form-alternate:#272a2e;--form-grid:#444;--form-accent:#0a84ff;--form-office:#32455a}
+    .form-appearance.glass.light,.static-subform.glass.light{--form-bg:#fff;--form-control:#e1e1e1;--form-group:#f3f3f3;--form-tab:#ebebeb;--form-border:#cecece;--form-accent:#0077f9}
+    .form-appearance.glass.dark,.static-subform.glass.dark{--form-bg:#1e1e1e;--form-control:#383838;--form-toggle:#2a2a2a;--form-group:#282828;--form-tab:#303030;--form-border:#777;--form-accent:#067dff}
     """
 }
