@@ -89,9 +89,15 @@ public struct Segment {
     public var value: Double
     public var display: String
     public var slot: Int?
-    public init(label: String, value: Double, display: String, slot: Int?) {
+    public var icons: [FieldTypeIcon]
+    public init(label: String, value: Double, display: String, slot: Int?, icons: [FieldTypeIcon] = []) {
         self.label = label; self.value = value; self.display = display; self.slot = slot
+        self.icons = icons
     }
+}
+
+public enum FieldTypeIcon: String, CaseIterable {
+    case boolean, integer, real, text, date, time, picture, uuid, blob, object, unknown
 }
 
 public indirect enum Block {

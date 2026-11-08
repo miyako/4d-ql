@@ -87,7 +87,9 @@ public struct HTMLRenderer {
             }
             h += "</div><ul class=\"legend\">"
             for s in segments where s.value > 0 {
-                h += "<li><span class=\"sw \(cls(s))\"></span>\(esc(s.label)) <span class=\"lc\">\(esc(s.display))</span></li>"
+                let marker = s.icons.isEmpty ? "<span class=\"sw \(cls(s))\"></span>" :
+                    s.icons.map { FieldTypeIconRenderer.render($0) }.joined()
+                h += "<li>\(marker)\(esc(s.label)) <span class=\"lc\">\(esc(s.display))</span></li>"
             }
             return h + "</ul></div>"
 
@@ -279,6 +281,7 @@ public struct HTMLRenderer {
     .note{padding:8px 10px;border-radius:6px;background:var(--soft);margin:8px 0 0;font-size:12px;color:var(--muted)}
     .note.warning{color:var(--warn)}.note.danger{color:var(--bad)}.note.good{color:var(--good)}
     \(StructureDiagramRenderer.css)
+    \(FieldTypeIconRenderer.css)
     .source{margin:0;padding:12px 0;background:var(--soft);border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:760px;font:12px/1.6 ui-monospace,"SF Mono",Menlo,monospace;tab-size:4}
     .source-line{display:inline-flex;min-width:100%}
     .line-number{display:inline-block;flex-shrink:0;width:5em;padding:0 1em;color:var(--faint);text-align:right;user-select:none}
