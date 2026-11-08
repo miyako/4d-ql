@@ -64,7 +64,7 @@ enum DB4DAnalysis {
         }
 
         let resources: ResourceSummary? = attempt("resources", nil) {
-            guard let t = resourceTable else { return nil }
+            guard options.scanResources, let t = resourceTable else { return nil }
             return try c.resourceSummary(of: t, options: options)
         }
 

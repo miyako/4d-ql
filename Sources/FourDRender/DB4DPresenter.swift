@@ -41,16 +41,13 @@ public struct DB4DPresenter: ReportPresenter {
         r.stats.append(Stat("Tables", Fmt.n(info.tables.count)))
         if isData { r.stats.append(Stat("Records", Fmt.n(info.totalRecords))) }
         r.stats.append(Stat("Fields", Fmt.n(fieldCount)))
-        if !isData {
-            r.stats.append(Stat("Relations", Fmt.n(info.relations.count)))
-            if let res = info.resources { r.stats.append(Stat("Resources", Fmt.n(res.total))) }
-        }
+        // Structure files: tables and fields first. Relations only as a count;
+        // resources (forms, menus, pictures, …) are not shown.
+        if !isData { r.stats.append(Stat("Relations", Fmt.n(info.relations.count))) }
         if enc.isEncrypted { r.stats.append(Stat("Encrypted tables", "\(Fmt.n(enc.encryptedTables)) of \(Fmt.n(info.tables.count))")) }
 
         r.sections.append(tablesSection(info))
         if fieldCount > 0 { r.sections.append(Section("Field types", [fieldTypes(info)])) }
-        if !info.relations.isEmpty { r.sections.append(relationsSection(info)) }
-        if let res = info.resources, !res.types.isEmpty { r.sections.append(resourcesSection(res)) }
 
         r.sections.append(databaseSection(info))
         r.sections.append(storageSection(info))
@@ -125,39 +122,6 @@ public struct DB4DPresenter: ReportPresenter {
         let unknown = kinds.filter { $0 == nil }.count
         if unknown > 0 { segments.append(Segment(label: "Other", value: Double(unknown), display: Fmt.n(unknown), slot: nil)) }
         return .composition(segments)
-    }
-
-    private func relationsSection(_ info: DB4DFileInfo) -> Section {
-        let rows = info.relations.prefix(Self.maxTableRows).map {
-            [$0.sourceField, $0.destinationField, [$0.name, $0.inverseName].filter { !$0.isEmpty }.joined(separator: " / ")]
-        }
-        let more = info.relations.count > Self.maxTableRows ? "and \(Fmt.n(info.relations.count - Self.maxTableRows)) more" : nil
-        return Section("Relations", [.table(Table(
-            columns: [("Many", .leading), ("One", .leading), ("Names", .leading)], rows: Array(rows), more: more))])
-    }
-
-    /// Resource types whose meaning is reasonably certain. Others are shown by code only.
-    static let resourceNames: [String: String] = [
-        "FO4D": "Form", "MEN4": "Menu bar", "4PCT": "Picture library", "4pct": "Picture library",
-        "#GRP": "Group", "STR#": "String list", "ST4D": "Style sheet", "UUID": "Database UUID",
-    ]
-
-    private func resourcesSection(_ res: ResourceSummary) -> Section {
-        let label: (ResourceTypeCount) -> String = { t in Self.resourceNames[t.type].map { "\(t.type) · \($0)" } ?? t.type }
-        var rows = res.types.prefix(Self.maxTableBars).map {
-            BarRow(label: label($0), value: Double($0.count), display: Fmt.n($0.count))
-        }
-        if res.types.count > Self.maxTableBars {
-            let rest = res.types.dropFirst(Self.maxTableBars)
-            rows.append(BarRow(label: "\(rest.count) other types", value: 0,
-                               display: Fmt.n(rest.reduce(0) { $0 + $1.count }), muted: true,
-                               tooltip: rest.map(\.type).joined(separator: ", ")))
-        }
-        var blocks: [Block] = [.bars(rows: rows, valueHeader: "Count", extraHeader: "")]
-        if !res.complete {
-            blocks.append(.note("Counted \(Fmt.n(res.scanned)) of \(Fmt.n(res.total)) resources.", .neutral))
-        }
-        return Section("Resources", blocks)
     }
 
     // MARK: Opening and behaviour

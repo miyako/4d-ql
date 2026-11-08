@@ -6,7 +6,7 @@ file to see what is inside instead of a generic icon.
 | File | What the preview shows |
 |---|---|
 | `.4DD` data file | tables ranked by records (the largest eight, the rest folded into "Other"), field types, the database UUID the structure must match, sort/search language and wildcard rule, index engine versions, journal file path, storage use, whether it was closed cleanly or needs repair, and for [encrypted data files](https://developer.4d.com/docs/commands/encrypt-data-file) which tables are encrypted |
-| `.4DB` binary structure | tables ranked by fields, field types, relations (`[Table_1]Field_4 → [Table_2]ID`), resource types (forms, menu bars, picture library, …), the database UUID, sort/search settings, journaling |
+| `.4DB` binary structure | tables ranked by fields, field types, the number of relations, the database UUID, sort/search settings, journaling |
 | `.4DCatalog` XML catalog | a diagram-first view of tables, field types, primary keys, hidden fields, and relations; counts, database UUID, sort/search language, schemas, and encryptable tables tucked into "Catalog details" |
 | `.4DSettings` settings file | syntax-highlighted XML source with indentation and line breaks preserved |
 | `.4si` import/export settings | fields in saved import/export order, readable field types, table and format settings, and text/other options in tables |
@@ -213,8 +213,12 @@ source next to the code that reads them (`DB4DHeader.swift`, `DB4DContainer.swif
   also gains an `encryptedProofB64` extra property (a key check value). The
   data key is never needed and never asked for.
 
+Relations (`[Table_1]Field_4 → [Table_2]ID`) are decoded and resource types
+in a `.4DB` can be counted (`fourdql --json --thorough`), but the preview
+shows neither.
+
 Not decoded yet: index definitions beyond counts, record contents, and the
-meaning of most resource types (they are shown by their four-character code).
+meaning of most resource types.
 
 Catalog XML conventions and diagram presentation were informed by
 [miyako/4d-catalog-diagram](https://github.com/miyako/4d-catalog-diagram) and

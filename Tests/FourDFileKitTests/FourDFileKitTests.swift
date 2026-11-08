@@ -192,3 +192,31 @@ final class FourDFileKitTests: XCTestCase {
         XCTAssertTrue(report.sections.contains { $0.title == "Encryption" })
     }
 }
+
+final class StructurePreviewTests: XCTestCase {
+    /// A .4DB preview leads with tables and fields; relations appear only as a
+    /// count, resources not at all, and the preview skips the resource scan.
+    func testStructureFocusesOnTablesAndFields() throws {
+        guard let dir = ProcessInfo.processInfo.environment["FOURD_SAMPLES"] else {
+            throw XCTSkip("set FOURD_SAMPLES to a folder of sample files")
+        }
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir).filter { $0.lowercased().hasSuffix(".4db") }
+        guard !files.isEmpty else { throw XCTSkip("no .4DB in FOURD_SAMPLES") }
+        for f in files {
+            let url = URL(fileURLWithPath: dir).appendingPathComponent(f)
+            // The sample folder may hold deliberately corrupt files; skip them.
+            guard let info = (try? AnalyzerRegistry.default.analyze(url: url)) as? DB4DFileInfo else { continue }
+            XCTAssertNil(info.resources, "preview skips the resource scan")
+            let report = DB4DPresenter().report(for: info)!
+            let titles = report.sections.map(\.title)
+            XCTAssertEqual(titles.first, "Tables")
+            XCTAssertFalse(titles.contains("Relations"))
+            XCTAssertFalse(titles.contains("Resources"))
+            XCTAssertFalse(report.stats.contains { $0.label == "Resources" })
+            XCTAssertTrue(report.stats.contains { $0.label == "Relations" })
+
+            let thorough = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url, options: .thorough) as? DB4DFileInfo)
+            XCTAssertNotNil(thorough.resources, "still available for --json --thorough")
+        }
+    }
+}

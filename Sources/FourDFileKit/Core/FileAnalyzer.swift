@@ -24,14 +24,18 @@ public struct AnalysisOptions: Sendable {
     public var maxRecordsToScan: Int
     /// Wall-clock budget for optional, expensive passes (seconds).
     public var timeBudget: TimeInterval
+    /// Walk a structure file's resource table to count resources by type.
+    /// The preview does not show them, so it skips this pass.
+    public var scanResources: Bool
 
-    public init(maxRecordsToScan: Int = 20_000, timeBudget: TimeInterval = 1.5) {
+    public init(maxRecordsToScan: Int = 20_000, timeBudget: TimeInterval = 1.5, scanResources: Bool = false) {
         self.maxRecordsToScan = maxRecordsToScan
         self.timeBudget = timeBudget
+        self.scanResources = scanResources
     }
 
     public static let preview = AnalysisOptions()
-    public static let thorough = AnalysisOptions(maxRecordsToScan: .max, timeBudget: .infinity)
+    public static let thorough = AnalysisOptions(maxRecordsToScan: .max, timeBudget: .infinity, scanResources: true)
 }
 
 /// One analyzer per file family. Add a new format by conforming a type to this
