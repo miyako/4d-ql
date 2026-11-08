@@ -19,8 +19,8 @@ Import/export settings previews preserve field order (which can differ from fiel
 numbers), display missing values explicitly, and retain unknown field types and
 extra options. XML is limited to 4 MiB, 20,000 elements, and 32 nesting levels;
 malformed XML and custom entities are rejected without loading external entities.
-Leading ASCII whitespace before an XML declaration is tolerated and reported in
-collapsed parser notes.
+Leading ASCII whitespace before an XML declaration is tolerated; formatting
+warnings remain in JSON output rather than the preview.
 The preview shows at most 500 fields and 500 option rows, with explicit omission
 counts; JSON output retains the complete parsed configuration.
 
