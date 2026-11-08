@@ -163,6 +163,19 @@ SIGN_IDENTITY="Developer ID Application: …" scripts/build.sh
 Releases are built on GitHub's hosted macOS runners:
 
 * `.github/workflows/ci.yml` runs the tests and an ad-hoc build on every push and pull request.
+* `.github/workflows/bump-version.yml` offers **patch** (default), **minor**, and
+  **major** in **Actions > Bump version > Run workflow**. It increments the
+  highest `vX.Y.Z` tag, resetting lower components for minor/major bumps,
+  tags the selected branch's checked-out commit, and starts **Build & Release**.
+  No source version fields need editing. From the CLI:
+
+  ```bash
+  gh workflow run bump-version.yml -f mode=patch
+  ```
+
+  Bumps are serialized to avoid competing version tags. If the tag was pushed
+  but starting the release failed, rerun `release.yml` against that tag rather
+  than bumping again.
 * `.github/workflows/release.yml` runs on a `vX.Y.Z` tag. It tests, builds
   with the tag's version, signs with Developer ID, notarizes and staples the
   app, and publishes `4D-QuickLook-X.Y.Z.dmg` and `.zip`. To release:
@@ -173,7 +186,11 @@ Releases are built on GitHub's hosted macOS runners:
 
   To rebuild an existing tag: `gh workflow run release.yml -f tag=v0.2.0`.
 
-It needs six repository secrets: `APPLE_DEVELOPER_ID_CERTIFICATE` (base64
+The bump workflow explicitly dispatches the release because tag pushes made
+with GitHub's built-in token do not trigger other workflows. It needs
+`contents: write` and `actions: write`; no additional token secret is required.
+
+The release workflow needs six repository secrets: `APPLE_DEVELOPER_ID_CERTIFICATE` (base64
 .p12), `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`,
 `NOTARYTOOL_APPLE_ID`, `NOTARYTOOL_TEAM_ID` and `NOTARYTOOL_PASSWORD`.
 

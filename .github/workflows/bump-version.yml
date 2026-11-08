@@ -1,0 +1,93 @@
+# Versions come from tags; the app and extension plists are filled at build time.
+# Dispatch release.yml explicitly: pushes made with GITHUB_TOKEN do not trigger it.
+
+name: Bump version
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        description: Semantic version bump
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+        required: true
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: bump-version
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: require a branch
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" != "branch" ]; then
+            echo "::error::Run this workflow against a branch, not a tag."
+            exit 1
+          fi
+
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: calculate next version
+        id: bump
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+
+          mode = os.environ["MODE"]
+          if mode not in ("major", "minor", "patch"):
+              raise SystemExit(f"::error::Unknown bump mode: {mode}")
+
+          tags = subprocess.check_output(["git", "tag", "--list"], text=True).splitlines()
+          versions = [
+              tuple(map(int, tag[1:].split(".")))
+              for tag in tags
+              if re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag)
+          ]
+          if not versions:
+              raise SystemExit("::error::No vX.Y.Z release tag found; create an initial tag first.")
+
+          current = max(versions)
+          major, minor, patch = current
+          if mode == "major":
+              major, minor, patch = major + 1, 0, 0
+          elif mode == "minor":
+              minor, patch = minor + 1, 0
+          else:
+              patch += 1
+          version = f"{major}.{minor}.{patch}"
+          print(f"Bumping {'.'.join(map(str, current))} -> {version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version}\ntag=v{version}\n")
+          PY
+
+      - name: tag and start release
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_REF: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
+          gh workflow run release.yml --ref "$RELEASE_REF" -f "tag=$TAG"
+          echo "### Created $TAG and requested Build & Release." >> "$GITHUB_STEP_SUMMARY"
