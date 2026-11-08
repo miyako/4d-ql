@@ -54,11 +54,6 @@ public struct ImportExportSettingsPresenter: ReportPresenter {
                 rows: Array(configuration.prefix(limit)),
                 more: configuration.count > limit ? "\(Fmt.plural(configuration.count - limit, "more setting")) not shown; JSON output includes all settings." : nil))]))
         }
-        if !info.warnings.isEmpty {
-            report.sections.append(Section("Parser notes", [
-                .disclosure(summary: "Formatting notes", detail: nil, blocks: info.warnings.map { .note($0, .warning) }),
-            ]))
-        }
         return report
     }
 

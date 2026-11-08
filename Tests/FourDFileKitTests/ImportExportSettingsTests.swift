@@ -54,7 +54,9 @@ final class ImportExportSettingsTests: XCTestCase {
         let html = PreviewPipeline().html(for: url)
         XCTAssertTrue(html.contains("<table>"))
         XCTAssertFalse(html.contains("No preview available"))
-        XCTAssertTrue(html.contains("Ignored whitespace"))
+        XCTAssertFalse(html.contains("Ignored whitespace"))
+        XCTAssertFalse(html.contains("Parser notes"))
+        XCTAssertFalse(html.contains("Formatting notes"))
     }
 
     func testUnknownOptionsNestedContentAndEscapingArePreserved() throws {
