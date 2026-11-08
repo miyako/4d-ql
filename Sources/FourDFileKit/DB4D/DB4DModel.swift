@@ -78,8 +78,9 @@ public struct CollationOptions: Codable {
 
 /// 4D field types, numbered as in the `type` attribute of catalog.4DCatalog.
 public enum FieldKind: Int, Codable {
-    case boolean = 1, integer = 3, longint = 4, integer64 = 5, real = 6, float = 7
-    case date = 8, time = 9, text = 10, picture = 12, uuid = 13, legacyText = 14, blob = 18, object = 21
+    case boolean = 1, byte = 2, integer = 3, longint = 4, integer64 = 5, real = 6, float = 7
+    case date = 8, time = 9, text = 10, legacyBlob = 11, picture = 12, uuid = 13, legacyText = 14
+    case unlimitedText = 17, blob = 18, object = 21
 }
 
 public struct FieldInfo: Codable {
@@ -93,8 +94,13 @@ public struct FieldInfo: Codable {
     public var kind: FieldKind? { FieldKind(rawValue: typeCode) }
 
     public var typeName: String {
-        switch kind {
+        Self.typeName(code: typeCode, limitingLength: limitingLength)
+    }
+
+    public static func typeName(code: Int, limitingLength: Int?) -> String {
+        switch FieldKind(rawValue: code) {
         case .boolean: return "Boolean"
+        case .byte: return "Byte"
         case .integer: return "Integer"
         case .longint: return "Long Integer"
         case .integer64: return "Integer 64 bit"
@@ -102,13 +108,13 @@ public struct FieldInfo: Codable {
         case .float: return "Float"
         case .date: return "Date"
         case .time: return "Time"
-        case .text: if let n = limitingLength { return "Alpha (\(n))" } else { return "Text" }
+        case .text, .legacyText, .unlimitedText:
+            if let n = limitingLength, n > 0 { return "Alpha (\(n))" } else { return "Text" }
         case .picture: return "Picture"
         case .uuid: return "UUID"
-        case .legacyText: return "Text"
-        case .blob: return "BLOB"
+        case .blob, .legacyBlob: return "BLOB"
         case .object: return "Object"
-        case nil: return "Type \(typeCode)"
+        case nil: return "Type \(code)"
         }
     }
 }

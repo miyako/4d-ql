@@ -7,6 +7,7 @@ file to see what is inside instead of a generic icon.
 |---|---|
 | `.4DD` data file | tables ranked by records (the largest eight, the rest folded into "Other"), field types, the database UUID the structure must match, sort/search language and wildcard rule, index engine versions, journal file path, storage use, whether it was closed cleanly or needs repair, and for [encrypted data files](https://developer.4d.com/docs/commands/encrypt-data-file) which tables are encrypted |
 | `.4DB` binary structure | tables ranked by fields, field types, relations (`[Table_1]Field_4 → [Table_2]ID`), resource types (forms, menu bars, picture library, …), the database UUID, sort/search settings, journaling |
+| `.4DCatalog` XML catalog | a diagram-first view of tables, field types, primary keys, hidden fields, and relations; counts, database UUID, sort/search language, schemas, and encryptable tables tucked into "Catalog details" |
 
 Even a 220 MB data file previews in about 30 ms, because only header blocks are read.
 
@@ -14,7 +15,25 @@ Even a 220 MB data file previews in about 30 ms, because only header blocks are 
 
 Quick Look has little room, so the preview leads with what matters to a user
 or developer, and every block has a fixed size: a file with 500 tables takes
-the same space as one with 5 (hover a bar for details).
+the same summary space as one with 5 (hover a bar for details).
+
+Catalog previews lead with the diagram, without summary charts or relation
+lists. Metadata remains available in a collapsed **Catalog details** disclosure.
+Catalog diagrams are self-contained SVG with no scripts or network requests.
+They reuse saved structure-editor positions when practical and fall back to a
+deterministic layout otherwise. Scroll within the diagram and hover names or
+connectors for details. Table headings are centered; relation names appear
+only in connector tooltips to keep the diagram uncluttered.
+Primary-key field names are underlined, indexed field names are bold, and
+hidden names are italic; these styles combine when multiple flags apply.
+Previews show at most 24 tables, eight fields per table
+(prioritizing primary keys and joins), and 64 relations. Per-table field
+omissions are labeled on the cards; omission totals and the legend remain in
+the diagram's tooltip/accessibility description, not above the diagram.
+The JSON output retains all parsed tables, fields, and relations. XML catalogs
+are limited to 32 MiB, 200,000 elements, and 128 nesting levels; malformed XML
+and custom entity declarations are rejected. The standard 4D external DOCTYPE
+is accepted without loading its DTD.
 
 * **Shown:** contents (tables, records, fields), what decides whether the
   file opens and behaves as expected (database UUID, language, `@` wildcard
@@ -33,6 +52,7 @@ Sources/
     Core/                ByteSource (pread), BinaryReader (bounds-checked),
                          FileAnalyzer protocol, AnalyzerRegistry
     DB4D/                the shared .4DD/.4DB container format
+    Catalog/             .4DCatalog XML definitions and relation references
   FourDRender/           rendering layer: model -> Report -> HTML
     Report.swift         generic page model (stats, badges, tables, bars, disclosures)
     *Presenter.swift     one presenter per model kind
@@ -115,6 +135,7 @@ It needs six repository secrets: `APPLE_DEVELOPER_ID_CERTIFICATE` (base64
 swift build && .build/debug/fourdql file.4DD            # text summary
 .build/debug/fourdql --json file.4DD                    # analyzer output
 .build/debug/fourdql --html file.4DD > preview.html     # exactly what Quick Look shows
+.build/debug/fourdql --html catalog.4DCatalog > catalog.html
 FOURD_SAMPLES=/path/to/samples swift test               # runs every sample through the pipeline
 scripts/make-fixtures.sh                                # regenerate test fixtures (needs tool4d)
 ```
@@ -152,6 +173,15 @@ source next to the code that reads them (`DB4DHeader.swift`, `DB4DContainer.swif
 
 Not decoded yet: index definitions beyond counts, record contents, and the
 meaning of most resource types (they are shown by their four-character code).
+
+Catalog XML conventions and diagram presentation were informed by
+[miyako/4d-catalog-diagram](https://github.com/miyako/4d-catalog-diagram) and
+[miyako/4d-utility-structure-to-svg-converter-v2](https://github.com/miyako/4d-utility-structure-to-svg-converter-v2).
+Relation endpoints and primary keys resolve by UUID first, then by unambiguous
+name. Unknown field types remain labeled `Type n`; unknown XML elements are
+ignored and unresolved references are reported in parser notes. A catalog's
+`encryptable` flag describes the structure, not the encryption state of a
+particular data file.
 
 ## License
 
