@@ -65,6 +65,10 @@ public struct FormFileAnalyzer: FileAnalyzer {
     public var filenameExtensions: [String] { ["4dform"] }
 
     public func analyze(_ source: ByteSource, options: AnalysisOptions) throws -> AnalysisModel {
+        try analyzeForm(source, options: options)
+    }
+
+    public func analyzeForm(_ source: ByteSource, options: AnalysisOptions = .preview) throws -> FormFileInfo {
         guard source.size <= 4 * 1024 * 1024 else { throw FormError.limit("Form exceeds 4 MiB.") }
         var data = try source.read(at: 0, length: Int(source.size))
         if data.starts(with: [0xEF, 0xBB, 0xBF]) { data.removeFirst(3) }

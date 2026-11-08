@@ -8,6 +8,7 @@ let package = Package(
         .library(name: "FourDFileKit", targets: ["FourDFileKit"]),
         .library(name: "FourDRender", targets: ["FourDRender"]),
         .executable(name: "fourdql", targets: ["fourdql"]),
+        .executable(name: "fourdform", targets: ["fourdform"]),
     ],
     targets: [
         // Analyzer layer: bytes -> typed, Codable models. No UI, no HTML.
@@ -23,6 +24,7 @@ let package = Package(
 
         // Command line tool for development: inspect a file as text, JSON or HTML.
         .executableTarget(name: "fourdql", dependencies: ["FourDFileKit", "FourDRender"]),
+        .executableTarget(name: "fourdform", dependencies: ["FourDFileKit", "FourDRender"]),
 
         // Quick Look preview extension binary (bundled into an .appex by scripts/build.sh).
         .executableTarget(

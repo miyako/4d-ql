@@ -52,7 +52,9 @@ struct FormPreviewRenderer {
         let fixedScheme = preview.properties["colorScheme"]?.string
         let variants = preview.appearances.filter { fixedScheme == nil || $0.theme.dark == (fixedScheme == "dark") }
         for appearance in variants {
-            let checked = appearance.theme.glass == defaultGlass ? (fixedScheme != nil ? " checked" : "") : ""
+            let selected = preview.initialTheme.map { $0 == appearance.theme }
+                ?? (appearance.theme.glass == defaultGlass && fixedScheme != nil)
+            let checked = selected ? " checked" : ""
             // Two checked defaults, one per system color scheme, are selected by CSS.
             let defaultClass = appearance.theme.glass == defaultGlass ? (appearance.theme.dark ? " default-dark" : " default-light") : ""
             html += "<input class=\"theme-choice\(defaultClass)\" type=\"radio\" name=\"form-theme\" id=\"theme-\(appearance.theme.rawValue)\"\(checked)>"
@@ -64,8 +66,10 @@ struct FormPreviewRenderer {
             let theme = appearance.theme
             let size = Self.canvas(appearance, properties: preview.properties)
             html += "<div class=\"form-appearance \(theme.dark ? "dark" : "light") \(theme.glass ? "glass" : "classic")\" data-theme=\"\(theme.rawValue)\">"
+            let initialPage = preview.initialPage
+                ?? (appearance.pages.contains { $0.number == 1 } ? 1 : appearance.pages.first?.number ?? 0)
             for page in appearance.pages {
-                html += "<input class=\"page-choice\" type=\"radio\" name=\"page-\(theme.rawValue)\" id=\"page-\(theme.rawValue)-\(page.number)\"\(page.number == 1 ? " checked" : "")>"
+                html += "<input class=\"page-choice\" type=\"radio\" name=\"page-\(theme.rawValue)\" id=\"page-\(theme.rawValue)-\(page.number)\"\(page.number == initialPage ? " checked" : "")>"
             }
             if appearance.pages.count >= 2 {
                 html += "<div class=\"form-pages\" role=\"group\" aria-label=\"Form page\">"

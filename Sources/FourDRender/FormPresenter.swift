@@ -6,6 +6,8 @@ public struct FormPreview {
     public var properties: FormValue
     public var appearances: [FormAppearance]
     public var images: [FormImage]
+    public var initialTheme: FormTheme? = nil
+    public var initialPage: Int? = nil
 }
 
 public struct FormPresenter: ReportPresenter {
@@ -14,10 +16,15 @@ public struct FormPresenter: ReportPresenter {
 
     public func report(for model: AnalysisModel) -> Report? {
         guard let form = model as? FormFileInfo else { return nil }
+        return formReport(form)
+    }
+
+    public func formReport(_ form: FormFileInfo, initialTheme: FormTheme? = nil, initialPage: Int? = nil) -> Report {
         var report = Report(title: form.formName, subtitle: "4D Form")
         var blocks: [Block] = [
             .formPreview(FormPreview(name: form.formName, properties: form.properties,
-                                     appearances: form.appearances, images: form.images))
+                                     appearances: form.appearances, images: form.images,
+                                     initialTheme: initialTheme, initialPage: initialPage))
         ]
         var notes = form.warnings
         notes += FormPreviewRenderer.diagnostics(form)

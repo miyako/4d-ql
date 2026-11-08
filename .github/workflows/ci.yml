@@ -29,6 +29,11 @@ jobs:
       - name: test
         run: swift test
 
+      - name: standalone form renderer
+        run: |
+          scripts/build-form-renderer.sh
+          python3 scripts/test-form-renderer.py --renderer build/standalone/fourdform
+
       - name: build app (universal, ad-hoc signed)
         run: scripts/build.sh
 

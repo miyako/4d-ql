@@ -17,6 +17,22 @@ file to see what is inside instead of a generic icon.
 
 Even a 220 MB data file previews in about 30 ms, because only header blocks are read.
 
+### Standalone form rendering
+
+`fourdform` and the public `FourDRender.FormRenderer` API reuse the calibrated
+form pipeline without 4D, Quick Look, the hosting app or its XPC service.
+Generate one self-contained HTML preview or versioned JSON export:
+
+```sh
+scripts/build-form-renderer.sh
+build/standalone/fourdform --language en --output preview.html path/to/form.4DForm
+build/standalone/fourdform --json --language fr path/to/form.4DForm > form-reference.json
+```
+
+The current executable is macOS-specific, not a validated Windows port.
+See [standalone API/CLI and static-feature contract](docs/FORM-RENDERER.md)
+and the [Windows handover](docs/WINDOWS-HANDOVER.md).
+
 Import/export settings previews preserve field order (which can differ from field
 numbers), display missing values explicitly, and retain unknown field types and
 extra options. Summary cards show the table, selected field count, format, and
