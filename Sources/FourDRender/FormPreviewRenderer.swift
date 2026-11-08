@@ -95,11 +95,11 @@ struct FormPreviewRenderer {
             && (properties["width"]?.double ?? 0) >= 0 && (properties["height"]?.double ?? 0) >= 0
     }
 
-    private static func bounds(_ properties: FormValue) -> (x: Double, y: Double, w: Double, h: Double) {
+    private static func bounds(_ properties: FormValue, theme: FormTheme) -> (x: Double, y: Double, w: Double, h: Double) {
         let x = properties["left"]?.double ?? 0
         let y = properties["top"]?.double ?? 0
         let w = properties["width"]?.double ?? properties["right"]?.double.map { $0 - x } ?? 100
-        let defaultHeight: Double = ["checkbox", "radio"].contains(properties["type"]?.string ?? "") ? 16 : 20
+        let defaultHeight: Double = theme.glass && ["checkbox", "radio"].contains(properties["type"]?.string ?? "") ? 16 : 20
         let h = properties["height"]?.double ?? properties["bottom"]?.double.map { $0 - y } ?? defaultHeight
         return (x, y, max(0, w), max(0, h))
     }
@@ -107,7 +107,7 @@ struct FormPreviewRenderer {
     private static func canvas(_ appearance: FormAppearance, properties: FormValue) -> (width: Double, height: Double, clipped: Bool) {
         let objects = appearance.pages.flatMap(\.objects).filter { validGeometry($0.properties) }
         let anchor = properties["formSizeAnchor"]?.string.flatMap { name in objects.first { $0.name == name } }
-        let rectangles = (anchor.map { [$0] } ?? objects).map { bounds($0.properties) }
+        let rectangles = (anchor.map { [$0] } ?? objects).map { bounds($0.properties, theme: appearance.theme) }
         let width = properties["width"]?.double ?? (rectangles.map { $0.x + $0.w }.max() ?? 300) + (properties["rightMargin"]?.double ?? 20)
         let height = properties["height"]?.double ?? (rectangles.map { $0.y + $0.h }.max() ?? 200) + (properties["bottomMargin"]?.double ?? 20)
         return (max(1, min(8_192, width)), max(1, min(8_192, height)), width > 8_192 || height > 8_192)
@@ -116,7 +116,7 @@ struct FormPreviewRenderer {
     private func draw(_ object: FormObject, theme: FormTheme, images: [FormImage], id: String) -> String {
         let p = object.properties
         guard Self.validGeometry(p), p["visibility"]?.string != "hidden", p["display"]?.bool != false else { return "" }
-        let b = Self.bounds(p)
+        let b = Self.bounds(p, theme: theme)
         let nativeStyle = p["style"]?.string ?? "regular"
         let quantized = theme.glass && (object.type == "dropdown" || object.type == "button" && nativeStyle == "regular")
         let w = b.w, h = quantized ? Self.nativeControlHeight(b.h) : b.h
@@ -124,7 +124,7 @@ struct FormPreviewRenderer {
         let stroke = color(p["stroke"]?.string, fallback: "var(--form-ink)")
         let fill = color(p["fill"]?.string, fallback: "transparent")
         let border = p["borderStyle"]?.string ?? "system"
-        let fontSize = font(p, height: b.h)
+        let fontSize = font(p, height: b.h, glass: theme.glass)
         let tip = "\(object.name) · \(object.type)" + (p["dataSource"]?.string.map { "\n\($0)" } ?? "")
         var svg = "<g transform=\"translate(\(n(b.x)) \(n(b.y)))\"><title>\(esc(tip))</title>"
         let clip = "form-clip-\(id)"
@@ -198,13 +198,19 @@ struct FormPreviewRenderer {
                                width: max(0,w-(object.type == "dropdown" ? 25 : iconWidth > 0 ? iconWidth + 16 : 0)),
                                center: object.type == "button", ink: defaultButton && style == "regular" ? "white" : stroke) + "</g>"
                 if object.type == "dropdown" || p["popupPlacement"]?.string.map({ $0 != "none" }) == true {
-                    svg += chevrons(x: w - 11, y: h/2, both: object.type == "dropdown")
+                    let classicPopup = object.type == "dropdown" && !theme.glass
+                    if classicPopup {
+                        let side = max(0,min(17,w-2))
+                        svg += "<rect x=\"\(n(w-side-1))\" y=\"1\" width=\"\(n(side))\" height=\"\(n(max(0,h-2)))\" rx=\"4\" fill=\"var(--form-accent)\"/>"
+                    }
+                    svg += chevrons(x: w - 11, y: h/2, both: object.type == "dropdown", ink: classicPopup ? "white" : "var(--form-ink)")
                 }
             }
         case "checkbox", "radio":
             let style = p["style"]?.string ?? "regular"
             let defaultSize = p["height"] == nil && p["bottom"] == nil
-            let side = theme.glass ? (defaultSize ? 16 : object.type == "checkbox" ? (h <= 13 ? 12 : h <= 16 ? 14 : 16) : (h <= 13 ? 14 : 16)) : min(h,14)
+            let side: Double = theme.glass ? (defaultSize ? 16 : object.type == "checkbox" ? (h <= 13 ? 12 : h <= 16 ? 14 : 16) : (h <= 13 ? 14 : 16))
+                : object.type == "checkbox" ? (h <= 13 ? 10 : h <= 16 ? 12 : 14) : (h <= 13 ? 12 : 14)
             let y = (h-side)/2
             if ["disclosure", "roundedDisclosure"].contains(style) {
                 svg += "<path d=\"M3 \(n(h/2-5)) l7 5 -7 5 z\" fill=\"var(--form-muted)\"/>"
@@ -218,14 +224,14 @@ struct FormPreviewRenderer {
                 svg += rect(color(p["fill"]?.string, fallback: "var(--form-control)"), radius: style == "bevel" ? 0 : 5)
                 svg += text(label, center: true)
             } else if object.type == "radio" {
-                svg += "<circle cx=\"\(n(side/2))\" cy=\"\(n(h/2))\" r=\"\(n(max(0,side/2-0.5)))\" fill=\"var(--form-input)\" stroke=\"var(--form-border)\"/>"
+                svg += "<circle cx=\"\(n(side/2))\" cy=\"\(n(h/2))\" r=\"\(n(max(0,side/2-0.5)))\" fill=\"var(--form-toggle)\" stroke=\"var(--form-border)\"/>"
                 svg += text(label, x: side + 5, width: max(0,w-side-5))
             } else {
-                svg += "<rect y=\"\(n(y))\" width=\"\(n(side))\" height=\"\(n(side))\" rx=\"3\" fill=\"var(--form-input)\" stroke=\"var(--form-border)\"/>"
+                svg += "<rect y=\"\(n(y))\" width=\"\(n(side))\" height=\"\(n(side))\" rx=\"3\" fill=\"var(--form-toggle)\" stroke=\"var(--form-border)\"/>"
                 svg += text(label, x: side + 5, width: max(0,w-side-5))
             }
         case "groupBox":
-            svg += "<rect y=\"\(n(fontSize/2))\" width=\"\(n(w))\" height=\"\(n(max(0,h-fontSize/2)))\" rx=\"5\" fill=\"\(fill)\" stroke=\"var(--form-border)\"/>"
+            svg += "<rect y=\"\(n(fontSize/2))\" width=\"\(n(w))\" height=\"\(n(max(0,h-fontSize/2)))\" rx=\"5\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-group)"))\" stroke=\"var(--form-border)\"/>"
             let titleWidth = min(max(0,w-20), measure(label, size: fontSize, p: p) + 8)
             svg += "<rect x=\"10\" width=\"\(n(titleWidth))\" height=\"\(n(fontSize+2))\" fill=\"var(--form-bg)\"/>" + text(label, x: 14, width: max(0,titleWidth-8), height: fontSize+2)
         case "tab":
@@ -375,16 +381,16 @@ struct FormPreviewRenderer {
         return (text as NSString).size(withAttributes: [.font: font]).width
     }
 
-    private func font(_ properties: FormValue, height: Double) -> Double {
+    private func font(_ properties: FormValue, height: Double, glass: Bool = true) -> Double {
         if let size = properties["fontSize"]?.double, size > 0, size.isFinite { return max(1,min(256,size)) }
         if properties["fontTheme"]?.string == "main" { return 14 }
         if properties["fontTheme"]?.string == "additional" { return 11 }
         if properties["height"] == nil && properties["bottom"] == nil {
             if ["checkbox", "radio"].contains(properties["type"]?.string ?? "") { return 13 }
-            if ["button", "dropdown"].contains(properties["type"]?.string ?? "") { return 11 }
+            if ["button", "dropdown"].contains(properties["type"]?.string ?? "") { return glass ? 11 : 13 }
         }
         switch properties["type"]?.string {
-        case "button", "dropdown": return height <= 16 ? 9 : height <= 20 ? 11 : 13
+        case "button", "dropdown": return height <= 16 ? 9 : (glass ? height <= 20 : height < 20) ? 11 : 13
         case "checkbox": return height <= 13 ? 9 : height <= 16 ? 11 : 13
         case "radio": return height <= 13 ? 11 : 13
         default: return height < 18 ? 11 : 13
@@ -428,8 +434,8 @@ struct FormPreviewRenderer {
         return "<svg x=\"\(n(x))\" y=\"\(n(y))\" width=\"\(n(w))\" height=\"\(n(h))\" overflow=\"hidden\"><g transform=\"translate(\(n(ox)) \(n(oy))) scale(\(n(sx)) \(n(sy)))\"><svg width=\"\(n(sourceWidth))\" height=\"\(n(sourceHeight))\" overflow=\"hidden\"><use href=\"#\(asset.id)\"/></svg></g></svg>"
     }
 
-    private func chevrons(x: Double, y: Double, both: Bool) -> String {
-        "<path d=\"M\(n(x-3)) \(n(y+(both ? 2 : -2))) l3 3 3 -3\(both ? " M\(n(x-3)) \(n(y-2)) l3 -3 3 3" : "")\" fill=\"none\" stroke=\"var(--form-ink)\" stroke-width=\"1.3\"/>"
+    private func chevrons(x: Double, y: Double, both: Bool, ink: String = "var(--form-ink)") -> String {
+        "<path d=\"M\(n(x-3)) \(n(y+(both ? 2 : -2))) l3 3 3 -3\(both ? " M\(n(x-3)) \(n(y-2)) l3 -3 3 3" : "")\" fill=\"none\" stroke=\"\(ink)\" stroke-width=\"1.3\"/>"
     }
 
     private func dashArray(_ value: FormValue?) -> String {
@@ -459,9 +465,9 @@ struct FormPreviewRenderer {
     .theme-choice:focus-visible ~ .form-themes,.page-choice:focus-visible ~ .form-pages{outline:2px solid var(--accent)}
     .form-appearance,.form-page{display:none}.form-scroll{overflow:auto;max-height:680px;border:1px solid var(--border);border-radius:6px}
     .form-scroll>svg{display:block;max-width:none}.form-caption{font-size:11px;color:var(--muted);margin-top:7px}
-    .form-appearance.light{color-scheme:light;--form-bg:#ececec;--form-ink:#202020;--form-muted:#777;--form-input:#fff;--form-control:#fff;--form-border:#b8b8b8;--form-header:#f1f1f1;--form-alternate:#f3f5f7;--form-grid:#ddd;--form-accent:#007aff;--form-office:#e2effc}
-    .form-appearance.dark{color-scheme:dark;--form-bg:#292929;--form-ink:#eee;--form-muted:#a0a0a0;--form-input:#1e1e1e;--form-control:#626262;--form-border:#737373;--form-header:#363636;--form-alternate:#272a2e;--form-grid:#444;--form-accent:#0a84ff;--form-office:#32455a}
-    .form-appearance.glass.light{--form-bg:#f2f2f2;--form-control:#e0e0e0;--form-border:#cecece}
-    .form-appearance.glass.dark{--form-bg:#252525;--form-control:#606060cc;--form-border:#777}
+    .form-appearance.light{color-scheme:light;--form-bg:#ececec;--form-ink:#202020;--form-muted:#777;--form-input:#fff;--form-control:#fff;--form-toggle:#fff;--form-group:transparent;--form-border:#b8b8b8;--form-header:#f1f1f1;--form-alternate:#f3f5f7;--form-grid:#ddd;--form-accent:#007aff;--form-office:#e2effc}
+    .form-appearance.dark{color-scheme:dark;--form-bg:#323232;--form-ink:#eee;--form-muted:#a0a0a0;--form-input:#1e1e1e;--form-control:#656565;--form-toggle:#535353;--form-group:transparent;--form-border:#737373;--form-header:#363636;--form-alternate:#272a2e;--form-grid:#444;--form-accent:#0a84ff;--form-office:#32455a}
+    .form-appearance.glass.light{--form-bg:#fff;--form-control:#e1e1e1;--form-group:#f3f3f3;--form-border:#cecece}
+    .form-appearance.glass.dark{--form-bg:#1e1e1e;--form-control:#383838;--form-toggle:#2a2a2a;--form-group:#282828;--form-border:#777}
     """
 }

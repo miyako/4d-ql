@@ -51,7 +51,8 @@ and provide scrollable canvases and script-free page/appearance selectors.
 The viewer's appearance is used initially; an explicit form `colorScheme`
 is respected. Liquid Glass buttons and dropdowns use the documented
 27-point rounded-control threshold and measured native height/font variants;
-tall dropdowns retain a rectangular fallback.
+tall dropdowns retain a rectangular fallback. Classic uses its own automatic
+font thresholds, default toggle heights and accented dropdown arrow area.
 
 Stylesheets load in 4D order: `Project/Sources/styleSheets.css`,
 `styleSheets_mac.css`, then the form's `css` references (Windows-only
@@ -93,17 +94,27 @@ The rendering reference combines the canonical
 [4D form](https://github.com/miyako/skills/tree/dist/skills/4dform),
 [CSS](https://github.com/miyako/skills/tree/dist/skills/4dcss) and
 [CLI](https://github.com/miyako/skills/tree/dist/skills/4dcli) skills with
-captures from 4D 21 R4 build 100208 on macOS 26.7. Named-form
+captures from 4D 21 R4 build 100208, 21.2 LTS build 100653 and
+21 R5 build 100156 on macOS 26.7. Named-form
 [`FORM SCREENSHOT`](https://developer.4d.com/docs/commands/form-screenshot)
 captures ignore CSS; a loaded-form screenshot and printed forms can apply
 it, but neither substitutes for a live dialog. The measured light
 Liquid Glass geometry informs the preview's discrete sizes, one listbox
 expression row, page-zero layering and asymmetric single-line input
-rounding. Dark captures were incomplete, classic rendering was unavailable
-on that host, and the bounded GUI
+rounding. LTS tool4d supplied Classic light/dark geometry and palettes;
+full R5 `4D.app` supplied Liquid Glass light/dark editor-template captures,
+including dark colors and SVG artwork that tool4d did not reproduce reliably.
+Those template palettes inform the preview. A minimal R5 live dialog was
+also captured in both schemes using a blocking `DIALOG` and an `onTimer`
+form method; its transparent canvas and runtime input appearance differ
+from named-form output.
+
+Some engines crashed or failed to terminate after writing the captures;
+the resulting PNGs were decoded and inspected, but these were not clean
+CLI runs. Full LTS applications crashed before startup, and the bounded R4 GUI
 [`FORM EDIT`](https://developer.4d.com/docs/commands/form-edit) attempt did
-not reach its startup method. Dark/classic styling therefore remains an
-approximation rather than a claimed native-match result.
+not reach its startup method. All four appearances remain approximations,
+not native-match or application-lifecycle guarantees.
 
 Form JSON is limited to 4 MiB, 64 nesting levels and 100,000 values;
 duplicate keys are rejected to avoid ambiguous paint order. Dependencies

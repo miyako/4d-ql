@@ -317,6 +317,36 @@ final class FormTests: XCTestCase {
         XCTAssertTrue(html.contains("width=\"100\" height=\"40\" rx=\"2\""))
     }
 
+    func testClassicAndGlassHaveDistinctAutomaticFontAndToggleDefaults() throws {
+        let folder = try folder()
+        let url = try write(form(#"{"button":{"type":"button","left":0,"top":0,"width":100,"height":20,"text":"HEIGHT"},"check":{"type":"checkbox","left":0,"top":40,"width":100,"text":"HEIGHT"},"menu":{"type":"dropdown","left":0,"top":80,"width":100,"height":23,"dataSource":"Form.value"}}"#), "form.4DForm", in:folder)
+        let info = try analyze(url)
+        func render(_ theme: FormTheme) throws -> String {
+            let appearance = try XCTUnwrap(info.appearances.first { $0.theme == theme })
+            return FormPreviewRenderer().render(FormPreview(name:"Native",properties:info.properties,appearances:[appearance],images:[]))
+        }
+        let classic = try render(.classicDark)
+        let glass = try render(.glassDark)
+        func fragment(_ html: String, _ name: String) throws -> String {
+            let tail = try XCTUnwrap(html.components(separatedBy:"<title>\(name) · ").dropFirst().first)
+            return try XCTUnwrap(tail.components(separatedBy:"<g transform=").first)
+        }
+        let classicCheck = try fragment(classic,"check")
+        let glassCheck = try fragment(glass,"check")
+        XCTAssertTrue(classicCheck.contains("height=\"20\""))
+        XCTAssertTrue(classicCheck.contains("width=\"14\" height=\"14\" rx=\"3\""))
+        XCTAssertTrue(glassCheck.contains("height=\"16\""))
+        XCTAssertTrue(glassCheck.contains("width=\"16\" height=\"16\" rx=\"3\""))
+        XCTAssertTrue(try fragment(classic,"button").contains("font-size=\"13\""))
+        XCTAssertTrue(try fragment(glass,"button").contains("font-size=\"11\""))
+        XCTAssertTrue(try fragment(classic,"menu").contains("fill=\"var(--form-accent)\""))
+        XCTAssertFalse(try fragment(glass,"menu").contains("fill=\"var(--form-accent)\""))
+        XCTAssertTrue(classic.contains("--form-bg:#323232"))
+        XCTAssertTrue(classic.contains("--form-control:#656565"))
+        XCTAssertTrue(glass.contains("--form-bg:#fff;--form-control:#e1e1e1;--form-group:#f3f3f3"))
+        XCTAssertTrue(glass.contains("--form-bg:#1e1e1e;--form-control:#383838"))
+    }
+
     func testDarkPictureSubstitutionAndActiveSVGRejected() throws {
         let folder = try folder()
         try write(#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="blue"/></svg>"#, "logo.svg", in: folder)
