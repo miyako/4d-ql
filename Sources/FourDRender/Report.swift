@@ -107,6 +107,21 @@ public indirect enum Block {
     case disclosure(summary: String, detail: String?, blocks: [Block])
     case note(String, Badge.Tone)
     case text(String)
+    case code([CodeSpan])
+}
+
+public struct CodeSpan {
+    public enum Style: String {
+        case plain, comment, processing, string, number, keyword
+        case variable, command, constant, type, property, `operator`
+    }
+    public var text: String
+    public var style: Style
+
+    public init(_ text: String, style: Style = .plain) {
+        self.text = text
+        self.style = style
+    }
 }
 
 public struct Table {

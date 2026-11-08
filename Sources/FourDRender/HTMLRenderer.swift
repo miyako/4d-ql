@@ -115,6 +115,24 @@ public struct HTMLRenderer {
 
         case .text(let text):
             return "<p>\(esc(text))</p>"
+
+        case .code(let spans):
+            var lines = [""]
+            for span in spans {
+                let parts = span.text.components(separatedBy: "\n")
+                for (index, part) in parts.enumerated() {
+                    if index > 0 { lines.append("") }
+                    if !part.isEmpty {
+                        let text = esc(part)
+                        lines[lines.count - 1] += span.style == .plain ? text :
+                            "<span class=\"syntax-\(span.style.rawValue)\">\(text)</span>"
+                    }
+                }
+            }
+            if lines.last == "" && lines.count > 1 { lines.removeLast() }
+            return "<pre class=\"source\"><code>" + lines.enumerated().map {
+                "<span class=\"source-line\"><span class=\"line-number\" aria-hidden=\"true\">\($0.offset + 1)</span><span class=\"line-code\">\($0.element)</span></span>"
+            }.joined(separator: "\n") + "</code></pre>"
         }
     }
 
@@ -199,5 +217,22 @@ public struct HTMLRenderer {
     .st{font-weight:500}.sd{color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap}
     .note{padding:8px 10px;border-radius:6px;background:var(--soft);margin:8px 0 0;font-size:12px;color:var(--muted)}
     .note.warning{color:var(--warn)}.note.danger{color:var(--bad)}.note.good{color:var(--good)}
+    .source{margin:0;padding:12px 0;background:var(--soft);border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:760px;font:12px/1.6 ui-monospace,"SF Mono",Menlo,monospace;tab-size:4}
+    .source-line{display:inline-flex;min-width:100%}
+    .line-number{display:inline-block;flex-shrink:0;width:5em;padding:0 1em;color:var(--faint);text-align:right;user-select:none}
+    .line-code{padding-right:16px}
+    .syntax-comment{color:var(--muted);font-style:italic}
+    .syntax-processing,.syntax-keyword{color:#7a3e9d}
+    .syntax-string{color:#a13425}
+    .syntax-number,.syntax-constant{color:#875a0a}
+    .syntax-variable{color:#176b8a}
+    .syntax-command{color:#2459a6}
+    .syntax-type{color:#20704a}
+    .syntax-property{color:#795321}
+    .syntax-operator{color:var(--fg)}
+    @media (prefers-color-scheme:dark){
+    .syntax-processing,.syntax-keyword{color:#cf9aeb}.syntax-string{color:#f1a395}
+    .syntax-number,.syntax-constant{color:#e3be76}.syntax-variable{color:#7dc9e6}
+    .syntax-command{color:#8db9f3}.syntax-type{color:#82cba4}.syntax-property{color:#dbbb8c}}
     """
 }
