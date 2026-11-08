@@ -211,12 +211,12 @@ final class FourDFileKitTests: XCTestCase {
         XCTAssertEqual(segments.map(\.display), ["4", "4", "2", "2", "1", "1", "2", "1", "1"])
         XCTAssertEqual(segments.map(\.slot), [1, 2, 3, 4, 5, 6, 7, 8, nil])
         XCTAssertEqual(segments.map(\.icons),
-                       [[.text, .uuid], [.integer], [.real], [.date, .time], [.boolean],
+                       [[.text, .uuid], [.integer], [.real], [.date], [.boolean],
                         [.picture], [.blob], [.object], [.unknown]])
     }
 
     func testGroupedIconsOnlyShowTypesPresent() {
-        for (kind, icon) in [(FieldKind.uuid, FieldTypeIcon.uuid), (.text, .text), (.date, .date), (.time, .time)] {
+        for (kind, icon) in [(FieldKind.uuid, FieldTypeIcon.uuid), (.text, .text), (.date, .date), (.time, .date)] {
             guard case .composition(let segments) = DB4DPresenter.fieldTypes([kind, kind]) else {
                 return XCTFail("Expected composition")
             }
@@ -244,9 +244,10 @@ final class FourDFileKitTests: XCTestCase {
             XCTAssertEqual(report.sections.first?.title, "Tables")
             XCTAssertEqual(barRows(report, section: "Tables").count, 1)
             let html = HTMLRenderer().render(report)
-            for icon in FieldTypeIcon.allCases {
+            for icon in FieldTypeIcon.allCases where icon != .time {
                 XCTAssertTrue(html.contains(FieldTypeIconRenderer.render(icon)), "\(role): \(icon)")
             }
+            XCTAssertFalse(html.contains(FieldTypeIconRenderer.render(.time)))
             XCTAssertTrue(html.contains("Date &amp; time"))
             XCTAssertTrue(html.contains(".type-icon-text,.type-icon-uuid{color:var(--s1)}"))
             XCTAssertTrue(html.contains(".type-icon-integer{color:var(--s2)}"))
