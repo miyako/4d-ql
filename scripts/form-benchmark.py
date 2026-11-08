@@ -40,7 +40,7 @@ ENGINES = {
 
 
 def read_json(path):
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def write_json(path, value):
@@ -83,26 +83,52 @@ def run(command, log, timeout=60):
     return result
 
 
+def resolved_value(value, form_dir, seen=()):
+    if isinstance(value, list):
+        return [resolved_value(v, form_dir, seen) for v in value]
+    if not isinstance(value, dict):
+        return value
+    ref = value.get("$ref")
+    if ref:
+        filename, _, fragment = ref.partition("#")
+        sources = next((p for p in (form_dir, *form_dir.parents) if p.name == "Sources"), None)
+        prefixes = {"/SOURCES/": sources,
+                    "/RESOURCES/": sources.parent.parent / "Resources" if sources else None,
+                    "/PROJECT/": sources.parent if sources else None}
+        path = form_dir / filename
+        for prefix, base in prefixes.items():
+            if filename.upper().startswith(prefix) and base:
+                path = base / filename[len(prefix):]
+                break
+        key = (str(path.resolve()), fragment)
+        if key in seen:
+            raise RuntimeError(f"Cyclic JSON pointer: {ref}")
+        target = read_json(path)
+        for component in fragment.lstrip("/").split("/") if fragment else []:
+            target = target[component.replace("~1", "/").replace("~0", "~")]
+        target = resolved_value(target, path.parent, (*seen, key))
+        overrides = {k: v for k, v in value.items() if k != "$ref"}
+        if overrides:
+            if not isinstance(target, dict):
+                raise RuntimeError(f"Scalar JSON pointer has object overrides: {ref}")
+            target = {**target, **overrides}
+        return resolved_value(target, form_dir, seen) if overrides else target
+    return {k: resolved_value(v, form_dir, seen) for k, v in value.items()}
+
+
 def resolved_object(obj, form_dir):
-    ref = obj.get("$ref")
-    if not ref:
-        return dict(obj)
-    filename, fragment = ref.split("#", 1)
-    value = read_json(form_dir / filename)
-    for component in fragment.lstrip("/").split("/"):
-        value = value[component.replace("~1", "/").replace("~0", "~")]
-    return {**resolved_object(value, form_dir), **{k: v for k, v in obj.items() if k != "$ref"}}
+    return resolved_value(obj, form_dir)
 
 
 def validate(args, manifest):
     project = read_json(CORPUS / "Project/FormBenchmark.4DProject")
-    assert project["compatibilityVersion"] == 2000 and project["tokenizedText"] is False
+    assert project["compatibilityVersion"] == (2100 if args.project else 2000) and project["tokenizedText"] is False
     assert read_json(CORPUS / "Project/Sources/dependencies.json") == {"dependencies": {}}
     forms = {}
     for name in manifest["forms"]:
         path = CORPUS / f"Project/Sources/Forms/{name}/form.4DForm"
         form = read_json(path)
-        assert len(form["pages"]) == 3, f"{name}: expected shared page 0 plus pages 1 and 2"
+        assert len(form["pages"]) >= 2 if args.project else len(form["pages"]) == 3
         for page in form["pages"]:
             for obj in page["objects"].values():
                 resolved_object(obj, path.parent)
@@ -110,9 +136,10 @@ def validate(args, manifest):
     # The public schema permits $ref extension keys but does not itself resolve
     # 4D's external object templates; resolve and validate those separately below.
     command = [args.validator, args.schema, *[path for path, _ in forms.values()]]
-    result = subprocess.run([str(x) for x in command], capture_output=True, text=True)
-    if result.returncode:
-        raise RuntimeError("Form schema validation failed:\n" + result.stdout + result.stderr)
+    if not args.project:
+        result = subprocess.run([str(x) for x in command], capture_output=True, text=True)
+        if result.returncode:
+            raise RuntimeError("Form schema validation failed:\n" + result.stdout + result.stderr)
     for path, form in forms.values():
         expanded = json.loads(json.dumps(form))
         for page in expanded["pages"]:
@@ -210,6 +237,8 @@ def crop_objects(form, form_dir, page):
         # The crop includes omitted-height defaults without asserting their value.
         h = obj.get("height", obj.get("bottom", y + 40) - y)
         padding = 2 if obj["type"] == "text" else 8 if obj["type"] == "picture" else 14
+        if obj["type"] in ("input", "text") and obj.get("borderStyle") in ("solid", "dotted"):
+            padding = max(padding, obj.get("borderRadius", 0) + 2)
         result[name] = (obj, [max(0, x - padding), max(0, y - padding),
                               min(form["width"], x + w + padding), min(form["height"], y + h + padding)])
         if obj["type"] == "groupBox":
@@ -243,7 +272,7 @@ def crop_objects(form, form_dir, page):
     return result
 
 
-def compare_case(case, directory, form, form_dir, manifest):
+def compare_case(case, directory, form, form_dir, manifest, native_version=""):
     expected = (form["width"], form["height"])
     native_rgba, native_info = verified_image(directory / "native-raw.png", expected)
     preview_rgba, preview_info = verified_image(directory / "preview-raw.png", expected)
@@ -256,9 +285,19 @@ def compare_case(case, directory, form, form_dir, manifest):
     overlay = Image.blend(native, preview, 0.5)
     overlay.save(directory / "overlay.png")
     difference_image.save(directory / "difference.png")
-    excluded = manifest["noncomparableObjects"].get(case["form"], {})
+    excluded = dict(manifest["noncomparableObjects"].get(case["form"], {}))
     objects = []
     for name, (obj, box) in crop_objects(form, form_dir, case["page"]).items():
+        new_properties = [key for key in (
+            "verticalAlign", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom"
+        ) if key in obj]
+        if (native_version.startswith("21.2 ") and obj["type"] in ("text", "input")
+                and new_properties):
+            excluded[name] = (
+                "4D 21.2 LTS ignores text/input properties introduced in 21 R5: "
+                + ", ".join(new_properties)
+                + ". Retained as capability-gap evidence, excluded from renderer-error rankings."
+            )
         n, p = native.crop(box), preview.crop(box)
         # Text on a colored panel needs its local background, not the canvas
         # background; otherwise the panel is mistaken for the label's ink bounds.
@@ -283,6 +322,7 @@ def compare_case(case, directory, form, form_dir, manifest):
             "foregroundBackgroundNativeRGB": local_nbg, "foregroundBackgroundPreviewRGB": local_pbg,
             "crop": str(folder.relative_to(directory.parent.parent)), **metrics})
     return {**case, "status": "verified", "captureMode": "named-static",
+            "nativeEngineVersion": native_version,
             "nativeImage": native_info, "previewImage": preview_info,
             "nativeBackgroundRGB": native_bg, "previewBackgroundRGB": preview_bg,
             "canvas": values, "objects": objects,
@@ -297,7 +337,7 @@ def gallery(output, results, manifest):
               'section{background:white;padding:16px;margin:24px 0} .images{display:flex;gap:12px;overflow:auto}'
               'figure{margin:0} figcaption{padding:5px} img{max-width:none} details{margin:12px 0} '
               'code{white-space:pre-wrap} .excluded{color:#9a4800}</style>',
-              '<h1>Self-authored native vs preview .4DForm benchmark</h1>',
+              f'<h1>{esc(manifest.get("title", "Self-authored native vs preview .4DForm benchmark"))}</h1>',
               f'<p>Status: <strong>{esc(results["status"])}</strong>. '
               'Capture coverage is not a visual pass. No pass thresholds are asserted.</p>',
               '<p><a href="metrics.json">metrics.json</a> · <a href="native-cache.json">native provenance</a></p>',
@@ -308,6 +348,7 @@ def gallery(output, results, manifest):
               'Pictures use an outside-image crop corner. Bounds describe visible foreground inside declared bounds '
               '+14 pt crops (+8 pt for pictures, +2 pt for text and listbox header/footer regions), not native widget API coordinates. '
               'The group-title region is a 224×32 pt legend/top-border crop; its foreground bounds can include the border. '
+              'Solid/dotted input and text crops widen for declared radius so native border expansion is not truncated. '
               'Canvas averages include known context differences and must not be interpreted as a pass score.</p>']
     for case in results["cases"]:
         pieces.append(f'<section><h2>{esc(case["form"])} · page {case["page"]} · {esc(case["theme"])}</h2>')
@@ -335,8 +376,13 @@ def gallery(output, results, manifest):
 
 
 def main():
+    global CORPUS
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--project", type=Path, help="Prepared declarative project root; never point at an executable third-party project")
+    parser.add_argument("--pages", nargs="+", type=int, help="Specific saved pages (shared page 0 is included)")
+    parser.add_argument("--native-loaded-companion", action="store_true",
+                        help="Prepared external projects only: capture a bindings-stripped loaded companion, separately labeled")
     parser.add_argument("--fourdql", type=Path, default=ROOT / "build/fourdql")
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
     parser.add_argument("--validator", type=Path, default=ROOT / "tools/4dform/boon")
@@ -349,6 +395,12 @@ def main():
     parser.add_argument("--forms", nargs="+", help="Subset of manifest form names")
     parser.add_argument("--themes", nargs="+", help="Subset of manifest theme names")
     args = parser.parse_args()
+    if args.project:
+        CORPUS = args.project.expanduser().resolve()
+        if not read_json(CORPUS / "benchmark.json").get("declarativeOnly"):
+            parser.error("--project requires an authored declarativeOnly safety manifest")
+    if args.native_loaded_companion and not args.project:
+        parser.error("Loaded companions require a prepared external project")
     manifest = read_json(CORPUS / "benchmark.json")
     forms = validate(args, manifest)
     if args.validate_only:
@@ -364,8 +416,11 @@ def main():
     if set(selected_forms) - set(manifest["forms"]) or set(themes) - set(manifest["themes"]):
         parser.error("Unknown form or theme")
     corpus_hash = digest_files(CORPUS)
+    selected_pages = args.pages or manifest.get("pages")
     cases = [{"form": name, "page": page, "theme": theme} for theme in themes for name in selected_forms
-             for page in range(1, len(forms[name][1]["pages"]))]
+             for page in (selected_pages or range(1, len(forms[name][1]["pages"])))]
+    if any(c["page"] < 1 or c["page"] >= len(forms[c["form"]][1]["pages"]) for c in cases):
+        parser.error("Selected page is outside the saved form")
     cache_path = output / "native-cache.json"
     cache = read_json(cache_path) if cache_path.exists() else {"corpusSHA256": corpus_hash, "captures": {}}
     if cache["corpusSHA256"] != corpus_hash:
@@ -425,9 +480,12 @@ def main():
                 native_path = project / resource_path.replace("/RESOURCES/", "Resources/")
                 native_path.unlink(missing_ok=True)
                 engine = args.glass_engine if family == "glass" else args.classic_engine
+                parameter = f'{scheme}:{case["form"]}:{case["page"]}:{resource_path}'
+                if args.project:
+                    parameter = f'{scheme}:{case["form"]}:{case["page"]}:{int(args.native_loaded_companion)}:{resource_path}'
                 invocation = run([engine, f'--project={project / "Project/FormBenchmark.4DProject"}',
                                   "--dataless", "--skip-onstartup", "--startup-method=benchmark_capture",
-                                  f'--user-param={scheme}:{case["form"]}:{case["page"]}:{resource_path}'],
+                                  f'--user-param={parameter}'],
                                  output / f"logs/{case['theme']}-{case['form']}-page{case['page']}.log")
                 context = read_json(native_path.with_suffix(".png.json"))
                 expected_theme = "LiquidGlass" if family == "glass" else "MacClassic"
@@ -445,11 +503,16 @@ def main():
                     if reported_theme is not None else
                     "Classic engine version provenance; FORM theme is unavailable in 21.2 LTS")
                 context["requestedTheme"] = case["theme"]
-                context["corpusProjectCompatibilityVersion"] = 2000
+                context["corpusProjectCompatibilityVersion"] = read_json(CORPUS / "Project/FormBenchmark.4DProject")["compatibilityVersion"]
                 context["nativeProjectCompatibilityVersion"] = args.native_project_version
                 context["formSHA256"] = hashlib.sha256(path.read_bytes()).hexdigest()
                 _, info = verified_image(native_path, (form["width"], form["height"]))
                 shutil.copyfile(native_path, directory / "native-raw.png")
+                if args.native_loaded_companion:
+                    companion = native_path.with_suffix(".png.loaded.png")
+                    _, companion_info = verified_image(companion, (form["width"], form["height"]))
+                    shutil.copyfile(companion, directory / "native-loaded-raw.png")
+                    context["loadedCompanionImage"] = companion_info
                 cache["captures"][key] = {"context": context, "engine": str(engine),
                                           "version": engine_versions[family], "invocation": invocation, "image": info}
                 write_json(cache_path, cache)
@@ -468,7 +531,8 @@ def main():
             html_path.write_bytes(generated.stdout)
             run([snapshot, html_path, directory / "preview-raw.png", case["theme"], case["page"],
                  form["width"], form["height"]], directory / "snapshot.log", 35)
-            measured = compare_case(case, directory, form, path.parent, manifest)
+            measured = compare_case(case, directory, form, path.parent, manifest,
+                                    cache["captures"][key]["version"])
             measured["nativeContext"] = cache["captures"][key]["context"]
             results["cases"].append(measured)
             print(f"Verified {key}", flush=True)
@@ -480,7 +544,8 @@ def main():
     results["status"] = "complete" if complete else "incomplete"
     results["coverage"] = {"requestedCases": len(cases),
                            "verifiedCases": sum(c["status"] == "verified" for c in results["cases"]),
-                           "forms": selected_forms, "themes": themes, "pages": [1, 2]}
+                           "forms": selected_forms, "themes": themes,
+                           "pages": sorted(set(c["page"] for c in cases))}
     ranking = [{**{k: c[k] for k in ("form", "page", "theme")}, **o}
                for c in results["cases"] if c["status"] == "verified" for o in c["objects"]
                if o["comparable"] and o["type"] not in ("rectangle", "line", "groupBox")]

@@ -80,4 +80,21 @@ final class FormTextLayoutTests: XCTestCase {
         XCTAssertEqual(layout.lineHeight, 18)
         XCTAssertEqual(layout.lines.map(\.text), ["First", "", "Last"])
     }
+
+    func testNoWordwrapPreservesExplicitLinesWithoutSoftWrapping() throws {
+        let properties = FormValue.object([FormMember(name: "wordwrap", value: .string("none")),
+                                           FormMember(name: "multiline", value: .string("yes"))])
+        let layout = FormTextLayout(text: "Long first line\r\n\r\nLong last line\r", width: 1, size: 13,
+                                    properties: properties, maxLines: 10)
+        XCTAssertEqual(layout.lines.map(\.text), ["Long first line", "", "Long last line", ""])
+        XCTAssertGreaterThan(try XCTUnwrap(layout.lines.first).width, 1)
+    }
+
+    func testArialUsesItsMeasuredNativeLineAdvance() {
+        let properties = FormValue.object([FormMember(name: "fontFamily", value: .string("Arial"))])
+        for (size, advance) in [(13.0, 15.0), (15.0, 17.0)] {
+            let layout = FormTextLayout(text: "Hgj\n\nHgj", width: 180, size: size, properties: properties, maxLines: 10)
+            XCTAssertEqual(layout.lineHeight, advance)
+        }
+    }
 }

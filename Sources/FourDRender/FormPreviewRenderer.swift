@@ -19,6 +19,18 @@ struct FormPreviewRenderer {
         }) {
             notices.append("Long form text is clipped to 4,096 UTF-16 units without splitting composed characters.")
         }
+        if objects.contains(where: { object in
+            guard ["text", "input"].contains(object.type) else { return false }
+            let p = object.properties
+            let size = Self().font(p, height: bounds(p, theme: .glassLight).h)
+            return ["paddingLeft", "paddingRight", "paddingTop", "paddingBottom"].contains { key in
+                guard let value = p[key] else { return false }
+                guard let length = Self.length(value, size: size) else { return true }
+                return length < 0 || length > 8_192
+            }
+        }) {
+            notices.append("Invalid text padding is ignored; padding outside 0-8,192 points is limited to that range.")
+        }
         if form.appearances.contains(where: { canvas($0, properties: form.properties).clipped }) { notices.append("Large form canvas cropped to 8,192 × 8,192 points.") }
         return notices
     }
@@ -149,10 +161,54 @@ struct FormPreviewRenderer {
             return self.image(asset, x: x, y: y, w: width ?? w, h: height ?? h, format: format, id: id + property,
                               sourceWidth: asset.width/columns, sourceHeight: asset.height/rows)
         }
+        func iconCaption(_ label: String, x: Double = 0, width: Double? = nil, center: Bool = true, ink: String? = nil) -> String {
+            let width = width ?? w
+            guard let key = object.images["icon"], let asset = images.first(where: { $0.id == key }) else {
+                return text(label, x: x, width: width, center: center, ink: ink)
+            }
+            let frames = max(1,min(256,p["iconFrames"]?.double ?? 1))
+            let sourceHeight = asset.height/frames
+            let placement = p["textPlacement"]?.string ?? "bottom"
+            let lineHeight = FormTextLayout(text: label, width: width, size: fontSize, properties: p, maxLines: 1).lineHeight
+            let stacked = placement == "top" || placement == "bottom"
+            let gap: Double = label.isEmpty ? 0 : stacked ? 8 : 6
+            let availableHeight = stacked ? max(0,h-(label.isEmpty ? 0 : lineHeight)-gap) : h
+            let scale = min(1,max(0,width-12)/asset.width,max(0,availableHeight-4)/sourceHeight)
+            let iw = asset.width*scale, ih = sourceHeight*scale
+            if label.isEmpty {
+                return image("icon", x: x+(width-iw)/2, y: (h-ih)/2, width: iw, height: ih, format: "proportionalCenter")
+            }
+            if stacked {
+                let top = max(0,(h-ih-lineHeight-gap)/2)
+                let iconY = placement == "bottom" ? top : top+lineHeight+gap
+                let textY = placement == "bottom" ? top+ih+gap : top
+                return image("icon", x: x+(width-iw)/2, y: iconY, width: iw, height: ih, format: "proportionalCenter")
+                    + text(label, x: x, y: textY, width: width, height: lineHeight, center: true, ink: ink)
+            }
+            if placement == "center" {
+                return image("icon", x: x+(width-iw)/2, y: (h-ih)/2, width: iw, height: ih, format: "proportionalCenter")
+                    + text(label, x: x, width: width, center: true, ink: ink)
+            }
+            let captionWidth = min(max(0,width-iw-gap-12),measure(label,size:fontSize,p:p)+4)
+            let hugs = p["imageHugsTitle"]?.bool == true
+            let alignment = p["textAlign"]?.string ?? "center"
+            let blockWidth = iw+gap+captionWidth
+            let start = hugs ? (alignment == "left" ? 6 : alignment == "right" ? width-blockWidth-6 : (width-blockWidth)/2) : 6
+            let iconX = placement == "left" ? (hugs ? start+captionWidth+gap : width-iw-6) : start
+            let textX = hugs ? (placement == "left" ? start : start+iw+gap)
+                : alignment == "center" || alignment == "automatic" ? 0 : placement == "left" ? 6 : iw+gap+6
+            let textWidth = hugs ? captionWidth : alignment == "center" || alignment == "automatic" ? width : max(0,width-iw-gap-12)
+            return image("icon", x: x+iconX, y: (h-ih)/2, width: iw, height: ih, format: "proportionalCenter")
+                + text(label, x: x+textX, width: textWidth, center: true, ink: ink)
+        }
         switch object.type {
         case "text":
             if fill != "transparent" || border != "system" && border != "none" {
-                svg += rect(fill, radius: min(256, p["borderRadius"]?.double ?? 0), outline: border == "none" || border == "system" ? "none" : stroke)
+                let radius = max(0,min(256,p["borderRadius"]?.double ?? 0))
+                let bordered = border == "solid" || border == "dotted"
+                let expansionX = bordered ? 1+min(radius,h/2) : 0
+                let expansionY: Double = bordered ? 1 : 0
+                svg += "<rect x=\"\(n(-expansionX))\" y=\"\(n(-expansionY))\" width=\"\(n(w+2*expansionX))\" height=\"\(n(h+2*expansionY))\" rx=\"\(n(min(radius,h/2)))\" fill=\"\(fill)\" stroke=\"\(border == "none" || border == "system" ? "none" : color(p["borderColor"]?.string, fallback: stroke))\"\(border == "dotted" ? " stroke-dasharray=\"2 2\"" : "")/>"
             }
             svg += "<g clip-path=\"url(#\(clip))\">" + text(label) + "</g>"
         case "rectangle", "oval":
@@ -169,14 +225,16 @@ struct FormPreviewRenderer {
         case "input", "combo":
             let bordered = border == "solid" || border == "dotted"
             let radius = max(0,min(256,p["borderRadius"]?.double ?? 0))
-            let expansionX = bordered ? 1 + radius : 0
+            let expansionX = bordered ? 1 + min(radius,h/2) : 0
             // Native single-line rounding expands width, but not height by the radius.
-            let expansionY = bordered ? 1 + (h <= 32 && p["multiline"]?.string != "yes" ? 0 : radius) : 0
+            let singleLine = p["multiline"]?.string == "no" || h <= 32 && p["multiline"]?.string != "yes"
+            let expansionY = bordered ? 1 + (singleLine ? 0 : min(radius,h/2)) : 0
             let background = color(p["fill"]?.string, fallback: object.type == "combo" && theme.glass ? "var(--form-control)" : "var(--form-input)")
+            let outline = bordered && p["stroke"]?.string.map({ $0 != "automatic" }) == true ? stroke : "var(--form-border)"
             if border != "none" {
-                svg += "<rect x=\"\(n(-expansionX))\" y=\"\(n(-expansionY))\" width=\"\(n(w+2*expansionX))\" height=\"\(n(h+2*expansionY))\" rx=\"\(n(min(256,p["borderRadius"]?.double ?? (border == "system" ? 3 : 0))))\" fill=\"\(background)\" stroke=\"var(--form-border)\"\(border == "dotted" ? " stroke-dasharray=\"2 2\"" : "")/>"
+                svg += "<rect x=\"\(n(-expansionX))\" y=\"\(n(-expansionY))\" width=\"\(n(w+2*expansionX))\" height=\"\(n(h+2*expansionY))\" rx=\"\(n(min(h/2,max(0,p["borderRadius"]?.double ?? (border == "system" ? 3 : 0)))))\" fill=\"\(background)\" stroke=\"\(color(p["borderColor"]?.string, fallback: outline))\"\(border == "dotted" ? " stroke-dasharray=\"2 2\"" : "")/>"
             } else { svg += rect(background, outline: "none") }
-            svg += "<g clip-path=\"url(#\(clip))\">" + text(p["dataSource"]?.string ?? "\"\(object.name)\"", x: 3, width: max(0,w - (object.type == "combo" ? 23 : 6))) + "</g>"
+            svg += "<g clip-path=\"url(#\(clip))\">" + text(p["dataSource"]?.string ?? "\"\(object.name)\"", x: object.type == "combo" ? 3 : 0, width: max(0,w - (object.type == "combo" ? 23 : 0))) + "</g>"
             if object.type == "combo" { svg += chevrons(x: w - 12, y: h / 2, both: false) }
         case "button", "dropdown":
             let style = p["style"]?.string ?? "regular"
@@ -197,11 +255,10 @@ struct FormPreviewRenderer {
                     svg += rect(defaultButton && style == "regular" ? "var(--form-accent)" : style == "regular" ? "var(--form-control)" : color(p["fill"]?.string, fallback: style == "office" ? "var(--form-office)" : "var(--form-control)"),
                                 radius: radius, outline: defaultButton && style == "regular" ? "var(--form-accent)" : theme.glass && (style == "regular" || object.type == "dropdown") ? "none" : "var(--form-border)", inset: style == "roundedBevel" ? 3 : 0)
                 }
-                let iconWidth = object.images["icon"] != nil ? min(20, max(0,h - 4)) : 0
-                if iconWidth > 0 { svg += image("icon", x: 6, y: (h-iconWidth)/2, width: iconWidth, height: iconWidth, format: "proportionalCenter") }
-                svg += "<g clip-path=\"url(#\(clip))\">" + text(label, x: iconWidth > 0 ? iconWidth + 10 : object.type == "dropdown" ? 7 : 0,
-                               width: max(0,w-(object.type == "dropdown" ? 25 : iconWidth > 0 ? iconWidth + 16 : 0)),
-                               center: object.type == "button", ink: defaultButton && style == "regular" ? "white" : stroke) + "</g>"
+                svg += "<g clip-path=\"url(#\(clip))\">" + iconCaption(label, x: object.type == "dropdown" ? 7 : 0,
+                               width: max(0,w-(object.type == "dropdown" ? 25 : 0)),
+                               center: object.type == "button",
+                               ink: defaultButton && style == "regular" ? "white" : stroke) + "</g>"
                 if object.type == "dropdown" || p["popupPlacement"]?.string.map({ $0 != "none" }) == true {
                     let classicPopup = object.type == "dropdown" && !theme.glass
                     if classicPopup {
@@ -227,7 +284,7 @@ struct FormPreviewRenderer {
                 svg += image("icon", width: min(h,w), height: h, format: "proportionalCenter") + text(label, center: true)
             } else if style != "regular" && style != "flat" {
                 svg += rect(color(p["fill"]?.string, fallback: "var(--form-control)"), radius: style == "bevel" ? 0 : 5)
-                svg += text(label, center: true)
+                svg += "<g clip-path=\"url(#\(clip))\">" + iconCaption(label) + "</g>"
             } else if object.type == "radio" {
                 svg += "<circle cx=\"\(n(side/2))\" cy=\"\(n(h/2))\" r=\"\(n(max(0,side/2-0.5)))\" fill=\"var(--form-toggle)\" stroke=\"var(--form-border)\"/>"
                 svg += text(label, x: side + 5, width: max(0,w-side-5))
@@ -236,9 +293,15 @@ struct FormPreviewRenderer {
                 svg += text(label, x: side + 5, width: max(0,w-side-5))
             }
         case "groupBox":
-            svg += "<rect y=\"\(n(fontSize/2))\" width=\"\(n(w))\" height=\"\(n(max(0,h-fontSize/2)))\" rx=\"5\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-group)"))\" stroke=\"var(--form-border)\"/>"
-            let titleWidth = min(max(0,w-20), measure(label, size: fontSize, p: p) + 8)
-            svg += "<rect x=\"10\" width=\"\(n(titleWidth))\" height=\"\(n(fontSize+2))\" fill=\"var(--form-bg)\"/>" + text(label, x: 14, width: max(0,titleWidth-8), height: fontSize+2)
+            let title = p["text"]?.string ?? ""
+            let titleHeight = title.isEmpty ? 0 : min(h, fontSize+2)
+            svg += "<rect y=\"\(n(titleHeight))\" width=\"\(n(w))\" height=\"\(n(max(0,h-titleHeight)))\" rx=\"5\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-group)"))\" stroke=\"var(--form-border)\"/>"
+            if !title.isEmpty {
+                let titleWidth = min(max(0,w-24), measure(title, size: fontSize, p: p)+4)
+                let x = p["textAlign"]?.string == "center" ? (w-titleWidth)/2
+                    : p["textAlign"]?.string == "right" ? w-titleWidth-12 : 12
+                svg += text(title, x: x, width: titleWidth, height: titleHeight)
+            }
         case "tab":
             let labels = p["dataSource"]?.string.map { [$0] } ?? listLabels(p["labels"])
             let titles = labels.isEmpty ? ["\"\(object.name)\""] : labels
@@ -304,7 +367,7 @@ struct FormPreviewRenderer {
         let headerHeight = p["showHeaders"]?.bool == false ? 0 : unit(p["headerHeight"], size: fontSize, fallback: 22)
         let footerHeight = p["showFooters"]?.bool == true ? unit(p["footerHeight"], size: fontSize, fallback: 22) : 0
         let rowHeight = max(1, unit(p["rowHeight"], size: fontSize, fallback: 20))
-        let contentWidth = max(0, width - (p["scrollbarVertical"]?.string == "hidden" ? 0 : 14))
+        let contentWidth = max(0, width - (p["scrollbarVertical"]?.string == "hidden" ? 0 : 16))
         var svg = "<g clip-path=\"url(#form-clip-\(id))\"><rect width=\"\(n(width))\" height=\"\(n(height))\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-input)"))\" stroke=\"var(--form-border)\"/>"
         let columns = p["columns"]?.values ?? []
         let rowCount = min(200, Int(max(0,height-headerHeight-footerHeight)/rowHeight)+1)
@@ -316,6 +379,7 @@ struct FormPreviewRenderer {
             svg += "<line x1=\"0\" y1=\"\(n(y+rowHeight))\" x2=\"\(n(width))\" y2=\"\(n(y+rowHeight))\" stroke=\"\(color(p["horizontalLineStroke"]?.string, fallback: "var(--form-grid)"))\"/>"
         }
         var x: Double = 0
+        var headerDividers: [Double] = []
         for (index, column) in columns.prefix(64).enumerated() {
             if column["visibility"]?.string == "hidden" { continue }
             var w = column["width"]?.double ?? 100
@@ -323,7 +387,8 @@ struct FormPreviewRenderer {
             w = max(0,min(8_192,w,contentWidth-x))
             if headerHeight > 0 {
                 let header = column["header"] ?? .object([])
-                svg += "<rect x=\"\(n(x))\" width=\"\(n(w))\" height=\"\(n(headerHeight))\" fill=\"\(color(header["fill"]?.string, fallback: "var(--form-header)"))\" stroke=\"var(--form-grid)\"/>"
+                svg += "<rect x=\"\(n(x))\" width=\"\(n(w))\" height=\"\(n(headerHeight))\" fill=\"\(color(header["fill"]?.string, fallback: "var(--form-header)"))\"/>"
+                if headerHeight > 12 && w > 0 { headerDividers.append(x+w) }
                 svg += text(header["text"]?.string ?? column["name"]?.string ?? "", p: header, x: x+2, y: 1,
                             width: max(0,w-4), height: headerHeight, size: font(header, height: headerHeight),
                             center: false, ink: color(header["stroke"]?.string, fallback: ink),
@@ -337,7 +402,7 @@ struct FormPreviewRenderer {
             svg += "<line x1=\"\(n(x+w))\" y1=\"\(n(headerHeight))\" x2=\"\(n(x+w))\" y2=\"\(n(height))\" stroke=\"\(color(p["verticalLineStroke"]?.string, fallback: "var(--form-grid)"))\"/>"
             if footerHeight > 0 {
                 let footer = column["footer"] ?? .object([])
-                svg += "<rect x=\"\(n(x))\" y=\"\(n(height-footerHeight))\" width=\"\(n(w))\" height=\"\(n(footerHeight))\" fill=\"\(color(footer["fill"]?.string, fallback: "var(--form-header)"))\" stroke=\"var(--form-grid)\"/>"
+                svg += "<rect x=\"\(n(x))\" y=\"\(n(height-footerHeight))\" width=\"\(n(w))\" height=\"\(n(footerHeight))\" fill=\"\(color(footer["fill"]?.string, fallback: "var(--form-input)"))\" stroke=\"var(--form-footer-border)\"/>"
                 svg += text(footer["text"]?.string ?? footer["dataSource"]?.string ?? "", p: footer, x: x+2, y: height-footerHeight+1,
                             width: max(0,w-4), height: footerHeight, size: font(footer,height:footerHeight), center: false,
                             ink: color(footer["stroke"]?.string, fallback: ink),
@@ -347,13 +412,26 @@ struct FormPreviewRenderer {
             if x >= contentWidth { break }
         }
         if contentWidth < width {
-            svg += "<rect x=\"\(n(contentWidth))\" width=\"\(n(width-contentWidth))\" height=\"\(n(height))\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-input)"))\"/><line x1=\"\(n(contentWidth))\" y1=\"0\" x2=\"\(n(contentWidth))\" y2=\"\(n(height))\" stroke=\"var(--form-grid)\"/>"
+            svg += "<rect x=\"\(n(contentWidth))\" width=\"\(n(width-contentWidth))\" height=\"\(n(height))\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-input)"))\"/>"
+        }
+        for divider in headerDividers {
+            svg += "<rect x=\"\(n(divider-1))\" y=\"6\" width=\"2\" height=\"\(n(headerHeight-12))\" rx=\"1\" fill=\"var(--form-header-divider)\"/>"
+        }
+        if headerHeight > 0 {
+            svg += "<line x1=\"0\" y1=\"\(n(headerHeight))\" x2=\"\(n(contentWidth))\" y2=\"\(n(headerHeight))\" stroke=\"var(--form-footer-border)\"/>"
         }
         return svg + "</g>"
     }
 
     private func text(_ value: String, p: FormValue, x: Double, y: Double, width: Double, height: Double,
                       size: Double, center: Bool, ink: String, singleLine: Bool = false) -> String {
+        let padded = ["text", "input"].contains(p["type"]?.string ?? "")
+        let left = padded ? unit(p["paddingLeft"], size: size, fallback: 0) : 0
+        let right = padded ? unit(p["paddingRight"], size: size, fallback: 0) : 0
+        let top = padded ? unit(p["paddingTop"], size: size, fallback: 0) : 0
+        let bottom = padded ? unit(p["paddingBottom"], size: size, fallback: 0) : 0
+        let width = width-left-right
+        let height = height-top-bottom
         guard width > 0, height > 0 else { return "" }
         let alignment = p["textAlign"]?.string ?? (center ? "center" : "left")
         let anchor = alignment == "center" ? "middle" : alignment == "right" ? "end" : "start"
@@ -370,15 +448,32 @@ struct FormPreviewRenderer {
         let ascent = layout.lines.first?.ascent ?? size
         let descent = layout.lines.first?.descent ?? 0
         let capHeight = Double(FormTextLayout.font(size: size, properties: p).capHeight)
-        let vertical = ["text", "groupBox"].contains(p["type"]?.string ?? "") || layout.lines.count > 1
+        var vertical = ["text", "groupBox"].contains(p["type"]?.string ?? "") || layout.lines.count > 1
             ? max(size, ceil(ascent)) : (height-capHeight-descent)/2+capHeight
-        var svg = "<svg x=\"\(n(x))\" y=\"\(n(y))\" width=\"\(n(width))\" height=\"\(n(height))\" overflow=\"hidden\"><text x=\"\(n(origin))\" y=\"\(n(vertical))\" fill=\"\(ink)\" font-family=\"\(esc(family))\" font-size=\"\(n(size))\" font-weight=\"\(weight)\" font-style=\"\(italic)\" text-decoration=\"\(decoration)\" text-anchor=\"\(anchor)\" xml:space=\"preserve\""
+        if (p["type"] == nil || ["text", "input", "listbox", "listboxColumn", "listboxHeader", "listboxFooter"].contains(p["type"]?.string ?? "")),
+           let alignment = p["verticalAlign"]?.string, ["top", "middle", "bottom"].contains(alignment) {
+            let baseline = max(ceil(ascent), Double(NSLayoutManager().defaultBaselineOffset(for: FormTextLayout.font(size: size, properties: p))))
+            let blockHeight = ceil(baseline + (layout.lines.last?.descent ?? descent)) + (Double(layout.lines.count)-1)*layout.lineHeight + 1
+            let space = max(0, height-blockHeight)
+            vertical = baseline + (alignment == "middle" ? floor(space/2) : alignment == "bottom" ? space : 0)
+        }
+        var svg = "<svg x=\"\(n(x+left))\" y=\"\(n(y+top))\" width=\"\(n(width))\" height=\"\(n(height))\" overflow=\"hidden\"><text x=\"\(n(origin))\" y=\"\(n(vertical))\" fill=\"\(ink)\" font-family=\"\(esc(family))\" font-size=\"\(n(size))\" font-weight=\"\(weight)\" font-style=\"\(italic)\" text-decoration=\"\(decoration)\" text-anchor=\"\(anchor)\" xml:space=\"preserve\""
         if let angle = p["textAngle"]?.double, [90.0,180.0,270.0].contains(angle) {
             svg += " transform=\"rotate(\(n(-angle)) \(n(width/2)) \(n(height/2)))\""
         }
         svg += ">"
         for (index,line) in layout.lines.enumerated() {
-            svg += "<tspan x=\"\(n(origin))\" y=\"\(n(vertical+Double(index)*layout.lineHeight))\">\(esc(line.text))</tspan>"
+            var value = line.text
+            var spacing = ""
+            if alignment == "justify" && !line.endsParagraph {
+                while value.last == " " { value.removeLast() }
+                let spaces = value.filter { $0 == " " }.count
+                if spaces > 0 {
+                    let extra = max(0, width-measure(value, size: size, p: p))/Double(spaces)
+                    spacing = " word-spacing=\"\(n(extra))\""
+                }
+            }
+            svg += "<tspan x=\"\(n(origin))\" y=\"\(n(vertical+Double(index)*layout.lineHeight))\"\(spacing)>\(esc(value))</tspan>"
         }
         return svg + "</text></svg>"
     }
@@ -391,7 +486,8 @@ struct FormPreviewRenderer {
     private func font(_ properties: FormValue, height: Double, glass: Bool = true) -> Double {
         if let size = properties["fontSize"]?.double, size > 0, size.isFinite { return max(1,min(256,size)) }
         if properties["fontTheme"]?.string == "main" { return 13 }
-        if properties["fontTheme"]?.string == "normal" { return 13 }
+        if properties["fontTheme"]?.string == "normal",
+           !["button", "dropdown", "checkbox", "radio", "groupBox"].contains(properties["type"]?.string ?? "") { return 13 }
         if properties["fontTheme"]?.string == "additional" { return 11 }
         if properties["height"] == nil && properties["bottom"] == nil {
             if ["checkbox", "radio"].contains(properties["type"]?.string ?? "") { return 13 }
@@ -416,11 +512,19 @@ struct FormPreviewRenderer {
     }
 
     private func unit(_ value: FormValue?, size: Double, fallback: Double) -> Double {
-        if let n = value?.double { return max(0,min(8_192,n)) }
-        guard let s = value?.string else { return fallback }
-        if s.hasSuffix("em"), let v = Double(s.dropLast(2)) { return max(0,min(8_192,v*size)) }
-        if s.hasSuffix("px"), let v = Double(s.dropLast(2)) { return max(0,min(8_192,v)) }
-        return Double(s).map { max(0,min(8_192,$0)) } ?? fallback
+        guard let length = Self.length(value, size: size) else { return fallback }
+        return max(0,min(8_192,length))
+    }
+
+    private static func length(_ value: FormValue?, size: Double) -> Double? {
+        let number: Double?
+        if let n = value?.double { number = n }
+        else if let s = value?.string {
+            if s.hasSuffix("em") { number = Double(s.dropLast(2)).map { $0*size } }
+            else if s.hasSuffix("px") { number = Double(s.dropLast(2)) }
+            else { number = Double(s) }
+        } else { return nil }
+        return number.flatMap { $0.isFinite ? $0 : nil }
     }
 
     private func listLabels(_ value: FormValue?) -> [String] {
@@ -474,8 +578,8 @@ struct FormPreviewRenderer {
     .theme-choice:focus-visible ~ .form-themes,.page-choice:focus-visible ~ .form-pages{outline:2px solid var(--accent)}
     .form-appearance,.form-page{display:none}.form-scroll{overflow:auto;max-height:680px;border:1px solid var(--border);border-radius:6px}
     .form-scroll>svg{display:block;max-width:none}.form-caption{font-size:11px;color:var(--muted);margin-top:7px}
-    .form-appearance.light{color-scheme:light;--form-bg:#ececec;--form-ink:#202020;--form-muted:#777;--form-input:#fff;--form-control:#fff;--form-toggle:#fff;--form-group:#e1e1e1;--form-tab:#f2f2f2;--form-tab-selected:#fff;--form-border:#b8b8b8;--form-header:#f1f1f1;--form-alternate:#f3f5f7;--form-grid:#ddd;--form-accent:#007aff;--form-office:#e2effc}
-    .form-appearance.dark{color-scheme:dark;--form-bg:#323232;--form-ink:#eee;--form-muted:#a0a0a0;--form-input:#1e1e1e;--form-control:#656565;--form-toggle:#535353;--form-group:#3b3b3b;--form-tab:#3c3c3c;--form-tab-selected:#6c6c6c;--form-border:#737373;--form-header:#363636;--form-alternate:#272a2e;--form-grid:#444;--form-accent:#0a84ff;--form-office:#32455a}
+    .form-appearance.light{color-scheme:light;--form-bg:#ececec;--form-ink:#202020;--form-muted:#777;--form-input:#fff;--form-control:#fff;--form-toggle:#fff;--form-group:#e1e1e1;--form-tab:#f2f2f2;--form-tab-selected:#fff;--form-border:#b8b8b8;--form-header:#f6f6f6;--form-header-divider:#d3d3d3;--form-footer-border:#bcbcbc;--form-alternate:#f3f5f7;--form-grid:#ddd;--form-accent:#007aff;--form-office:#e2effc}
+    .form-appearance.dark{color-scheme:dark;--form-bg:#323232;--form-ink:#eee;--form-muted:#a0a0a0;--form-input:#1e1e1e;--form-control:#656565;--form-toggle:#535353;--form-group:#3b3b3b;--form-tab:#3c3c3c;--form-tab-selected:#6c6c6c;--form-border:#737373;--form-header:#2e3032;--form-header-divider:#45484a;--form-footer-border:#3f3f3f;--form-alternate:#272a2e;--form-grid:#444;--form-accent:#0a84ff;--form-office:#32455a}
     .form-appearance.glass.light{--form-bg:#fff;--form-control:#e1e1e1;--form-group:#f3f3f3;--form-tab:#ebebeb;--form-border:#cecece;--form-accent:#0077f9}
     .form-appearance.glass.dark{--form-bg:#1e1e1e;--form-control:#383838;--form-toggle:#2a2a2a;--form-group:#282828;--form-tab:#303030;--form-border:#777;--form-accent:#067dff}
     """

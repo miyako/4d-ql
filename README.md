@@ -61,6 +61,19 @@ Classic and Liquid Glass tabs use compact, centered segments and the native edit
 template's initial selection; that is not a computed runtime value.
 Automatic group titles use the measured 10-point font; the main font theme
 uses 13-point bold, with explicit font size and weight taking precedence.
+Group frames reserve the title band, align captions across the whole frame,
+and do not invent captions for untitled groups. Saved text/input padding and
+explicit top/middle/bottom alignment are applied inside the text viewport;
+automatic alignment retains the native-style defaults. These text/input
+properties were introduced in 21 R5, so older native references cannot verify
+them. Disabling wordwrap preserves explicit line breaks while clipping long
+lines horizontally. Listbox headers use separate native-style resize grips;
+footers retain the input background rather than the header background.
+Rounded text borders expand outside the saved text bounds; single-line input
+rounding is capped by the control height. Input text starts at the saved
+padding without an extra invented inset. Caption/icon layout honors
+`textPlacement` and `imageHugsTitle`, with the measured default icon-above-title
+layout. Justified wrapped paragraphs expand word spaces, not their last lines.
 
 Stylesheets load in 4D order: `Project/Sources/styleSheets.css`,
 `styleSheets_mac.css`, then the form's `css` references (Windows-only
@@ -183,6 +196,28 @@ font getters and actual Finder checks are separate evidence, not
 interchangeable screenshot modes. Keep the desktop unlocked for GUI checks;
 `caffeinate -di` temporarily prevents idle display/system sleep for the command's
 lifetime, without changing settings or overriding manual/policy-enforced locks.
+
+Real-HDI calibration additionally covers pinned revisions of
+`4d-depot/HDI_Buttons`, `HDI_RoundedCorner` and
+`HDI_FormObj_VericalAlignAndPadding`. The external corpus is downloaded only
+to the chosen artifact directory, not vendored into this repository. Native
+copies exclude upstream methods/components and use only our capture method.
+The 24 named cases, one separate safe loaded-CSS companion and six R5 padding
+probe cases distinguish saved properties from runtime-only changes. LTS
+captures cannot verify R5 text/input alignment, so those regions are excluded
+by actual engine version. Loaded-offscreen placement is not treated as live
+dialog placement. Arial's measured 15/17-point line advances at 13/15-point
+font sizes do not override other fonts' metrics.
+
+```sh
+caffeinate -di python3 scripts/form-hdi-benchmark.py --output /absolute/artifacts/hdi
+python3 scripts/form-hdi-benchmark.py --output /absolute/artifacts/hdi \
+  --fourdql build/fourdql --compare-only
+caffeinate -di python3 scripts/form-padding-probe.py \
+  --output /absolute/artifacts/padding
+python3 scripts/form-padding-probe.py --output /absolute/artifacts/padding \
+  --fourdql build/fourdql --compare-only
+```
 
 ### What is shown, and what is not
 
