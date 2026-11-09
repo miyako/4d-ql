@@ -5,6 +5,8 @@
 	<!-- App extensions must be sandboxed. Quick Look grants read access to the previewed file. -->
 	<key>com.apple.security.app-sandbox</key><true/>
 	<key>com.apple.security.files.user-selected.read-only</key><true/>
+	<!-- WKWebView needs client access for its subprocess communication, even for local HTML. -->
+	<key>com.apple.security.network.client</key><true/>
 	<key>com.apple.security.application-groups</key>
 	<array><string>__PROJECT_GROUP__</string></array>
 </dict>

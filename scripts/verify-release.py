@@ -98,6 +98,8 @@ def verify(app, version, build, identity, bundle_id, project_group=None):
             }
             if is_service:
                 expected_entitlements["com.apple.security.files.bookmarks.app-scope"] = True
+            if bundle == appex:
+                expected_entitlements["com.apple.security.network.client"] = True
             # An exact policy also rejects sandbox inheritance, broad filesystem
             # grants and hardened-runtime exceptions that these bundles do not need.
             require(entitlements == expected_entitlements and

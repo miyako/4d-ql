@@ -202,6 +202,22 @@ class ReleaseVerificationTests(unittest.TestCase):
                 self.verify()
             self.info[bundle]["XPCService"] = original
 
+    def test_webkit_client_entitlement_required_only_on_preview_extension(self):
+        key = "com.apple.security.network.client"
+        for bundle in self.bundles:
+            for arch in ("arm64", "x86_64"):
+                with self.subTest(bundle=bundle, arch=arch):
+                    self.bad_entitlements = (bundle, arch)
+                    if bundle == self.bundles[1]:
+                        self.entitlement_change = lambda entitlements: {
+                            name: value for name, value in entitlements.items() if name != key}
+                    else:
+                        self.entitlement_change = lambda entitlements: {**entitlements, key: True}
+                    with self.assertRaisesRegex(ValueError, "sandbox policy"):
+                        self.verify()
+        self.bad_entitlements = None
+        self.verify()
+
     def test_custom_team_prefixed_group(self):
         custom = TEAM + ".custom.ProjectContext"
         for bundle in self.bundles:

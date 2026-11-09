@@ -355,6 +355,9 @@ does not zoom the page.
 The viewer installs its own interaction code in an isolated WebKit content world.
 Document-supplied JavaScript is disabled, external navigation and resource loads
 are blocked, and no project-folder base URL or native script bridge is exposed.
+The sandboxed preview extension requires the network-client entitlement for
+WebKit subprocess communication even though preview content cannot load remote
+resources. The host and project service do not receive that entitlement.
 CLI HTML remains script-free with 10%-200% zoom presets as a portable fallback.
 Scroll within the diagram and hover names or
 connectors for details. Table headings are centered; relation names appear
@@ -546,6 +549,8 @@ To exercise an installed development extension through actual Finder:
 scripts/build.sh --register
 swiftc scripts/finder-form-preview.swift -o build/finder-form-preview
 caffeinate -di build/finder-form-preview /path/to/form.4DForm /path/to/finder-preview.png
+# Require renderer-specific visible content, not just a nonblank screenshot:
+caffeinate -di build/finder-form-preview /path/to/catalog.4DCatalog /path/to/catalog.png "STRUCTURE DIAGRAM"
 ```
 
 The harness selects the specified file, opens Quick Look through Finder's File
@@ -555,6 +560,12 @@ are supported. The hosting app needs
 Automation access to Finder and System Events, Accessibility for UI control,
 and Screen Recording for the screenshot. Locked desktops and transparent OS
 captures are rejected explicitly.
+An optional third argument requires the supplied text to appear in screenshot
+OCR and rejects known viewer error messages. Choose text from rendered content,
+not the filename, so Finder's generic file fallback cannot pass the check.
+Viewer or sandbox changes must also be exercised with a Developer ID-signed,
+sandboxed build in Finder across multiple file families; unsandboxed WebKit
+tests and signature verification alone do not establish that previews work.
 Test both standalone and project-contained forms: Finder can deny neighboring
 CSS, pointer targets and pictures even when the CLI renders them successfully.
 Final development-build checks rendered both cases in Finder, exercised all four
