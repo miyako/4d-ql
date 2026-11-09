@@ -5,7 +5,6 @@ struct StructureDiagramRenderer {
     private let header = 28.0
     private let row = 21.0
     private let margin = 24.0
-    private static let zoomLevels = [10, 25, 50, 75, 100, 150, 200]
 
     private struct Box {
         var node: DiagramNode
@@ -45,20 +44,8 @@ struct StructureDiagramRenderer {
         let canvasWidth = max(200, (boxes.map { $0.x + $0.width }.max() ?? 0) + margin + 72)
         let canvasHeight = max(120, (boxes.map { $0.y + $0.height }.max() ?? 0) + margin)
         let description = "Structure diagram: \(summary). Relations connect field rows; unavailable fields connect to table headers. Underlined fields are primary keys; bold fields are indexed; italic table and field names are hidden."
-        var selectors = ""
-        let prefix = "diagram-zoom-\(identifier)"
-        for percent in Self.zoomLevels {
-            let id = "\(prefix)-\(percent)"
-            html += "<input class=\"diagram-zoom-choice\" type=\"radio\" name=\"\(esc(prefix))\" id=\"\(esc(id))\" value=\"\(percent)\" aria-label=\"Diagram zoom \(percent) percent\"\(percent == 100 ? " checked" : "")>"
-            selectors += "#\(id):checked ~ .diagram-viewport{--diagram-scale:\(Double(percent) / 100)}"
-            selectors += "#\(id):checked ~ .diagram-zoom-controls label[for=\"\(id)\"]{background:var(--accent);border-color:var(--accent);color:white}"
-            selectors += "#\(id):focus-visible ~ .diagram-zoom-controls label[for=\"\(id)\"]{outline:2px solid var(--accent);outline-offset:2px}"
-        }
-        html += "<div class=\"diagram-zoom-controls\" role=\"group\" aria-label=\"Diagram zoom\"><span>Zoom</span>"
-        for percent in Self.zoomLevels {
-            html += "<label for=\"\(esc(prefix))-\(percent)\">\(percent)%</label>"
-        }
-        html += "</div><style>\(selectors)</style>"
+        html += CanvasZoomControls.render(kind: "diagram", identifier: identifier,
+                                          viewport: ".diagram-viewport", scaleProperty: "--diagram-scale")
         html += "<div class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"Scrollable structure diagram\">"
         html += "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"diagram-svg\" role=\"img\" aria-label=\"\(esc(description))\" width=\"\(n(canvasWidth))\" height=\"\(n(canvasHeight))\" viewBox=\"0 0 \(n(canvasWidth)) \(n(canvasHeight))\" style=\"--diagram-width:\(n(canvasWidth))px;--diagram-height:\(n(canvasHeight))px\"><title>\(esc(description))</title>"
         for (index, edge) in edges.enumerated() {
@@ -199,14 +186,7 @@ struct StructureDiagramRenderer {
 
     static let css = """
     .structure-diagram{position:relative}
-    .diagram-zoom-choice{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap}
-    .diagram-zoom-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px;font-size:12px}
-    .diagram-zoom-controls>span{color:var(--muted);margin-right:4px}
-    .diagram-zoom-controls label{cursor:pointer;padding:4px 8px;border:1px solid var(--line);border-radius:5px}
-    .diagram-zoom-controls button{font:inherit;color:var(--fg);background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:4px 8px;cursor:pointer}
-    .diagram-zoom-controls input[type=range]{width:180px;max-width:40vw;vertical-align:middle;accent-color:var(--accent)}
-    .diagram-zoom-controls output{min-width:4em;text-align:right;font-variant-numeric:tabular-nums}
-    .diagram-zoom-controls button:focus-visible,.diagram-zoom-controls input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+    \(CanvasZoomControls.css(kind: "diagram"))
     .diagram-viewport{max-width:100%;max-height:max(320px,calc(100vh - 180px));overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
     .diagram-viewport:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     .diagram-svg{display:block;max-width:none;width:calc(var(--diagram-width) * var(--diagram-scale,1));height:calc(var(--diagram-height) * var(--diagram-scale,1));font:12px "Helvetica Neue",Helvetica,sans-serif}

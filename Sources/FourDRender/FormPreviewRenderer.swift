@@ -44,10 +44,15 @@ struct FormPreviewRenderer {
         return notices
     }
 
-    func render(_ preview: FormPreview) -> String {
+    func render(_ preview: FormPreview, identifier: String = "form") -> String {
         let platforms = Self.platforms(preview)
-        if platforms.count > 1 { return renderPlatforms(preview, platforms: platforms) }
-        return render(preview, themeGroup: "form-theme", images: true)
+        let content = platforms.count > 1 ? renderPlatforms(preview, platforms: platforms)
+            : render(preview, themeGroup: "form-theme", images: true)
+        return "<style>.form-zoom{position:relative}\(CanvasZoomControls.css(kind: "form"))</style>"
+            + "<div class=\"form-zoom\">"
+            + CanvasZoomControls.render(kind: "form", identifier: identifier,
+                                        viewport: ".form-zoom-content", scaleProperty: "--form-scale")
+            + "<div class=\"form-zoom-content\">\(content)</div></div>"
     }
 
     static func platforms(_ preview: FormPreview) -> [FormPlatform] {
@@ -139,7 +144,7 @@ struct FormPreviewRenderer {
             for page in appearance.pages {
                 let common = appearance.pages.first?.objects ?? []
                 let objects = page.number == 0 ? page.objects : common + page.objects
-                html += "<div class=\"form-page\" data-page=\"\(page.number)\"><div class=\"form-scroll\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"\(n(size.width))\" height=\"\(n(size.height))\" viewBox=\"0 0 \(n(size.width)) \(n(size.height))\" role=\"img\" aria-label=\"\(esc(preview.name)), page \(page.number), \(esc(theme.label))\">"
+                html += "<div class=\"form-page\" data-page=\"\(page.number)\"><div class=\"form-scroll\" tabindex=\"0\" role=\"region\" aria-label=\"Scrollable form canvas\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"\(n(size.width))\" height=\"\(n(size.height))\" viewBox=\"0 0 \(n(size.width)) \(n(size.height))\" role=\"img\" aria-label=\"\(esc(preview.name)), page \(page.number), \(esc(theme.label))\" style=\"--form-width:\(n(size.width))px;--form-height:\(n(size.height))px\">"
                 html += "<rect width=\"100%\" height=\"100%\" fill=\"var(--form-bg)\"/>"
                 for (index, object) in objects.enumerated() {
                     html += draw(object, theme: theme, images: preview.images,
@@ -751,7 +756,8 @@ struct FormPreviewRenderer {
     .form-themes label,.form-pages label{font-size:12px;border-radius:6px;padding:5px 9px;cursor:pointer}
     .theme-choice:focus-visible ~ .form-themes,.page-choice:focus-visible ~ .form-pages{outline:2px solid var(--accent)}
     .form-appearance,.form-page{display:none}.form-scroll{overflow:auto;max-height:680px;border:1px solid var(--border);border-radius:6px}
-    .form-scroll>svg{display:block;max-width:none}.form-caption{font-size:11px;color:var(--muted);margin-top:7px}
+    .form-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+    .form-scroll>svg{display:block;max-width:none;width:calc(var(--form-width) * var(--form-scale,1));height:calc(var(--form-height) * var(--form-scale,1))}.form-caption{font-size:11px;color:var(--muted);margin-top:7px}
     .form-appearance.light,.static-subform.light{color-scheme:light;--form-bg:#ececec;--form-ink:#202020;--form-muted:#777;--form-input:#fff;--form-control:#fff;--form-toggle:#fff;--form-group:#e1e1e1;--form-tab:#f2f2f2;--form-tab-selected:#fff;--form-border:#b8b8b8;--form-header:#f6f6f6;--form-header-divider:#d3d3d3;--form-footer-border:#bcbcbc;--form-alternate:#f3f5f7;--form-grid:#ddd;--form-accent:#007aff;--form-office:#e2effc}
     .form-appearance.dark,.static-subform.dark{color-scheme:dark;--form-bg:#323232;--form-ink:#eee;--form-muted:#a0a0a0;--form-input:#1e1e1e;--form-control:#656565;--form-toggle:#535353;--form-group:#3b3b3b;--form-tab:#3c3c3c;--form-tab-selected:#6c6c6c;--form-border:#737373;--form-header:#2e3032;--form-header-divider:#45484a;--form-footer-border:#3f3f3f;--form-alternate:#272a2e;--form-grid:#444;--form-accent:#0a84ff;--form-office:#32455a}
     .form-appearance.glass.light,.static-subform.glass.light{--form-bg:#fff;--form-control:#e1e1e1;--form-group:#f3f3f3;--form-tab:#ebebeb;--form-border:#cecece;--form-accent:#0077f9}

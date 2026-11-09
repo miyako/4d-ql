@@ -13,12 +13,12 @@ public final class PreviewWebView: WKWebView, WKNavigationDelegate {
         configuration.websiteDataStore = .nonPersistent()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         configuration.userContentController.addUserScript(WKUserScript(
-            source: DiagramInteraction.script, injectionTime: .atDocumentEnd,
+            source: CanvasInteraction.script, injectionTime: .atDocumentEnd,
             forMainFrameOnly: true, in: .defaultClient))
         super.init(frame: frame, configuration: configuration)
         allowsMagnification = false
         navigationDelegate = self
-        addGestureRecognizer(NSMagnificationGestureRecognizer(target: self, action: #selector(magnifyDiagram(_:))))
+        addGestureRecognizer(NSMagnificationGestureRecognizer(target: self, action: #selector(magnifyCanvas(_:))))
     }
 
     required init?(coder: NSCoder) { nil }
@@ -37,22 +37,22 @@ public final class PreviewWebView: WKWebView, WKNavigationDelegate {
         previewNavigation = loadHTMLString(html.replacingOccurrences(of: "<head>", with: "<head>\(policy)"), baseURL: nil)
     }
 
-    @objc private func magnifyDiagram(_ gesture: NSMagnificationGestureRecognizer) {
+    @objc private func magnifyCanvas(_ gesture: NSMagnificationGestureRecognizer) {
         guard gesture.state == .began || gesture.state == .changed else { return }
         let delta = gesture.magnification
         gesture.magnification = 0
-        magnifyDiagram(at: gesture.location(in: self), delta: delta) { result in
+        magnifyCanvas(at: gesture.location(in: self), delta: delta) { result in
             if case .failure(let error) = result {
-                NSLog("Diagram magnification failed: %@", error.localizedDescription)
+                NSLog("Canvas magnification failed: %@", error.localizedDescription)
             }
         }
     }
 
-    func magnifyDiagram(at point: NSPoint, delta: Double,
+    func magnifyCanvas(at point: NSPoint, delta: Double,
                         completion: @escaping @MainActor @Sendable (Result<Any, Error>) -> Void) {
         let y = isFlipped ? point.y : bounds.height - point.y
         callAsyncJavaScript(
-            "return globalThis.fourdDiagramZoom.magnify(x, y, delta);",
+            "return globalThis.fourdCanvasZoom.magnify(x, y, delta);",
             arguments: ["x": point.x, "y": y, "delta": delta],
             in: nil, in: .defaultClient, completionHandler: completion)
     }
@@ -66,7 +66,7 @@ public final class PreviewWebView: WKWebView, WKNavigationDelegate {
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        callAsyncJavaScript("return typeof globalThis.fourdDiagramZoom?.magnify === 'function';",
+        callAsyncJavaScript("return typeof globalThis.fourdCanvasZoom?.magnify === 'function';",
                             arguments: [:], in: nil, in: .defaultClient) { [weak self] result in
             switch result {
             case .success(let ready) where ready as? Bool == true:
