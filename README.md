@@ -344,6 +344,10 @@ regular file, and cannot resolve outside the catalog folder through a symlink.
 In Finder, authorize the containing project folder in the hosting app so the
 preview service can read this sibling file; without access the embedded layout
 or automatic grid remains available.
+Diagram-only zoom presets from 10% to 200% scale the SVG and its scrollable
+extent without scaling the surrounding preview. Select 100% to reset; the
+controls work without JavaScript and support keyboard navigation. Quick Look's
+pinch gesture still zooms the entire preview, so use these controls for inner zoom.
 Scroll within the diagram and hover names or
 connectors for details. Table headings are centered; relation names appear
 only in connector tooltips to keep the diagram uncluttered.

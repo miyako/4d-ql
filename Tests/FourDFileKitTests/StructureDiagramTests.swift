@@ -1,5 +1,8 @@
 import XCTest
 @testable import FourDRender
+#if os(macOS)
+import WebKit
+#endif
 
 final class StructureDiagramTests: XCTestCase {
     private func node(_ id: String, position: DiagramPosition? = nil) -> DiagramNode {
@@ -35,6 +38,113 @@ final class StructureDiagramTests: XCTestCase {
         XCTAssertFalse(html.contains("<link"))
     }
 
+    func testZoomControlsAreScopedDeterministicAndKeyboardAccessible() {
+        let diagram = StructureDiagram(nodes: [node("A")], edges: [])
+        var report = Report(title: "Structure")
+        report.sections = [
+            Section("First", [.structureDiagram(diagram)]),
+            Section("Pair", [.structureDiagram(diagram)], width: .half),
+            Section("Nested", [.disclosure(summary: "Details", detail: nil, blocks: [.structureDiagram(diagram)])])
+        ]
+        let html = HTMLRenderer().render(report)
+        XCTAssertEqual(html, HTMLRenderer().render(report))
+        for prefix in [
+            "diagram-zoom-section-0-block-0",
+            "diagram-zoom-section-1-block-0",
+            "diagram-zoom-section-2-block-0-child-0"
+        ] {
+            for percent in [10, 25, 50, 75, 100, 150, 200] {
+                let id = "\(prefix)-\(percent)"
+                XCTAssertTrue(html.contains("name=\"\(prefix)\" id=\"\(id)\" value=\"\(percent)\""))
+                XCTAssertTrue(html.contains("<label for=\"\(id)\">\(percent)%</label>"))
+                XCTAssertTrue(html.contains("#\(id):checked ~ .diagram-viewport{--diagram-scale:\(Double(percent) / 100)}"))
+                XCTAssertTrue(html.contains("#\(id):focus-visible ~ .diagram-zoom-controls"))
+            }
+        }
+        XCTAssertEqual(html.components(separatedBy: "percent\" checked>").count - 1, 3)
+        XCTAssertTrue(html.contains("width:calc(var(--diagram-width) * var(--diagram-scale,1))"))
+        XCTAssertTrue(html.contains("height:calc(var(--diagram-height) * var(--diagram-scale,1))"))
+        XCTAssertFalse(html.contains("<script"))
+        XCTAssertFalse(render(StructureDiagram(nodes: [], edges: [])).contains("class=\"diagram-zoom-choice\""))
+    }
+
+#if os(macOS)
+    @MainActor
+    func testWebKitZoomChangesOnlyDiagramAndScrollableExtent() throws {
+        let diagram = StructureDiagram(nodes: [
+            node("A", position: DiagramPosition(x: 0, y: 0)),
+            node("B", position: DiagramPosition(x: 2000, y: 2000))
+        ], edges: [])
+        var report = Report(title: "Structure")
+        report.sections = [
+            Section("First", [.structureDiagram(diagram)]),
+            Section("Second", [.structureDiagram(diagram)]),
+            Section("Metadata", [.text("Unchanged metadata")])
+        ]
+        let configuration = WKWebViewConfiguration()
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 860, height: 1000), configuration: configuration)
+        let loaded = expectation(description: "Diagram HTML loaded")
+        let delegate = DiagramNavigationDelegate(loaded: loaded)
+        webView.navigationDelegate = delegate
+        webView.loadHTMLString(HTMLRenderer().render(report), baseURL: nil)
+        wait(for: [loaded], timeout: 10)
+        let evaluated = expectation(description: "Diagram zoom measured")
+        webView.evaluateJavaScript("""
+        (() => {
+            const roots = document.querySelectorAll('.structure-diagram');
+            const svg = roots[0].querySelector('svg');
+            const viewport = roots[0].querySelector('.diagram-viewport');
+            const other = roots[1].querySelector('svg');
+            const heading = document.querySelector('h1');
+            const metadata = document.querySelectorAll('section')[2];
+            const original = svg.getBoundingClientRect();
+            const otherWidth = other.getBoundingClientRect().width;
+            const headingHeight = heading.getBoundingClientRect().height;
+            const metadataHeight = metadata.getBoundingClientRect().height;
+            const results = [10,25,50,75,100,150,200,100].map(percent => {
+                roots[0].querySelector('label[for$="-'+percent+'"]').click();
+                const size = svg.getBoundingClientRect();
+                return {
+                    percent, width:size.width, height:size.height,
+                    scrollWidth:viewport.scrollWidth, scrollHeight:viewport.scrollHeight,
+                    unchanged:other.getBoundingClientRect().width === otherWidth &&
+                        heading.getBoundingClientRect().height === headingHeight &&
+                        metadata.getBoundingClientRect().height === metadataHeight &&
+                        roots[1].querySelector('input[value="100"]').checked
+                };
+            });
+            return {width:original.width, height:original.height, results};
+        })()
+        """) { value, error in
+            defer { evaluated.fulfill() }
+            XCTAssertNil(error)
+            guard let data = value as? [String: Any],
+                  let width = data["width"] as? Double, let height = data["height"] as? Double,
+                  let results = data["results"] as? [[String: Any]] else {
+                return XCTFail("Missing WebKit geometry: \(String(describing: value))")
+            }
+            XCTAssertEqual(results.count, 8)
+            for result in results {
+                guard let percent = result["percent"] as? Double,
+                      let actualWidth = result["width"] as? Double,
+                      let actualHeight = result["height"] as? Double,
+                      let scrollWidth = result["scrollWidth"] as? Double,
+                      let scrollHeight = result["scrollHeight"] as? Double else {
+                    XCTFail("Missing zoom geometry")
+                    continue
+                }
+                XCTAssertEqual(actualWidth, width * percent / 100, accuracy: 0.1)
+                XCTAssertEqual(actualHeight, height * percent / 100, accuracy: 0.1)
+                XCTAssertGreaterThanOrEqual(scrollWidth, floor(actualWidth))
+                XCTAssertGreaterThanOrEqual(scrollHeight, floor(actualHeight))
+                XCTAssertEqual(result["unchanged"] as? Bool, true)
+            }
+        }
+        wait(for: [evaluated], timeout: 10)
+    }
+#endif
+
     func testHostileTextEscapedInEveryContextAndFullTooltipsPreserved() {
         let hostile = "\"><script>alert('x')</script>&\u{0001}"
         let longName = hostile + String(repeating: "Untruncated", count: 10)
@@ -60,6 +170,23 @@ final class StructureDiagramTests: XCTestCase {
         XCTAssertFalse(html.contains(">PK "))
         XCTAssertTrue(html.contains("…"))
     }
+
+    #if os(macOS)
+    private final class DiagramNavigationDelegate: NSObject, WKNavigationDelegate {
+        let loaded: XCTestExpectation
+
+        init(loaded: XCTestExpectation) { self.loaded = loaded }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            loaded.fulfill()
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            XCTFail("Diagram navigation failed: \(error)")
+            loaded.fulfill()
+        }
+    }
+    #endif
 
     func testSavedPositionsNormalizedAndPartialCoverageReused() {
         let diagram = StructureDiagram(nodes: [
