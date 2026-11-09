@@ -56,6 +56,45 @@ final class PreviewWebViewTests: XCTestCase {
         return HTMLRenderer().render(FormPresenter().formReport(form, initialTheme: .classicLight))
     }
 
+    func testConsecutiveNativeClicksWorkWithoutAKeyWindow() throws {
+        let webView = load(try formHTML(large: false))
+        let window = NSWindow(contentRect: webView.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = webView
+        window.orderFront(nil)
+        defer { window.close() }
+        var eventNumber = 0
+        func click(_ selector: String) throws {
+            let point = try XCTUnwrap(evaluate("""
+            const control = document.querySelector('\(selector)');
+            control.scrollIntoView({block:'center'});
+            const rect = control.getBoundingClientRect();
+            return {x:rect.left + rect.width / 2, y:rect.top + rect.height / 2};
+            """, in: webView) as? [String: Double])
+            let x = try XCTUnwrap(point["x"])
+            let y = try XCTUnwrap(point["y"])
+            let location = webView.convert(NSPoint(x: x, y: webView.isFlipped ? y : webView.bounds.height - y), to: nil)
+            eventNumber += 1
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                    context: nil, eventNumber: eventNumber, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0))
+                window.sendEvent(event)
+                _ = try evaluate("await new Promise(resolve => setTimeout(resolve, 100)); return true;", in: webView)
+            }
+            XCTAssertFalse(window.isKeyWindow)
+        }
+        for id in ["platform-windows", "platform-macOS", "theme-glassDark", "theme-classicLight",
+                   "page-classicLight-2", "page-classicLight-1"] {
+            try click("label[for=\"\(id)\"]")
+            XCTAssertEqual(try evaluate("return document.getElementById('\(id)').checked;", in: webView) as? Bool, true, id)
+        }
+        try click("button[aria-label=\"Zoom form in\"]")
+        XCTAssertEqual(try evaluate("return document.querySelector('.form-zoom-controls output').value;", in: webView) as? String, "120%")
+        try click("button[aria-label=\"Reset form zoom\"]")
+        XCTAssertEqual(try evaluate("return document.querySelector('.form-zoom-controls output').value;", in: webView) as? String, "100%")
+    }
+
     func testFormZoomControlsBoundsAndScrollExtents() throws {
         let webView = load(try formHTML())
         let values = try XCTUnwrap(evaluate("""
