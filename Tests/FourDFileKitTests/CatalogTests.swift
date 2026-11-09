@@ -21,6 +21,87 @@ final class CatalogTests: XCTestCase {
         return try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? CatalogInfo)
     }
 
+    private func catalogWithEditor(_ xml: String, editor: Data) throws -> URL {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("catalog.4DCatalog")
+        try Data(xml.utf8).write(to: url)
+        try editor.write(to: folder.appendingPathComponent("catalog_editor.json"))
+        return url
+    }
+
+    func testExternalEditorCoordinatesOverrideEmbeddedAndKeepUnspecifiedPositions() throws {
+        let xml = """
+        <base>
+          <table name="A"><table_extra><editor_table_info><coordinates left="1" top="2"/></editor_table_info></table_extra></table>
+          <table name="B"><table_extra><editor_table_info><coordinates left="600" top="2"/></editor_table_info></table_extra></table>
+          <table name="顧客"/>
+        </base>
+        """
+        let editor = """
+        {"tables":{"A":{"coordinates":{"left":"-20.5","top":"30.25","width":"120","height":"200"}},
+        "顧客":{"coordinates":{"left":20000,"top":30000}},"Removed":{"coordinates":{"left":1,"top":1}}}}
+        """
+        let url = try catalogWithEditor(xml, editor: Data(editor.utf8))
+        let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? CatalogInfo)
+        XCTAssertEqual(info.tables[0].position?.x, -20.5)
+        XCTAssertEqual(info.tables[0].position?.y, 30.25)
+        XCTAssertEqual(info.tables[1].position?.x, 600)
+        XCTAssertEqual(info.tables[1].position?.y, 2)
+        XCTAssertEqual(info.tables[2].position?.x, 20000)
+        XCTAssertEqual(info.tables[2].position?.y, 30000)
+        XCTAssertTrue(info.warnings.isEmpty)
+        let html = PreviewPipeline().html(for: url)
+        XCTAssertTrue(html.contains("data-node-id=\"2\" transform=\"translate(20044.5 30022.0)\""))
+        XCTAssertTrue(html.contains("width=\"20284.5\" height=\"30080.0\""))
+    }
+
+    func testInvalidEditorFilesWarnAndRetainEmbeddedLayout() throws {
+        let xml = """
+        <base><table name="A"><table_extra><editor_table_info><coordinates left="7" top="8"/></editor_table_info></table_extra></table></base>
+        """
+        for editor in [
+            Data("not JSON".utf8), Data(#"{"tables":[]}"#.utf8),
+            Data(#"{"tables":{"A":{"coordinates":{"left":"NaN","top":1}}}}"#.utf8),
+            Data(#"{"tables":{"A":{"coordinates":{"left":true,"top":1}}}}"#.utf8),
+            Data(#"{"tables":{"A":{"coordinates":{"left":1}}}}"#.utf8),
+            Data(#"{"tables":{"A":null}}"#.utf8),
+            Data(count: 4 * 1024 * 1024 + 1),
+            Data((String(repeating: "[", count: 66) + "0" + String(repeating: "]", count: 66)).utf8)
+        ] {
+            let url = try catalogWithEditor(xml, editor: editor)
+            let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? CatalogInfo)
+            XCTAssertEqual(info.tables[0].position?.x, 7)
+            XCTAssertEqual(info.tables[0].position?.y, 8)
+            XCTAssertTrue(info.warnings.contains { $0.contains("catalog_editor.json") })
+            XCTAssertTrue(PreviewPipeline().html(for: url).contains("Parser notes"))
+        }
+    }
+
+    func testEmptyEditorAndAmbiguousNames() throws {
+        let url = try catalogWithEditor("<base><table name=\"A\"/></base>", editor: Data(#"{"tables":{}}"#.utf8))
+        let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? CatalogInfo)
+        XCTAssertNil(info.tables[0].position)
+        XCTAssertTrue(info.warnings.isEmpty)
+        let ambiguousURL = try catalogWithEditor("<base><table name=\"A\"/><table name=\"A\"/></base>",
+            editor: Data(#"{"tables":{"A":{"coordinates":{"left":1,"top":2}}}}"#.utf8))
+        let ambiguous = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: ambiguousURL) as? CatalogInfo)
+        XCTAssertTrue(ambiguous.tables.allSatisfy { $0.position == nil })
+        XCTAssertTrue(ambiguous.warnings.contains { $0.contains("ambiguous editor layout") })
+    }
+
+    func testEditorSymlinkCannotEscapeCatalogFolder() throws {
+        let url = try catalogWithEditor("<base><table name=\"A\"/></base>", editor: Data())
+        let editorURL = url.deletingLastPathComponent().appendingPathComponent("catalog_editor.json")
+        let outside = try file(Data(#"{"tables":{"A":{"coordinates":{"left":9,"top":9}}}}"#.utf8), ext: "json")
+        try FileManager.default.removeItem(at: editorURL)
+        try FileManager.default.createSymbolicLink(at: editorURL, withDestinationURL: outside)
+        let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? CatalogInfo)
+        XCTAssertNil(info.tables[0].position)
+        XCTAssertTrue(info.warnings.contains { $0.contains("escapes the catalog folder") })
+    }
+
     func testCatalogModelAndUUIDResolution() throws {
         let info = try fixture()
         XCTAssertEqual(info.kind, "catalog.structure")
@@ -182,24 +263,35 @@ final class CatalogTests: XCTestCase {
         XCTAssertTrue(html.contains("does not reveal whether a data file is encrypted"))
     }
 
-    func testLargeCatalogKeepsPreviewBoundedAndJSONComplete() throws {
+    func testLargeCatalogIncludesEveryTableAndKeepsJSONComplete() throws {
         let tableXML = (0..<300).map { table in
             "<table name=\"T\(table)\">" + (0..<20).map { "<field name=\"F\($0)\" type=\"4\"/>" }.joined() +
             "<primary_key field_name=\"F19\"/></table>"
         }.joined()
-        let info = try analyze("<base>\(tableXML)</base>")
+        let relation = """
+        <relation><related_field kind="source"><field_ref name="F19"><table_ref name="T298"/></field_ref></related_field>
+        <related_field kind="destination"><field_ref name="F19"><table_ref name="T299"/></field_ref></related_field></relation>
+        """
+        let info = try analyze("<base>\(tableXML)\(relation)</base>")
         let report = try XCTUnwrap(CatalogPresenter().report(for: info))
         let blocks = report.sections.flatMap(\.blocks)
         let diagram = try XCTUnwrap(blocks.compactMap { block -> StructureDiagram? in
             if case .structureDiagram(let diagram) = block { return diagram }; return nil
         }.first)
-        XCTAssertEqual(diagram.nodes.count, 24)
-        XCTAssertEqual(diagram.omittedTables, 276)
+        XCTAssertEqual(diagram.nodes.count, 300)
+        XCTAssertEqual(diagram.omittedTables, 0)
+        XCTAssertEqual(diagram.edges.count, 1)
+        XCTAssertEqual(diagram.edges[0].sourceNode, "298")
+        XCTAssertEqual(diagram.edges[0].destinationNode, "299")
+        XCTAssertEqual(diagram.omittedRelations, 0)
         XCTAssertTrue(diagram.nodes.allSatisfy { $0.fields.count == 8 && $0.omittedFields == 12 })
         XCTAssertTrue(diagram.nodes.allSatisfy { $0.fields.contains { $0.primaryKey && $0.name == "F19" } })
         XCTAssertEqual(info.tables.count, 300)
         XCTAssertEqual(info.tables.flatMap(\.fields).count, 6_000)
-        XCTAssertLessThan(HTMLRenderer().render(report).utf8.count, 200_000)
+        let html = HTMLRenderer().render(report)
+        XCTAssertEqual(html.components(separatedBy: "class=\"diagram-node\"").count - 1, 300)
+        XCTAssertTrue(html.contains("data-node-id=\"299\""))
+        XCTAssertLessThan(html.utf8.count, 5 * 1024 * 1024)
     }
 
     func testResourceLimitsAndInvalidCoordinates() throws {
@@ -215,7 +307,7 @@ final class CatalogTests: XCTestCase {
         XCTAssertThrowsError(try analyze("<base>" + String(repeating: "<x/>", count: 200_000) + "</base>"))
     }
 
-    func testRelationCapAndJoinedFieldPriority() throws {
+    func testAllRelationsAndJoinedFieldPriority() throws {
         let fields = (0..<20).map { "<field name=\"F\($0)\" type=\"4\"/>" }.joined()
         let relation = """
         <relation><related_field kind="source"><field_ref name="F19"><table_ref name="A"/></field_ref></related_field>
@@ -227,8 +319,8 @@ final class CatalogTests: XCTestCase {
         let diagram = try XCTUnwrap(report.sections.flatMap(\.blocks).compactMap { block -> StructureDiagram? in
             if case .structureDiagram(let diagram) = block { return diagram }; return nil
         }.first)
-        XCTAssertEqual(diagram.edges.count, 64)
-        XCTAssertEqual(diagram.omittedRelations, 6)
+        XCTAssertEqual(diagram.edges.count, 70)
+        XCTAssertEqual(diagram.omittedRelations, 0)
         XCTAssertEqual(diagram.omittedTables, 0)
         XCTAssertTrue(diagram.nodes[0].fields.contains { $0.name == "F19" })
         XCTAssertEqual(diagram.edges[0].sourceField, "19")

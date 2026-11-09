@@ -171,11 +171,13 @@ paths; folder authorization is unavailable from the Quick Look preview window.
 
 Authorized previews use the app's private, team-owned shared container.
 For each Finder request, an embedded XPC service analyzes the current form and
-its bounded dependencies, then returns self-contained HTML over IPC. The
+its bounded dependencies, or the catalog and its sibling editor layout, then
+returns self-contained HTML over IPC. The
 extension neither writes to the shared container nor launches the hosting app.
 Requests and replies are tied
-to a fresh nonce, form-content hash and renderer build. A missing helper,
-authorization failure, changed form or timeout produces a visible notice and
+to a fresh nonce, selected-file content hash and renderer build. Forms retain
+their 4 MiB source limit; catalogs retain their 32 MiB source limit. A missing helper,
+authorization failure, changed source or timeout produces a visible notice and
 the selected-file-only preview, never a silently stale project preview.
 Role-specific XPC sessions check the signing identity before admission;
 only the hosting app can authorize or revoke projects. The preview role is
@@ -317,9 +319,9 @@ metadata is available in the JSON rather than explanatory footnotes.
 Other versions show a notice and the original JSON; legacy binary queries
 and malformed JSON report an error.
 
-Quick Look has little room, so the preview leads with what matters to a user
-or developer, and every block has a fixed size: a file with 500 tables takes
-the same summary space as one with 5 (hover a bar for details).
+Quick Look has little room, so summary charts stay compact: a data file with
+500 tables takes the same summary space as one with 5 (hover a bar for details).
+Catalog diagrams instead expand their scrollable canvas to include every table.
 
 The `.4DB` and `.4DD` field-type charts use the catalog's original inline SVG
 icons and matching light/dark colors. The eight family counts stay unchanged;
@@ -331,7 +333,18 @@ Catalog previews lead with the diagram, without summary charts or relation
 lists. Metadata remains available in a collapsed **Catalog details** disclosure.
 Catalog diagrams are self-contained SVG with no scripts or network requests.
 They reuse saved structure-editor positions when practical and fall back to a
-deterministic layout otherwise. Scroll within the diagram and hover names or
+deterministic grid that grows with the number of tables otherwise. Positions
+may be embedded in `.4DCatalog` XML or stored by table name in the sibling
+`catalog_editor.json` tables object. Valid external coordinates take precedence;
+missing or invalid entries retain embedded positions. Both numeric coordinates
+and 4D's string-valued coordinates are supported. Unreadable, malformed or
+oversized editor files produce parser notes rather than hiding the catalog.
+The editor file is limited to 4 MiB, depth 64 and 100,000 JSON values, must be a
+regular file, and cannot resolve outside the catalog folder through a symlink.
+In Finder, authorize the containing project folder in the hosting app so the
+preview service can read this sibling file; without access the embedded layout
+or automatic grid remains available.
+Scroll within the diagram and hover names or
 connectors for details. Table headings are centered; relation names appear
 only in connector tooltips to keep the diagram uncluttered.
 Primary-key field names are underlined, indexed field names are bold, and
@@ -341,8 +354,9 @@ the full type and Alpha length remain in hover details. Card widths are
 measured from the displayed names, so valid 31-character names are shown in
 full, including wide or non-Latin text, without padding every card to the
 same width. No proprietary 4D image assets are bundled.
-Previews show at most 24 tables, eight fields per table
-(prioritizing primary keys and joins), and 64 relations. Per-table field
+Previews show every table and every resolved relation on a canvas sized to the
+full layout, including saved layouts beyond 12,000 points. Cards show up to
+eight fields per table (prioritizing primary keys and joins). Per-table field
 omissions are labeled on the cards; omission totals and the legend remain in
 the diagram's tooltip/accessibility description, not above the diagram.
 The JSON output retains all parsed tables, fields, and relations. XML catalogs

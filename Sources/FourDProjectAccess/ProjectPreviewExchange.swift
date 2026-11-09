@@ -20,7 +20,7 @@ public enum ProjectPreviewExchangeError: LocalizedError, Equatable {
         case .invalidRequest: return "The project preview request is invalid."
         case .invalidReply: return "The project preview reply does not match this request."
         case .unsupportedVersion: return "The project preview protocol version is unsupported."
-        case .sourceChanged: return "The selected form changed while preparing its preview."
+        case .sourceChanged: return "The selected file changed while preparing its preview."
         case .oversizedFile: return "The project preview file exceeds its size limit."
         case .oversizedHTML: return "The project preview HTML exceeds its size limit."
         case .queueFull: return "The project preview request queue is full."
@@ -75,6 +75,7 @@ public struct ProjectPreviewReply: Codable, Equatable, Sendable {
 public struct ProjectPreviewExchange: Sendable {
     public static let version = 1
     public static let maximumSourceBytes = 4 * 1_024 * 1_024
+    public static let maximumCatalogBytes = 32 * 1_024 * 1_024
     public static let maximumRequestBytes = 16 * 1_024
     public static let maximumHTMLBytes = 32 * 1_024 * 1_024
     public static let maximumReplyBytes = 48 * 1_024 * 1_024
@@ -120,7 +121,8 @@ public struct ProjectPreviewExchange: Sendable {
         guard fileURL.isFileURL, fileURL.path.hasPrefix("/") else {
             throw ProjectPreviewExchangeError.invalidRequest
         }
-        return hash(try readBounded(fileURL, maximum: maximumSourceBytes))
+        let maximum = fileURL.pathExtension.lowercased() == "4dcatalog" ? maximumCatalogBytes : maximumSourceBytes
+        return hash(try readBounded(fileURL, maximum: maximum))
     }
 
     public func writeRequest(_ request: ProjectPreviewRequest) throws {

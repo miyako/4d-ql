@@ -100,7 +100,8 @@ private final class CatalogDecoder {
     private var warnings: [String] = []
 
     func decode(_ root: CatalogNode, source: ByteSource) throws -> CatalogInfo {
-        let tables = root.all("table").compactMap(table)
+        var tables = root.all("table").compactMap(table)
+        applyEditorLayout(to: &tables, source: source)
         let tableLookup = CatalogLookup(tables.map { ($0.uuid, $0.name) })
         let fieldLookups = tables.map { CatalogLookup($0.fields.map { ($0.uuid, $0.name) }) }
         var relations: [CatalogRelation] = []
@@ -146,6 +147,64 @@ private final class CatalogDecoder {
         return CatalogTable(number: integer(node, "id"), name: name, uuid: node["uuid"] ?? "", fields: fields,
                             encryptable: boolean(node, "encryptable"), hidden: extra.map { !boolean($0, "visible", default: true) } ?? false,
                             position: position)
+    }
+
+    private func applyEditorLayout(to tables: inout [CatalogTable], source: ByteSource) {
+        let folder = source.url.standardizedFileURL.resolvingSymlinksInPath().deletingLastPathComponent()
+        let url = folder.appendingPathComponent("catalog_editor.json")
+        do {
+            let attributes: [FileAttributeKey: Any]
+            do {
+                attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            } catch let error as NSError where error.domain == NSCocoaErrorDomain
+                && error.code == NSFileReadNoSuchFileError {
+                return
+            }
+            let resolved = url.resolvingSymlinksInPath()
+            guard resolved.deletingLastPathComponent() == folder else {
+                throw CatalogError.invalid("catalog_editor.json escapes the catalog folder")
+            }
+            let resolvedAttributes = attributes[.type] as? FileAttributeType == .typeSymbolicLink
+                ? try FileManager.default.attributesOfItem(atPath: resolved.path) : attributes
+            guard resolvedAttributes[.type] as? FileAttributeType == .typeRegular else {
+                throw CatalogError.invalid("catalog_editor.json is not a regular file")
+            }
+            let editor = try ByteSource(url: resolved)
+            guard editor.size <= 4 * 1024 * 1024 else {
+                throw CatalogError.invalid("catalog_editor.json exceeds 4 MiB")
+            }
+            var parser = try FormJSONParser(editor.read(at: 0, length: Int(editor.size)))
+            let document = try parser.parse()
+            guard case .object = document, case .object(let entries)? = document["tables"] else {
+                throw CatalogError.invalid("catalog_editor.json must contain a tables object")
+            }
+            let layouts = Dictionary(uniqueKeysWithValues: entries.map { ($0.name, $0.value) })
+            let counts = Dictionary(tables.map { ($0.name, 1) }, uniquingKeysWith: +)
+            for index in tables.indices {
+                let name = tables[index].name
+                guard let layout = layouts[name] else { continue }
+                guard counts[name] == 1 else {
+                    warn("Ignored ambiguous editor layout in catalog_editor.json for table \(name).")
+                    continue
+                }
+                guard case .object = layout else {
+                    warn("Ignored invalid editor layout in catalog_editor.json for table \(name).")
+                    continue
+                }
+                guard let coordinates = layout["coordinates"] else { continue }
+                func number(_ value: FormValue?) -> Double? {
+                    value?.double ?? value?.string.flatMap(Double.init)
+                }
+                guard let x = number(coordinates["left"]), x.isFinite,
+                      let y = number(coordinates["top"]), y.isFinite else {
+                    warn("Ignored invalid editor coordinates in catalog_editor.json for table \(name).")
+                    continue
+                }
+                tables[index].position = CatalogPosition(x: x, y: y)
+            }
+        } catch {
+            warn("Could not load catalog_editor.json: \(error)")
+        }
     }
 
     private func field(_ node: CatalogNode, tableName: String) -> CatalogField? {
