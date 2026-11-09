@@ -33,6 +33,7 @@ var targets: [Target] = [
 #if os(macOS)
 targets += [
     .target(name: "FourDProjectAccess"),
+    .target(name: "FourDQuickLookUI", linkerSettings: [.linkedFramework("WebKit")]),
 
     .executableTarget(name: "FourDProjectPreviewService",
                       dependencies: ["FourDProjectAccess", "FourDFileKit", "FourDRender"]),
@@ -40,7 +41,7 @@ targets += [
     // Quick Look preview extension binary (bundled into an .appex by scripts/build.sh).
     .executableTarget(
         name: "FourDQuickLookExtension",
-        dependencies: ["FourDFileKit", "FourDRender", "FourDProjectAccess"],
+        dependencies: ["FourDFileKit", "FourDRender", "FourDProjectAccess", "FourDQuickLookUI"],
         linkerSettings: [
             .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
             .linkedFramework("QuickLookUI"),
@@ -51,7 +52,7 @@ targets += [
     .executableTarget(name: "FourDQuickLookHost", dependencies: ["FourDProjectAccess"],
                       linkerSettings: [.linkedFramework("QuickLookUI")]),
 ]
-let testDependencies: [Target.Dependency] = ["FourDFileKit", "FourDRender", "FourDProjectAccess"]
+let testDependencies: [Target.Dependency] = ["FourDFileKit", "FourDRender", "FourDProjectAccess", "FourDQuickLookUI"]
 #else
 let testDependencies: [Target.Dependency] = ["FourDFileKit", "FourDRender"]
 #endif

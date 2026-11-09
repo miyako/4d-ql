@@ -17,7 +17,7 @@
 	<dict>
 		<key>NSExtensionAttributes</key>
 		<dict>
-			<key>QLIsDataBasedPreview</key><true/>
+			<key>QLIsDataBasedPreview</key><false/>
 			<key>QLSupportsSearchableItems</key><false/>
 			<key>QLSupportedContentTypes</key>
 			<array>

@@ -344,10 +344,18 @@ regular file, and cannot resolve outside the catalog folder through a symlink.
 In Finder, authorize the containing project folder in the hosting app so the
 preview service can read this sibling file; without access the embedded layout
 or automatic grid remains available.
-Diagram-only zoom presets from 10% to 200% scale the SVG and its scrollable
-extent without scaling the surrounding preview. Select 100% to reset; the
-controls work without JavaScript and support keyboard navigation. Quick Look's
-pinch gesture still zooms the entire preview, so use these controls for inner zoom.
+Finder uses a view-based Quick Look extension with an owned `WKWebView`.
+Pinch over the diagram for continuous, cursor-centered zoom, use the logarithmic
+slider or +/- buttons, and select 100% to reset. Zoom ranges from 1% to 800%;
+only the SVG and its scrollable extent scale, not the surrounding preview.
+Two-finger scrolling pans the diagram; dragging its canvas also pans.
+The controls support keyboard navigation. Magnification outside a diagram
+does not zoom the page.
+
+The viewer installs its own interaction code in an isolated WebKit content world.
+Document-supplied JavaScript is disabled, external navigation and resource loads
+are blocked, and no project-folder base URL or native script bridge is exposed.
+CLI HTML remains script-free with 10%-200% zoom presets as a portable fallback.
 Scroll within the diagram and hover names or
 connectors for details. Table headings are centered; relation names appear
 only in connector tooltips to keep the diagram uncluttered.
@@ -397,7 +405,8 @@ Sources/
     *Presenter.swift     one presenter per model kind
     HTMLRenderer.swift   the only place that knows about HTML/CSS
     PreviewPipeline.swift
-  FourDQuickLookExtension/  data-based QLPreviewProvider (returns HTML)
+  FourDQuickLookExtension/  view-based QLPreviewingController with project authorization
+  FourDQuickLookUI/       owned WKWebView and isolated diagram zoom/pan controls
   FourDProjectAccess/    read-only authorization and bounded shared-preview exchange
   FourDQuickLookHost/    hosting app and sandboxed project-preview helper
   fourdql/               CLI using the same pipeline
