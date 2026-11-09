@@ -27,6 +27,8 @@ public final class AnalyzerRegistry {
         ImportExportSettingsAnalyzer(),
         TextFileAnalyzer(format: .xml),
         TextFileAnalyzer(format: .json),
+        TextFileAnalyzer(documentType: .link),
+        TextFileAnalyzer(documentType: .preferences),
         QueryFileAnalyzer(),
         SetFileAnalyzer(),
         QuickReportFileAnalyzer(),

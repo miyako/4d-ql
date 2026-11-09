@@ -47,23 +47,78 @@ final class TextFileTests: XCTestCase {
         XCTAssertFalse(html.contains("<script>"))
     }
 
+    func testLinkAndPreferencesXMLPreviews() throws {
+        for (ext, documentType, subtitle, text, tag, attribute) in [
+            ("4DLink", TextFileInfo.DocumentType.link, "4D Link (XML)",
+             "<?xml version=\"1.0\" encoding=\"UTF-8\"?><database_shortcut structure_opening_mode=\"1\" structure_file=\"file:///Example/Project.4DProject\"/>",
+             "database_shortcut", "structure_file"),
+            ("4DPreferences", .preferences, "4D Preferences (XML)",
+             "<?xml version=\"1.0\" encoding=\"UTF-8\"?><preferences stamp=\"61\">\n\t<com.4d><method_editor><theme dark=\"defaultDarkTheme\" light=\"custom\"/></method_editor></com.4d>\n</preferences>",
+             "com.4d", "dark"),
+        ] {
+            let url = try file(text, extension: ext)
+            let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? TextFileInfo)
+            XCTAssertEqual(info.documentType, documentType)
+            XCTAssertEqual(info.format, .xml)
+            XCTAssertEqual(info.text, text)
+            let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: info.jsonData()) as? [String: String])
+            XCTAssertEqual(json["format"], "xml")
+            XCTAssertEqual(json["text"], text)
+            let html = PreviewPipeline().html(for: url)
+            XCTAssertTrue(html.contains(subtitle))
+            XCTAssertTrue(html.contains("<span class=\"syntax-tag\">\(tag)</span>"))
+            XCTAssertTrue(html.contains("<span class=\"syntax-attribute\">\(attribute)</span>"))
+            XCTAssertTrue(withoutHighlighting(html).contains(text
+                .replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+                .replacingOccurrences(of: "\"", with: "&quot;")))
+        }
+    }
+
     func testTypeAndCaseInsensitiveExtensionRouting() throws {
         for (ext, type, format) in [
             ("4DSETTINGS", "com.4d.4d.settings", TextFileInfo.Format.xml),
             ("4dproject", "com.4d.4d.project", TextFileInfo.Format.json),
+            ("4DLINK", "com.4d.4d.database-shortcut", TextFileInfo.Format.xml),
+            ("4dpreferences", "com.4d.4d.preferences", TextFileInfo.Format.xml),
         ] {
             let url = try file("test", extension: ext)
             XCTAssertEqual(try (AnalyzerRegistry.default.analyze(url: url) as? TextFileInfo)?.format, format)
             let untagged = try file("test", extension: "txt")
-            XCTAssertEqual(try (AnalyzerRegistry.default.analyze(url: untagged, contentType: type) as? TextFileInfo)?.format, format)
+            let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: untagged, contentType: type) as? TextFileInfo)
+            XCTAssertEqual(info.format, format)
+            XCTAssertEqual(try (AnalyzerRegistry.default.analyze(url: url, contentType: "public.data") as? TextFileInfo)?.documentType,
+                           info.documentType)
+            let report = try XCTUnwrap(TextFilePresenter().report(for: info))
+            XCTAssertFalse(report.subtitle?.isEmpty ?? true)
             XCTAssertTrue(AnalyzerRegistry.default.allContentTypes.contains(type))
+        }
+    }
+
+    func testXMLTypeDeclarations() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("Support/Host-Info.plist"))
+        let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+        let declarations = try XCTUnwrap(plist["UTImportedTypeDeclarations"] as? [[String: Any]])
+        for (type, ext) in [
+            ("com.4d.4d.database-shortcut", "4dlink"),
+            ("com.4d.4d.preferences", "4dpreferences"),
+        ] {
+            let declaration = try XCTUnwrap(declarations.first { $0["UTTypeIdentifier"] as? String == type })
+            XCTAssertEqual(declaration["UTTypeConformsTo"] as? [String], ["public.xml"])
+            let tags = try XCTUnwrap(declaration["UTTypeTagSpecification"] as? [String: Any])
+            XCTAssertTrue((tags["public.filename-extension"] as? [String] ?? []).contains(ext))
         }
     }
 
     func testUTF16Settings() throws {
         let text = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n<settings>日本語</settings>"
-        let url = try file(text, extension: "4DSettings", encoding: .utf16)
-        XCTAssertEqual(try (AnalyzerRegistry.default.analyze(url: url) as? TextFileInfo)?.text, text)
+        for ext in ["4DSettings", "4DLink", "4DPreferences"] {
+            let url = try file(text, extension: ext, encoding: .utf16)
+            XCTAssertEqual(try (AnalyzerRegistry.default.analyze(url: url) as? TextFileInfo)?.text, text)
+        }
     }
 
     func testSourcePreviewPreservesWindowsAndClassicMacLineBreaks() throws {

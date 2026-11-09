@@ -9,6 +9,8 @@ file to see what is inside instead of a generic icon.
 | `.4DB` binary structure | tables ranked by fields, field types, the number of relations, the database UUID, sort/search settings, journaling |
 | `.4DCatalog` XML catalog | a diagram-first view of tables, field types, primary keys, hidden fields, and relations; counts, database UUID, sort/search language, schemas, and encryptable tables tucked into "Catalog details" |
 | `.4DSettings` settings file | syntax-highlighted XML source with indentation and line breaks preserved |
+| `.4DLink` database shortcut | syntax-highlighted XML source with indentation and line breaks preserved |
+| `.4DPreferences` preferences file | syntax-highlighted XML source with indentation and line breaks preserved |
 | `.4si` import/export settings | ordered field cards with readable types, summary cards, and borderless settings and options |
 | `.4DProject` project file | syntax-highlighted JSON source with indentation and line breaks preserved |
 | `.4df` saved query | condition cards with table/field numbers, comparison labels, AND/OR/EXCEPT connectors, saved values, and selection destination; original JSON folded below |
@@ -414,7 +416,7 @@ Sources/
                          FileAnalyzer protocol, AnalyzerRegistry
     DB4D/                the shared .4DD/.4DB container format
     Catalog/             .4DCatalog XML definitions and relation references
-    Text/                XML .4DSettings / JSON .4DProject source text,
+    Text/                XML .4DSettings / .4DLink / .4DPreferences and JSON .4DProject source text,
                          structured .4si import/export settings
     Query/               JSON .4df saved query conditions and metadata
     Set/                 binary .4st membership, compressed pages and bounded ranges
