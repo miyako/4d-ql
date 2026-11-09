@@ -63,6 +63,20 @@
 			<dict><key>public.filename-extension</key><array><string>4dsettings</string></array></dict>
 		</dict>
 		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.database-shortcut</string>
+			<key>UTTypeDescription</key><string>4D Link</string>
+			<key>UTTypeConformsTo</key><array><string>public.xml</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>4DLink</string><string>4dlink</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.preferences</string>
+			<key>UTTypeDescription</key><string>4D Preferences</string>
+			<key>UTTypeConformsTo</key><array><string>public.xml</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>4DPreferences</string><string>4dpreferences</string></array></dict>
+		</dict>
+		<dict>
 			<key>UTTypeIdentifier</key><string>com.4d.4d.project</string>
 			<key>UTTypeDescription</key><string>4D Project</string>
 			<key>UTTypeConformsTo</key><array><string>public.json</string></array>
