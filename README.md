@@ -414,6 +414,30 @@ drag **4D Quick Look** to Applications, and open it once so macOS registers the
 preview extension. The app is signed with a Developer ID and notarized. If
 Finder still shows the old preview, run `qlmanage -r`.
 
+### Upgrading
+
+Quick Look uses whichever registered copy of the extension it finds, and an
+older copy keeps serving previews after the new one is installed. To upgrade:
+
+1. Replace the app in `/Applications`, then delete any other copies (for example
+   in Downloads) and eject the mounted DMG.
+2. Open the new app once.
+3. Restart the old preview processes and reset Quick Look (or log out and back in):
+
+   ```sh
+   pkill -f FourDQuickLookExtension; pkill -f FourDProjectPreviewService
+   qlmanage -r; qlmanage -r cache
+   ```
+
+4. Check that a single, current copy is registered:
+
+   ```sh
+   pluginkit -mAvvv -i com.github.miyako.FourDQuickLook.Preview
+   ```
+
+   To remove a stale entry, run `pluginkit -r "<path to>/4D Preview.appex"`, then
+   delete that copy.
+
 ## Build from source
 
 ```bash
@@ -423,7 +447,9 @@ scripts/build.sh --register
 This builds a universal (arm64 + x86_64) release, ad-hoc signs it, and
 registers it with Launch Services and Quick Look. To install it for good, copy
 `build/4D Quick Look.app` to `/Applications` and open it once. If Finder still
-shows the old preview, run `qlmanage -r`.
+shows the old preview, run `qlmanage -r`. The `build/` copy stays registered
+after you install a release, and Quick Look may keep using it; unregister it as
+described in [Upgrading](#upgrading).
 
 To sign with a Developer ID locally (hardened runtime and secure timestamp
 are added automatically):
