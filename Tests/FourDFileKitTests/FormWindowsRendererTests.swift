@@ -84,7 +84,7 @@ final class FormWindowsRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("class=\"form-appearance light fluent\""))
         XCTAssertTrue(html.contains("class=\"form-appearance dark fluent\""))
         XCTAssertTrue(html.contains("<div class=\"form-preview\">"))
-        XCTAssertTrue(html.contains("<div class=\"form-page\" data-page=\"1\"><div class=\"form-scroll\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\""))
+        XCTAssertTrue(html.contains("<div class=\"form-page\" data-page=\"1\"><div class=\"form-scroll\" tabindex=\"0\" role=\"region\" aria-label=\"Scrollable form canvas\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\""))
         XCTAssertTrue(html.contains("class=\"form-themes\""))
         XCTAssertTrue(html.contains("class=\"form-caption\""))
         XCTAssertTrue(html.contains("href=\"data:image/"))

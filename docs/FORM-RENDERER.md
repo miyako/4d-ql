@@ -52,6 +52,14 @@ behind a CSS-only macOS/Windows switch; see
 [Windows previews on macOS](WINDOWS-HANDOVER.md#windows-previews-on-macos-quick-look).
 `FormRenderer` output and its JSON document remain single-platform.
 
+HTML includes script-free 10%-200% zoom presets for the SVG canvas; page,
+appearance and platform selectors, captions and metadata are not scaled.
+In Quick Look, the owned viewer replaces the presets with continuous 1%-800%
+zoom, including cursor-centered pinch/Control-scroll, a logarithmic slider,
+zoom buttons, a 100% reset and drag-to-pan. One form zoom level is retained
+when switching platform, appearance or page. This uses the viewer's isolated
+WebKit content world; scripts in previewed files remain disabled.
+
 ## Swift API
 
 Import the existing `FourDRender` and `FourDFileKit` libraries:

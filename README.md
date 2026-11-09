@@ -94,6 +94,12 @@ Form previews use a self-contained SVG canvas, not a running 4D instance.
 They preserve JSON object declaration order (paint order), include page 0
 behind every numbered page, honor saved coordinates and form-size anchors,
 and provide scrollable canvases and script-free page/appearance selectors.
+Quick Look adds catalog-style, cursor-centered pinch zoom, a logarithmic
+slider, +/− buttons, a 100% reset and drag-to-pan over the form canvas.
+Zoom ranges from 1% to 800% and persists across platform, appearance and page
+switches without scaling the selectors or metadata. Ordinary scrolling remains
+available; Control-scroll also zooms inside the canvas. Standalone HTML stays
+script-free with 10%–200% zoom presets.
 Text uses CoreText shaping and word-boundary line breaks rather than
 summing individual character widths. Composed characters, explicit blank
 lines and font traits are preserved; text remains clipped to saved bounds.
@@ -434,7 +440,7 @@ Sources/
     HTMLRenderer.swift   the only place that knows about HTML/CSS
     PreviewPipeline.swift
   FourDQuickLookExtension/  view-based QLPreviewingController with project authorization
-  FourDQuickLookUI/       owned WKWebView and isolated diagram zoom/pan controls
+  FourDQuickLookUI/       owned WKWebView and isolated canvas zoom/pan controls
   FourDProjectAccess/    read-only authorization and bounded shared-preview exchange
   FourDQuickLookHost/    hosting app and sandboxed project-preview helper
   fourdql/               CLI using the same pipeline

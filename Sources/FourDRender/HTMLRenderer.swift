@@ -153,7 +153,7 @@ public struct HTMLRenderer {
             return StructureDiagramRenderer().render(diagram, identifier: identifier)
 
         case .formPreview(let preview):
-            return FormPreviewRenderer().render(preview)
+            return FormPreviewRenderer().render(preview, identifier: identifier)
 
         case .disclosure(let summary, let detail, let blocks):
             var h = "<details><summary><span class=\"st\">\(esc(summary))</span>"
