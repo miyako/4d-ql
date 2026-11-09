@@ -88,6 +88,16 @@
 			<key>UTTypeTagSpecification</key>
 			<dict><key>public.filename-extension</key><array><string>4db</string></array></dict>
 		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.setFile</string>
+			<key>UTTypeDescription</key><string>4D Saved Set</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key><array><string>4st</string><string>4ST</string></array>
+				<key>com.apple.ostype</key><string>SETT</string>
+			</dict>
+		</dict>
 	</array>
 </dict>
 </plist>
