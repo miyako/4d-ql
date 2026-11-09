@@ -28,6 +28,13 @@
 			<dict><key>public.filename-extension</key><array><string>4DForm</string><string>4dform</string></array></dict>
 		</dict>
 		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.quickReport</string>
+			<key>UTTypeDescription</key><string>4D Quick Report</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>4qr</string><string>4QR</string></array></dict>
+		</dict>
+		<dict>
 			<key>UTTypeIdentifier</key><string>com.4d.4d.queryFile</string>
 			<key>UTTypeDescription</key><string>4D Saved Query</string>
 			<key>UTTypeConformsTo</key><array><string>public.data</string></array>

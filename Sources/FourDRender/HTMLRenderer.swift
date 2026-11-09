@@ -19,7 +19,11 @@ public struct HTMLRenderer {
             h += "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: 'self'; style-src 'unsafe-inline';\(fonts) base-uri 'none'; form-action 'none'\">"
         }
         h += "<meta name=\"color-scheme\" content=\"light dark\">"
-        h += "<title>\(esc(report.title))</title><style>\(Self.css)</style></head><body>"
+        let hasQuickReport = report.sections.flatMap(\.blocks).contains { block in
+            if case .quickReportPreview = block { return true }
+            return false
+        }
+        h += "<title>\(esc(report.title))</title><style>\(Self.css)\(hasQuickReport ? QuickReportPreviewRenderer.css : "")</style></head><body>"
         h += "<header><h1>\(esc(report.title))</h1>"
         if let s = report.subtitle { h += "<p class=\"sub\">\(esc(s))</p>" }
         if !report.badges.isEmpty {
@@ -59,6 +63,8 @@ public struct HTMLRenderer {
 
     private func block(_ b: Block, identifier: String = "block") -> String {
         switch b {
+        case .quickReportPreview(let preview):
+            return QuickReportPreviewRenderer.render(preview)
         case .keyValues(let kv):
             return "<dl>" + kv.map {
                 "<dt>\(esc($0.key))</dt><dd\($0.mono ? " class=\"mono\"" : "")>\(esc($0.value))</dd>"

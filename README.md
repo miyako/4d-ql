@@ -13,6 +13,7 @@ file to see what is inside instead of a generic icon.
 | `.4DProject` project file | syntax-highlighted JSON source with indentation and line breaks preserved |
 | `.4df` saved query | condition cards with table/field numbers, comparison labels, AND/OR/EXCEPT connectors, saved values, and selection destination; original JSON folded below |
 | `.4st` saved set | selected-record count, address-span coverage and distribution, contiguous record-number ranges, and saved current record; empty/full-page compression decoded |
+| `.4qr` Quick Report | list/cross-table design template with saved widths, titles, fonts, colors, borders, header/footer text, sorts, subtotals and grand totals; no database or 4D runtime required |
 | `.4dm` method / class source | syntax-highlighted UTF-8 source with line numbers, line count and file size |
 | `.4DForm` form | approximate macOS form layout, page 0 plus selectable numbered pages, Classic / Liquid Glass light and dark appearances, local stylesheets, JSON pointers, static inherited/subforms and XLIFF labels |
 
@@ -25,6 +26,13 @@ Counts and distribution cover the whole set; the first 200 contiguous ranges
 are shown. Files are limited to 4 MiB, including in `--thorough` mode.
 Historical big-endian sets and unknown page encodings are reported explicitly
 rather than guessed. See [binary format evidence and limits](docs/4ST-FORMAT.md).
+
+Quick Report support is experimental and covers the chunk-based Unicode format
+observed in 4D 18–21 (stream versions 25–28), in either byte order.
+These are design previews, not live/printed reports: field references use table
+and field numbers; tokenized formulas, records, total macros, pictures,
+pagination and native printer settings are not evaluated. See the
+[binary-format evidence and fixture workflow](docs/QUICK-REPORT-FORMAT.md).
 
 ### Shared form rendering
 
@@ -410,6 +418,7 @@ Sources/
                          structured .4si import/export settings
     Query/               JSON .4df saved query conditions and metadata
     Set/                 binary .4st membership, compressed pages and bounded ranges
+    QuickReport/         bounded, endian-aware binary .4qr report templates
     Method/              bounded UTF-8 .4dm reader and regex lexer
     Form/                ordered JSON, bounded pointers/dependencies,
                          macOS stylesheet cascade, static forms and XLIFF

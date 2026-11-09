@@ -29,6 +29,7 @@ public final class AnalyzerRegistry {
         TextFileAnalyzer(format: .json),
         QueryFileAnalyzer(),
         SetFileAnalyzer(),
+        QuickReportFileAnalyzer(),
         MethodFileAnalyzer(),
         FormFileAnalyzer(platforms: FormPlatform.previewPlatforms),
     ])

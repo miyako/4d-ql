@@ -117,6 +117,7 @@ public indirect enum Block {
     /// A bounded, format-independent table/field relationship diagram.
     case structureDiagram(StructureDiagram)
     case formPreview(FormPreview)
+    case quickReportPreview(QuickReportPreview)
     /// Collapsible group with a summary line.
     case disclosure(summary: String, detail: String?, blocks: [Block])
     case note(String, Badge.Tone)
