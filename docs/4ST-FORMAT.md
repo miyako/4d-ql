@@ -50,6 +50,39 @@ Research on 2026-11-10 used tool4d 21.2 for initial record creation and
 21 R5 for successful set saves and loads. The 21.2 process exited during
 `SAVE SET`; the regeneration script therefore defaults to the verified R5.
 
+### Large address spans
+
+Additional tool4d 21 R5 probes establish:
+
+- A separate fresh database was populated with **1,000,000 actual records**.
+  `CREATE SET` / `SAVE SET` produced `million-full.4st`: span 1,000,000,
+  30 full pages and one bitmap, containing all million records in 4,151 bytes.
+  `CREATE SET FROM ARRAY` with alternating Boolean membership produced
+  `million-alternating.4st`: span 1,000,001, 31 bitmaps and exactly 500,000
+  members in 127,031 bytes. Both native files are committed. Regenerate
+  them with `MILLION_RECORDS=1 bash scripts/make-set-fixtures.sh`; the extra
+  table uses a fresh database and 10,000-record transaction batches.
+- `CREATE SET FROM ARRAY` with an all-false Boolean array of 33,587,200
+  elements natively saves an empty set with span 33,587,201 and **1,026
+  directory bytes**, still flat. This crosses a 1,024-page boundary without
+  introducing a directory of directory addresses.
+- A synthesized sparse set with span **1,000,000,000**, 30,518 directory
+  bytes and eight members was loaded by `LOAD SET` and resaved by `SAVE SET`
+  **byte-for-byte unchanged**. Members straddle 32,768, 2,097,152 and
+  536,870,912, and include 999,999,999. The 59,214-byte engine-round-tripped
+  file is committed as `billion-sparse.4st`.
+- A synthesized set with **1,025 bitmap pages**, span 33,587,200 and one
+  member at the start of every page also round-trips byte-for-byte. Its
+  4,199,449 bytes exceed the former 4 MiB implementation limit. The generator
+  verifies this file but does not commit its large body.
+
+These are tests of **saved-set serialization**. They do not populate a
+billion-record database or verify the physical record-address tree in a
+`.4DD`. `LOAD SET` preserves saved addresses even when corresponding records
+are absent from the current table. No additional address indirection appears
+in these verified `.4st` outputs; no assumption about the database's address
+hierarchy is needed to decode their membership.
+
 ## Header
 
 | Offset | Bytes | Meaning / observed behavior |
@@ -113,15 +146,66 @@ table name, database UUID, set name, record contents or saved selection
 ordering has been established from these bytes. The preview does not
 invent them.
 
-## Preview bounds
+## Streaming and preview bounds
 
-Files are limited to 4 MiB, the span to a signed 32-bit record address space,
-and lengths must exactly match the header and directory. Parsing does not
-expand compressed pages into individual records. It computes exact totals,
-up to 16 distribution bins over the address span, and the first 200 complete
-contiguous selected ranges. JSON exposes these same bounded ranges, the
-exact total range count, and all summary fields. `--thorough` does not
-remove the file-size or output bounds.
+There is **no arbitrary file-size cutoff**. The header's span is limited to a
+signed 32-bit record address space; page count and file length must agree
+exactly with the header and directory. That naturally bounds the directory
+to 65,536 bytes and the bitmap body to 256 MiB for this encoding.
+The decoder reads the 24-byte header, the bounded directory, and at most
+**256 KiB of bitmap payload per read**. It does not allocate the entire file,
+create a record-number list, or expand compressed pages.
+
+Bitmap words are decoded with unaligned, explicitly little-endian 64-bit
+loads and hardware bit counts, without allocating a `Data` per word.
+Uniform pages require no payload reads. Output remains bounded to 16
+distribution bins and the first 200 observed contiguous ranges.
+
+On the development Mac, a release CLI run over synthetic alternating-membership
+bitmaps completed as follows (local files, 2026-11-10; elapsed time includes
+process startup and JSON output):
+
+| Address span | File bytes | Elapsed | Maximum resident memory |
+|---|---:|---:|---:|
+| 10,000,000 | 1,253,706 | 0.024 s | 12.0 MB |
+| 100,000,000 | 12,504,068 | 0.035 s | 12.3 MB |
+| 1,000,000,000 | 125,032,270 | 0.156 s | 12.3 MB |
+
+These are illustrative warm/local performance observations, not timing
+guarantees or a billion-record physical database benchmark. Every run
+completed within the default budget with exact half-span cardinality and
+range count; output retained only 200 ranges. Slow storage or a busy host
+can instead produce a partial preview.
+
+`AnalysisOptions.timeBudget` applies to the bitmap scan (default 1.5 seconds,
+measured with a monotonic clock). Header, directory and total length are
+validated even when no bitmap time remains. A time-budget check precedes
+each bitmap page; already-known empty/full pages are cheap and still
+processed until the next unexamined bitmap. A slow individual I/O operation
+cannot be preempted by this synchronous budget.
+
+When analysis completes, counts and distribution are exact for the whole
+set. Otherwise HTML displays **Partial preview**, qualifies counts as
+**At least**, and marks unexamined distribution regions **Unknown**. Coverage
+uses only examined addresses, not an extrapolation over the whole set.
+An observed range ending at the scan boundary has `isComplete: false`;
+the HTML shows its last examined address with `+`, not as a closed range.
+Zero observed members never produces "This set is empty" for a partial scan.
+
+JSON exposes `scanStatus` (`complete` or `timeBudgetExceeded`),
+`scannedAddressSpan` (the examined contiguous prefix), `scannedBitmapPages`,
+and per-range `isComplete`. For a partial scan, `selectedRecords` and
+`rangeCount` are lower bounds from that prefix; `firstRecord`, `lastRecord`
+and bin `selected` values also refer only to examined membership. A bin's
+examined portion is its intersection with `[0, scannedAddressSpan)`;
+zeros outside that prefix mean unknown, not absence.
+The page-encoding counts describe the entire validated directory regardless
+of scan status.
+
+CLI `--thorough` uses an unlimited bitmap time budget and returns exact
+summaries for supported, valid files of any permitted address span. It does
+not remove the range/bin output bounds. `maxRecordsToScan` is not applied
+to bitmap positions: no database records are being walked.
 
 Record numbers are zero-based storage addresses, **not** selection positions,
 primary keys, or current live record counts. A standalone set cannot reveal

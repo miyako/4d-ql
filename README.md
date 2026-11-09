@@ -25,7 +25,11 @@ Saved-set previews decode the confirmed little-endian `70D4` format, including
 32,768-record empty/full pages and bitmaps, without 4D installed. Record numbers
 are zero-based storage addresses, not field values or selection positions.
 Counts and distribution cover the whole set; the first 200 contiguous ranges
-are shown. Files are limited to 4 MiB, including in `--thorough` mode.
+are shown when analysis completes. The decoder streams bitmap data in 256 KiB
+chunks, with no arbitrary file-size cutoff. The default 1.5-second analysis
+budget produces an explicitly partial preview if exhausted: counts become
+lower bounds, unexamined addresses remain unknown, and unfinished ranges are
+marked. CLI `--thorough` removes the time budget, not the output bounds.
 Historical big-endian sets and unknown page encodings are reported explicitly
 rather than guessed. See [binary format evidence and limits](docs/4ST-FORMAT.md).
 

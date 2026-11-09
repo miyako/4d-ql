@@ -3,6 +3,12 @@ import Foundation
 public struct SetRecordRange: Codable, Equatable {
     public let first: Int
     public var last: Int
+    /// False when the scan stopped before this run's end could be established.
+    public var isComplete = true
+}
+
+public enum SetScanStatus: String, Codable {
+    case complete, timeBudgetExceeded
 }
 
 public struct SetDistributionBin: Codable, Equatable {
@@ -19,6 +25,12 @@ public struct SetFileInfo: AnalysisModel {
     public let savedCurrentRecord: Int?
     /// Address span, not the table's live record count or the set's cardinality.
     public let addressSpan: Int
+    public let scanStatus: SetScanStatus
+    /// Contiguous prefix examined; remaining addresses have unknown membership.
+    public let scannedAddressSpan: Int
+    public let scannedBitmapPages: Int
+    public var isComplete: Bool { scanStatus == .complete }
+    /// Exact when complete, otherwise a lower bound from the examined prefix.
     public let selectedRecords: Int
     public let firstRecord: Int?
     public let lastRecord: Int?
@@ -26,17 +38,16 @@ public struct SetFileInfo: AnalysisModel {
     public let fullPages: Int
     public let bitmapPages: Int
     public let rangeCount: Int
-    /// The first 200 contiguous ranges; counts and distribution cover the whole set.
+    /// The first 200 observed ranges. A run crossing the scan boundary is marked incomplete.
     public let ranges: [SetRecordRange]
     public let distribution: [SetDistributionBin]
 }
 
 public enum SetFileError: Error, CustomStringConvertible {
-    case tooLarge, invalid(String), unsupportedByteOrder, unsupportedMarker(UInt32), unsupportedPage(UInt8)
+    case invalid(String), unsupportedByteOrder, unsupportedMarker(UInt32), unsupportedPage(UInt8)
 
     public var description: String {
         switch self {
-        case .tooLarge: return "Saved set exceeds the 4 MiB preview limit."
         case .invalid(let reason): return "Invalid saved set: \(reason)"
         case .unsupportedByteOrder: return "Big-endian saved sets are not yet decoded; a verified historical sample is required."
         case .unsupportedMarker(let marker): return "Saved set serialization marker \(marker) is not supported."
@@ -52,9 +63,14 @@ public struct SetFileAnalyzer: FileAnalyzer {
     public var filenameExtensions: [String] { ["4st"] }
 
     public func analyze(_ source: ByteSource, options: AnalysisOptions) throws -> AnalysisModel {
-        guard source.size <= 4 * 1024 * 1024 else { throw SetFileError.tooLarge }
+        try analyze(source, options: options, uptime: { ProcessInfo.processInfo.systemUptime })
+    }
+
+    func analyze(_ source: ByteSource, options: AnalysisOptions,
+                 uptime: () -> TimeInterval) throws -> SetFileInfo {
+        let deadline = uptime() + max(0, options.timeBudget)
         guard source.size >= 24 else { throw SetFileError.invalid("the 24-byte header is truncated.") }
-        var reader = BinaryReader(try source.read(at: 0, length: Int(source.size)), littleEndian: false)
+        var reader = BinaryReader(try source.read(at: 0, length: 24), littleEndian: false)
         let current = try reader.i32()
         try reader.skip(4) // Unidentified outer-header field; not a table identifier.
         let signature = try reader.bytes(4)
@@ -68,8 +84,9 @@ public struct SetFileAnalyzer: FileAnalyzer {
         guard span <= Int32.max, pageCount == (span + 32767) / 32768 else {
             throw SetFileError.invalid("address span and page count do not agree.")
         }
-        guard pageCount <= reader.remaining else { throw SetFileError.invalid("the page directory is truncated.") }
-        let tags = try reader.bytes(pageCount)
+        let payloadStart = Int64(24 + pageCount)
+        guard payloadStart <= source.size else { throw SetFileError.invalid("the page directory is truncated.") }
+        let tags = try source.read(at: 24, length: pageCount)
         var emptyPages = 0, fullPages = 0, bitmapPages = 0
         for tag in tags {
             switch tag {
@@ -79,12 +96,16 @@ public struct SetFileAnalyzer: FileAnalyzer {
             default: throw SetFileError.unsupportedPage(tag)
             }
         }
-        guard reader.remaining == bitmapPages * 4096 else {
+        guard source.size - payloadStart == Int64(bitmapPages) * 4096 else {
             throw SetFileError.invalid("bitmap payload length does not match the page directory.")
         }
 
         var summary = SetSummary(span: span)
-        for (page, tag) in tags.enumerated() {
+        var scannedSpan = 0, scannedBitmaps = 0
+        var buffer = Data()
+        var bufferOffset = 0
+        var readOffset = payloadStart
+        pageScan: for (page, tag) in tags.enumerated() {
             let first = page * 32768
             let length = min(32768, span - first)
             switch tag {
@@ -93,20 +114,35 @@ public struct SetFileAnalyzer: FileAnalyzer {
             case 1:
                 summary.addFull(first: first, length: length)
             default:
-                // Bitmap words, like the payload header, are little-endian.
-                // Padding outside the address span is not a record.
-                for wordIndex in 0..<1024 {
-                    let word = try reader.u32()
-                    let start = first + wordIndex * 32
-                    if start < span {
-                        summary.addWord(word, first: start, length: min(32, span - start))
+                if deadline.isFinite && uptime() >= deadline { break pageScan }
+                if bufferOffset == buffer.count {
+                    // Payloads are packed independently of the directory. Read
+                    // at most 64 bitmap pages at a time, never the whole file.
+                    let count = Int(min(256 * 1024, source.size - readOffset))
+                    buffer = try source.read(at: readOffset, length: count)
+                    readOffset += Int64(count)
+                    bufferOffset = 0
+                }
+                buffer.withUnsafeBytes { bytes in
+                    for bit in stride(from: 0, to: length, by: 64) {
+                        let raw = bytes.loadUnaligned(fromByteOffset: bufferOffset + bit / 8, as: UInt64.self)
+                        summary.addWord(UInt64(littleEndian: raw), first: first + bit, length: min(64, length - bit))
                     }
                 }
+                bufferOffset += 4096
+                scannedBitmaps += 1
             }
+            scannedSpan = first + length
+        }
+        let complete = scannedSpan == span
+        if !complete, summary.ranges.last?.last == scannedSpan - 1 {
+            summary.ranges[summary.ranges.count - 1].isComplete = false
         }
         return SetFileInfo(fileName: source.url.lastPathComponent, fileSize: Int(source.size),
                            byteOrder: "little-endian", savedCurrentRecord: current >= 0 ? Int(current) : nil,
-                           addressSpan: span, selectedRecords: summary.selected,
+                           addressSpan: span, scanStatus: complete ? .complete : .timeBudgetExceeded,
+                           scannedAddressSpan: scannedSpan, scannedBitmapPages: scannedBitmaps,
+                           selectedRecords: summary.selected,
                            firstRecord: summary.first, lastRecord: summary.last,
                            emptyPages: emptyPages, fullPages: fullPages, bitmapPages: bitmapPages,
                            rangeCount: summary.rangeCount, ranges: summary.ranges,
@@ -149,9 +185,13 @@ private struct SetSummary {
         }
     }
 
-    mutating func addWord(_ raw: UInt32, first: Int, length: Int) {
-        let mask = (UInt64(1) << length) - 1
-        let word = UInt64(raw) & mask
+    mutating func addWord(_ raw: UInt64, first: Int, length: Int) {
+        let mask = length == 64 ? UInt64.max : (UInt64(1) << length) - 1
+        let word = raw & mask
+        if word == mask {
+            addFull(first: first, length: length)
+            return
+        }
         let starts = word & ~((word << 1) | (previousSelected ? 1 : 0))
         rangeCount += starts.nonzeroBitCount
         previousSelected = word & (UInt64(1) << (length - 1)) != 0
@@ -160,14 +200,19 @@ private struct SetSummary {
 
         if self.first == nil { self.first = first + word.trailingZeroBitCount }
         last = first + 63 - word.leadingZeroBitCount
-        var start = first
-        let end = first + length
-        while start < end {
-            let bin = start / binWidth
-            let next = min(end, bins[bin].last + 1)
-            let chunk = (word >> (start - first)) & ((UInt64(1) << (next - start)) - 1)
-            bins[bin].selected += chunk.nonzeroBitCount
-            start = next
+        let firstBin = first / binWidth
+        if (first + length - 1) / binWidth == firstBin {
+            bins[firstBin].selected += word.nonzeroBitCount
+        } else {
+            var start = first
+            let end = first + length
+            while start < end {
+                let bin = start / binWidth
+                let next = min(end, bins[bin].last + 1)
+                let chunk = (word >> (start - first)) & ((UInt64(1) << (next - start)) - 1)
+                bins[bin].selected += chunk.nonzeroBitCount
+                start = next
+            }
         }
 
         // Stop expanding runs once the visible prefix is complete, but finish

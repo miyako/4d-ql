@@ -42,5 +42,6 @@ QUERY([Plain]; [Plain]ID<=10; *)
 QUERY([Plain]; |; [Plain]ID>=99990)
 CREATE SET([Plain]; "probe")
 SAVE SET("probe"; $out+"ends.4st")
+make_large_sets
 LOG EVENT(Into system standard outputs; "SET FIXTURES COMPLETE\n")
 QUIT 4D

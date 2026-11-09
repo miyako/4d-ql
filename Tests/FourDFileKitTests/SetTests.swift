@@ -14,8 +14,8 @@ final class SetTests: XCTestCase {
         return url
     }
 
-    private func analyze(_ url: URL) throws -> SetFileInfo {
-        let model = try AnalyzerRegistry.default.analyze(url: url)
+    private func analyze(_ url: URL, options: AnalysisOptions = .preview) throws -> SetFileInfo {
+        let model = try AnalyzerRegistry.default.analyze(url: url, options: options)
         return try XCTUnwrap(model as? SetFileInfo)
     }
 
@@ -24,6 +24,9 @@ final class SetTests: XCTestCase {
     }
 
     private func check(_ info: SetFileInfo, records expected: [Int], file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(info.isComplete, file: file, line: line)
+        XCTAssertEqual(info.scannedAddressSpan, info.addressSpan, file: file, line: line)
+        XCTAssertEqual(info.scannedBitmapPages, info.bitmapPages, file: file, line: line)
         XCTAssertEqual(info.selectedRecords, expected.count, file: file, line: line)
         XCTAssertEqual(info.firstRecord, expected.first, file: file, line: line)
         XCTAssertEqual(info.lastRecord, expected.last, file: file, line: line)
@@ -236,9 +239,159 @@ final class SetTests: XCTestCase {
         XCTAssertTrue(PreviewPipeline().html(for: try file(big)).contains("Big-endian saved sets are not yet decoded"))
         let unknownPage = try file(set(span: 1, tags: [3]))
         XCTAssertTrue(PreviewPipeline().html(for: unknownPage).contains("page encoding 3 is not supported"))
-        let large = try file(Data(repeating: 0, count: 4 * 1024 * 1024 + 1))
-        XCTAssertThrowsError(try analyze(large)) {
-            XCTAssertEqual(String(describing: $0), SetFileError.tooLarge.description)
+    }
+
+    func testStreamingBitmapsBeyondOldFileLimit() throws {
+        let pages = 1025
+        let url = try file(set(span: pages * 32768, tags: Array(repeating: 7, count: pages)))
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        try handle.seekToEnd()
+        let chunk = Data(repeating: 0x55, count: 4096 * 64)
+        for _ in 0..<16 { try handle.write(contentsOf: chunk) }
+        try handle.write(contentsOf: chunk.prefix(4096))
+        let info = try analyze(url, options: .thorough)
+        XCTAssertGreaterThan(info.fileSize, 4 * 1024 * 1024)
+        XCTAssertTrue(info.isComplete)
+        XCTAssertEqual(info.selectedRecords, pages * 16384)
+        XCTAssertEqual(info.rangeCount, info.selectedRecords)
+        XCTAssertEqual(info.firstRecord, 0)
+        XCTAssertEqual(info.lastRecord, info.addressSpan - 2)
+        XCTAssertEqual(info.ranges.count, 200)
+        XCTAssertEqual(info.ranges.last, SetRecordRange(first: 398, last: 398))
+        XCTAssertEqual(info.scannedBitmapPages, pages)
+        XCTAssertEqual(info.distribution.reduce(0) { $0 + $1.selected }, info.selectedRecords)
+    }
+
+    func testBillionAddressBitmapFileWithBoundedMemory() throws {
+        let span = 1_000_000_000
+        let pages = (span + 32767) / 32768
+        let header = set(span: span, tags: Array(repeating: 7, count: pages))
+        let url = try file(header)
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        try handle.truncate(atOffset: UInt64(header.count + pages * 4096))
+        try handle.seek(toOffset: UInt64(header.count))
+        try handle.write(contentsOf: Data([1]))
+        try handle.seek(toOffset: UInt64(header.count + (span - 1) / 8))
+        try handle.write(contentsOf: Data([1 << ((span - 1) % 8)]))
+        let info = try analyze(url, options: .thorough)
+        check(info, records: [0, span - 1])
+        XCTAssertGreaterThan(info.fileSize, 119 * 1024 * 1024)
+    }
+
+    func testNativeLargeDirectoryAndEngineRoundTrippedBillionAddresses() throws {
+        let empty = try analyze(fixture("generated/large-address-empty"))
+        check(empty, records: [])
+        XCTAssertEqual(empty.addressSpan, 33587201)
+        XCTAssertEqual(empty.emptyPages + empty.bitmapPages, 1026)
+        let sparse = try analyze(fixture("generated/billion-sparse"))
+        check(sparse, records: [0, 32767, 32768, 2097151, 2097152, 536870911, 536870912, 999999999])
+        XCTAssertEqual(sparse.addressSpan, 1_000_000_000)
+        XCTAssertEqual(sparse.emptyPages + sparse.bitmapPages, 30518)
+        XCTAssertEqual(sparse.fileSize, 59214)
+    }
+
+    func testNativeSetsFromAnActualMillionRecordTable() throws {
+        let full = try analyze(fixture("generated/million-full"))
+        XCTAssertTrue(full.isComplete)
+        XCTAssertEqual(full.addressSpan, 1_000_000)
+        XCTAssertEqual(full.selectedRecords, 1_000_000)
+        XCTAssertEqual(full.rangeCount, 1)
+        XCTAssertEqual(full.fullPages, 30)
+        XCTAssertEqual(full.bitmapPages, 1)
+        XCTAssertEqual(full.ranges, [SetRecordRange(first: 0, last: 999_999)])
+        let alternating = try analyze(fixture("generated/million-alternating"))
+        XCTAssertTrue(alternating.isComplete)
+        XCTAssertEqual(alternating.addressSpan, 1_000_001)
+        XCTAssertEqual(alternating.selectedRecords, 500_000)
+        XCTAssertEqual(alternating.rangeCount, 500_000)
+        XCTAssertEqual(alternating.firstRecord, 0)
+        XCTAssertEqual(alternating.lastRecord, 999_998)
+        XCTAssertEqual(alternating.ranges, stride(from: 0, to: 400, by: 2).map {
+            SetRecordRange(first: $0, last: $0)
+        })
+        XCTAssertEqual(alternating.distribution.reduce(0) { $0 + $1.selected }, 500_000)
+        for bin in alternating.distribution {
+            let last = min(bin.last, 999_998)
+            XCTAssertEqual(bin.selected, last / 2 + 1 - (bin.first + 1) / 2)
         }
+    }
+
+    func testBudgetExhaustionDoesNotReportUnknownMembershipAsEmpty() throws {
+        let url = try fixture("generated/ends")
+        let info = try analyze(url, options: AnalysisOptions(timeBudget: 0))
+        XCTAssertEqual(info.scanStatus, .timeBudgetExceeded)
+        XCTAssertEqual(info.scannedAddressSpan, 0)
+        XCTAssertEqual(info.scannedBitmapPages, 0)
+        XCTAssertEqual(info.selectedRecords, 0)
+        XCTAssertTrue(info.ranges.isEmpty)
+        XCTAssertNil(info.firstRecord)
+        XCTAssertNil(info.lastRecord)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: info.jsonData()) as? [String: Any])
+        XCTAssertEqual(json["scanStatus"] as? String, "timeBudgetExceeded")
+        XCTAssertEqual(json["scannedAddressSpan"] as? Int, 0)
+        let html = HTMLRenderer().render(try XCTUnwrap(SetPresenter().report(for: info)))
+        for text in ["Partial preview", "At least 0", "Not examined", "Unknown", "lower bounds", "unknown membership"] {
+            XCTAssertTrue(html.contains(text), text)
+        }
+        XCTAssertFalse(html.contains("This set is empty"))
+        XCTAssertFalse(html.contains("nan"))
+        XCTAssertFalse(html.contains("include the entire set"))
+        let thorough = try analyze(url, options: .thorough)
+        XCTAssertTrue(thorough.isComplete)
+        XCTAssertEqual(thorough.selectedRecords, 21)
+    }
+
+    func testBudgetStopKeepsOpenRangeAndPrefixDistributionHonest() throws {
+        let url = try file(set(span: 131072, tags: [7, 1, 7, 0],
+                               payload: Data(repeating: 0xFF, count: 8192)))
+        var clock: TimeInterval = -1
+        let info = try SetFileAnalyzer().analyze(ByteSource(url: url), options: AnalysisOptions(timeBudget: 2), uptime: {
+            clock += 1
+            return clock
+        })
+        XCTAssertFalse(info.isComplete)
+        XCTAssertEqual(info.scannedAddressSpan, 65536)
+        XCTAssertEqual(info.scannedBitmapPages, 1)
+        XCTAssertEqual(info.selectedRecords, 65536)
+        XCTAssertEqual(info.rangeCount, 1)
+        XCTAssertEqual(info.ranges, [SetRecordRange(first: 0, last: 65535, isComplete: false)])
+        XCTAssertEqual(info.distribution.map(\.selected), Array(repeating: 8192, count: 8) + Array(repeating: 0, count: 8))
+        let html = HTMLRenderer().render(try XCTUnwrap(SetPresenter().report(for: info)))
+        for text in ["At least 65,536", "65,535+", "whose end is not yet known", "examined record addresses"] {
+            XCTAssertTrue(html.contains(text), text)
+        }
+        XCTAssertFalse(html.contains("This set is empty"))
+    }
+
+    func testUniformPagesAreExactWithoutBitmapBudgetAndValidationIsNeverSkipped() throws {
+        let url = try file(set(span: 1_000_000_000, tags: Array(repeating: 1, count: 30518)))
+        let info = try analyze(url, options: AnalysisOptions(timeBudget: 0))
+        XCTAssertTrue(info.isComplete)
+        XCTAssertEqual(info.selectedRecords, 1_000_000_000)
+        XCTAssertEqual(info.ranges, [SetRecordRange(first: 0, last: 999_999_999)])
+        let invalid = try file(set(span: 65536, tags: [7, 3], payload: Data(repeating: 0, count: 4096)))
+        XCTAssertThrowsError(try analyze(invalid, options: AnalysisOptions(timeBudget: 0)))
+        let truncated = try file(set(span: 32768, tags: [7]))
+        XCTAssertThrowsError(try analyze(truncated, options: AnalysisOptions(timeBudget: 0)))
+    }
+
+    func testPartialDistributionDenominatorExcludesUnknownAddresses() throws {
+        let url = try file(set(span: 100000, tags: [7, 7, 7, 7],
+                               payload: Data(repeating: 0x55, count: 4 * 4096)))
+        var clock: TimeInterval = -1
+        let info = try SetFileAnalyzer().analyze(ByteSource(url: url), options: AnalysisOptions(timeBudget: 2), uptime: {
+            clock += 1
+            return clock
+        })
+        XCTAssertEqual(info.scannedAddressSpan, 32768)
+        XCTAssertEqual(info.selectedRecords, 16384)
+        XCTAssertEqual(info.distribution[5].selected, 759)
+        let html = HTMLRenderer().render(try XCTUnwrap(SetPresenter().report(for: info)))
+        XCTAssertTrue(html.contains("50% of examined"))
+        XCTAssertTrue(html.contains("at least 16,384 ranges"))
+        XCTAssertFalse(html.contains("include the entire set"))
+        XCTAssertEqual(info.ranges.last?.isComplete, true)
     }
 }
