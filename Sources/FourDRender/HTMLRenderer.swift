@@ -37,22 +37,27 @@ public struct HTMLRenderer {
         let sections = report.sections
         while i < sections.count {
             if sections[i].width == .half {
-                var group: [Section] = []
-                while i < sections.count, sections[i].width == .half { group.append(sections[i]); i += 1 }
-                h += "<div class=\"pair\">" + group.map(section).joined() + "</div>"
+                var group: [String] = []
+                while i < sections.count, sections[i].width == .half {
+                    group.append(section(sections[i], identifier: "section-\(i)"))
+                    i += 1
+                }
+                h += "<div class=\"pair\">" + group.joined() + "</div>"
             } else {
-                h += section(sections[i]); i += 1
+                h += section(sections[i], identifier: "section-\(i)"); i += 1
             }
         }
         h += "</body></html>"
         return h
     }
 
-    private func section(_ s: Section) -> String {
-        "<section>" + (s.title.isEmpty ? "" : "<h2>\(esc(s.title))</h2>") + s.blocks.map(block).joined() + "</section>"
+    private func section(_ s: Section, identifier: String) -> String {
+        "<section>" + (s.title.isEmpty ? "" : "<h2>\(esc(s.title))</h2>") + s.blocks.enumerated().map {
+            block($0.element, identifier: "\(identifier)-block-\($0.offset)")
+        }.joined() + "</section>"
     }
 
-    private func block(_ b: Block) -> String {
+    private func block(_ b: Block, identifier: String = "block") -> String {
         switch b {
         case .keyValues(let kv):
             return "<dl>" + kv.map {
@@ -139,7 +144,7 @@ public struct HTMLRenderer {
             return h + "</ol>"
 
         case .structureDiagram(let diagram):
-            return StructureDiagramRenderer().render(diagram)
+            return StructureDiagramRenderer().render(diagram, identifier: identifier)
 
         case .formPreview(let preview):
             return FormPreviewRenderer().render(preview)
@@ -147,7 +152,9 @@ public struct HTMLRenderer {
         case .disclosure(let summary, let detail, let blocks):
             var h = "<details><summary><span class=\"st\">\(esc(summary))</span>"
             if let d = detail { h += "<span class=\"sd\">\(esc(d))</span>" }
-            return h + "</summary>" + blocks.map(block).joined() + "</details>"
+            return h + "</summary>" + blocks.enumerated().map {
+                block($0.element, identifier: "\(identifier)-child-\($0.offset)")
+            }.joined() + "</details>"
 
         case .note(let text, let t):
             return "<p class=\"note \(tone(t))\">\(esc(text))</p>"
