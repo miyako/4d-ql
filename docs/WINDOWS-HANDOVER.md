@@ -70,6 +70,45 @@ Rendering `.windows` on a macOS host, or `.macOS` on a Windows host, uses the
 host's font service with the target platform's palette and metrics. Text
 positions are then approximate; calibrated output requires a matching host.
 
+### Windows previews on macOS (Quick Look)
+
+On macOS the default analyzer registry uses
+`FormFileAnalyzer(platforms: FormPlatform.previewPlatforms)`, i.e.
+`[.macOS, .windows]` (on Windows it is `[.windows]`). The form is parsed once
+and each platform's appearances are styled with that platform's stylesheets;
+`FormFileInfo.platforms` lists them in order. A failure of the second platform
+becomes a warning. `FormRenderer` keeps analyzing a single platform.
+
+The HTML wraps one unchanged single-platform preview per platform in
+`.form-platforms > .form-platform[data-platform]`, selected without script by
+`#platform-<rawValue>` radios and `.form-platform-tabs` labels. Each platform
+has its own theme radio group (`form-theme-<rawValue>`); picture definitions
+are emitted once. The macOS platform is shown first unless the initial theme
+is a Windows theme. Single-platform output is byte-identical to before.
+
+Segoe UI is not installed on macOS and cannot be redistributed. When it is
+missing (`FormSubstituteFont.isNeeded`), Windows text uses
+[Selawik](https://github.com/microsoft/Selawik) 1.01, Microsoft's SIL OFL
+metric-compatible substitute, embedded unmodified (no subsetting, as the OFL
+reserved name requires) by `scripts/embed-selawik.py`, which verifies the
+release SHA-256:
+
+- Measurement: CoreText loads the embedded TrueType files. Selawik's Latin
+  advance widths equal Segoe UI's (compared glyph by glyph with fontTools),
+  and its OS/2 `usWinAscent`/`usWinDescent` equal Segoe UI's 2210/514 per
+  2048 em. CoreText reads the shorter `hhea` metrics, so line ascent, descent,
+  cap height, line height and baseline are set from the Windows metrics,
+  mirroring DirectWrite. `FormPlatformPreviewTests` checks widths against
+  DirectWrite values (±0.5 pt; Segoe UI Bold kerning differs by up to 0.4 pt).
+- Drawing: the Windows CSS adds `@font-face` rules with the WOFF2 files as
+  `data:` URIs (the CSP gains `font-src data:` only then) and the font stack
+  becomes `Segoe UI, Selawik, Tahoma, Arial, sans-serif`. Process-registered
+  fonts would not reach the Quick Look web content process.
+- Limits: glyph shapes differ from Segoe UI; Selawik has no italic (CoreText
+  keeps upright widths) and no non-Latin glyphs, which fall back to system
+  fonts with macOS metrics. The license ships as `Selawik-OFL.txt` in the app
+  and extension resources.
+
 ## Calibration methodology (Windows)
 
 | Item | Value |

@@ -44,7 +44,7 @@ public struct FormPresenter: ReportPresenter {
                 KeyValue("Localization", form.localizationLanguage ?? "No project translation selected"),
                 KeyValue("Dependencies loaded", "\(form.dependencies.count)")
             ]),
-            .text("Approximate \(form.platform.label) editor layout with stylesheets applied. Expressions and methods are not executed; bound controls show their saved expressions, not runtime values."),
+            .text(Self.layoutDescription(form)),
             .text(form.dependencies.joined(separator: "\n"))
         ]))
         let source = String(form.text.prefix(256 * 1024))
@@ -53,5 +53,17 @@ public struct FormPresenter: ReportPresenter {
         blocks.append(.disclosure(summary: "Original JSON", detail: nil, blocks: sourceBlocks))
         report.sections = [Section("", blocks)]
         return report
+    }
+
+    static func layoutDescription(_ form: FormFileInfo) -> String {
+        let platforms = form.platforms.isEmpty ? [form.platform] : form.platforms
+        var text = platforms.count > 1
+            ? "Approximate \(platforms.map(\.label).joined(separator: " and ")) editor layouts with each platform's stylesheets applied."
+            : "Approximate \(form.platform.label) editor layout with stylesheets applied."
+        text += " Expressions and methods are not executed; bound controls show their saved expressions, not runtime values."
+        if platforms.contains(.windows) && FormSubstituteFont.isNeeded {
+            text += " Segoe UI is not installed, so Windows text uses Selawik, its metric-compatible open-source substitute; glyph shapes differ slightly."
+        }
+        return text
     }
 }

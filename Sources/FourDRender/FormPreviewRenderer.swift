@@ -45,15 +45,67 @@ struct FormPreviewRenderer {
     }
 
     func render(_ preview: FormPreview) -> String {
-        guard platform == preview.platform else { return Self(platform: preview.platform).render(preview) }
-        let windows = platform == .windows
-        let defaultGlass = !windows && ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
-        var html = "<style>\(Self.css)\(windows ? "\n" + FormPlatformStyle.windowsCSS : "")</style><div class=\"form-preview\">"
-        html += "<svg width=\"0\" height=\"0\" aria-hidden=\"true\" style=\"position:absolute\"><defs>"
-        for image in preview.images {
+        let platforms = Self.platforms(preview)
+        if platforms.count > 1 { return renderPlatforms(preview, platforms: platforms) }
+        return render(preview, themeGroup: "form-theme", images: true)
+    }
+
+    static func platforms(_ preview: FormPreview) -> [FormPlatform] {
+        preview.appearances.reduce(into: []) { if !$0.contains($1.theme.platform) { $0.append($1.theme.platform) } }
+    }
+
+    /// Whether the preview embeds the Segoe UI substitute (and needs `font-src data:`).
+    static func embedsSubstituteFont(_ preview: FormPreview) -> Bool {
+        FormSubstituteFont.isNeeded && preview.appearances.contains { $0.theme.platform == .windows }
+    }
+
+    /// One preview per platform behind a CSS-only platform switch; each keeps
+    /// its own theme radio group and the images are defined once.
+    private func renderPlatforms(_ preview: FormPreview, platforms: [FormPlatform]) -> String {
+        let selected = preview.initialTheme?.platform ?? preview.platform
+        var html = "<style>\(Self.platformCSS)</style><div class=\"form-platforms\">" + imageDefinitions(preview.images)
+        for platform in platforms {
+            html += "<input class=\"platform-choice\" type=\"radio\" name=\"form-platform\" id=\"platform-\(platform.rawValue)\"\(platform == selected ? " checked" : "")>"
+        }
+        html += "<div class=\"form-platform-tabs\" role=\"group\" aria-label=\"Platform\">"
+        html += platforms.map { "<label for=\"platform-\($0.rawValue)\">\(esc($0.label))</label>" }.joined()
+        html += "</div>"
+        var selectors = ""
+        for platform in platforms {
+            var single = preview
+            single.platform = platform
+            single.appearances = preview.appearances.filter { $0.theme.platform == platform }
+            if single.initialTheme?.platform != platform { single.initialTheme = nil }
+            html += "<div class=\"form-platform\" data-platform=\"\(platform.rawValue)\">"
+            html += Self(platform: platform).render(single, themeGroup: "form-theme-\(platform.rawValue)", images: false)
+            html += "</div>"
+            selectors += "#platform-\(platform.rawValue):checked ~ .form-platform[data-platform=\"\(platform.rawValue)\"]{display:block}"
+            selectors += "#platform-\(platform.rawValue):checked ~ .form-platform-tabs label[for=\"platform-\(platform.rawValue)\"]{background:var(--accent);border-color:var(--accent);color:white}"
+        }
+        return html + "</div><style>\(selectors)</style>"
+    }
+
+    private func imageDefinitions(_ images: [FormImage]) -> String {
+        var html = "<svg width=\"0\" height=\"0\" aria-hidden=\"true\" style=\"position:absolute\"><defs>"
+        for image in images {
             html += "<image id=\"\(image.id)\" width=\"\(n(image.width))\" height=\"\(n(image.height))\" href=\"\(image.dataURI)\"/>"
         }
-        html += "</defs></svg>"
+        return html + "</defs></svg>"
+    }
+
+    private func render(_ preview: FormPreview, themeGroup: String, images: Bool) -> String {
+        guard platform == preview.platform else {
+            return Self(platform: preview.platform).render(preview, themeGroup: themeGroup, images: images)
+        }
+        let windows = platform == .windows
+        let defaultGlass = !windows && ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
+        var css = Self.css
+        if windows {
+            css += "\n" + FormPlatformStyle.windowsCSS
+            if FormSubstituteFont.isNeeded { css += "\n" + FormSubstituteFont.css }
+        }
+        var html = "<style>\(css)</style><div class=\"form-preview\">"
+        if images { html += imageDefinitions(preview.images) }
         let fixedScheme = preview.properties["colorScheme"]?.string
         let variants = preview.appearances.filter { fixedScheme == nil || $0.theme.dark == (fixedScheme == "dark") }
         // Windows selection never depends on prefers-color-scheme: exactly one theme radio is checked.
@@ -65,7 +117,7 @@ struct FormPreviewRenderer {
             let checked = selected ? " checked" : ""
             // Two checked defaults, one per system color scheme, are selected by CSS.
             let defaultClass = !windows && appearance.theme.glass == defaultGlass ? (appearance.theme.dark ? " default-dark" : " default-light") : ""
-            html += "<input class=\"theme-choice\(defaultClass)\" type=\"radio\" name=\"form-theme\" id=\"theme-\(appearance.theme.rawValue)\"\(checked)>"
+            html += "<input class=\"theme-choice\(defaultClass)\" type=\"radio\" name=\"\(themeGroup)\" id=\"theme-\(appearance.theme.rawValue)\"\(checked)>"
         }
         html += "<div class=\"form-themes\" role=\"group\" aria-label=\"\(FormPlatformStyle(platform).appearanceLabel)\">"
         html += variants.map { "<label for=\"theme-\($0.theme.rawValue)\">\(esc($0.theme.label))</label>" }.joined()
@@ -685,6 +737,13 @@ struct FormPreviewRenderer {
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "'", with: "&#39;")
     }
+
+    private static let platformCSS = """
+    .platform-choice{position:absolute;opacity:0;width:1px;height:1px}.form-platform{display:none}
+    .form-platform-tabs{display:flex;gap:4px;margin-bottom:12px}
+    .form-platform-tabs label{font-size:12px;font-weight:600;border:1px solid var(--border);border-radius:6px;padding:5px 12px;cursor:pointer}
+    .platform-choice:focus-visible ~ .form-platform-tabs{outline:2px solid var(--accent)}
+    """
 
     private static let css = """
     .form-preview{position:relative}.theme-choice,.page-choice{position:absolute;opacity:0;width:1px;height:1px}

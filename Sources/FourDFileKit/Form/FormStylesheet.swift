@@ -23,6 +23,12 @@ public enum FormPlatform: String, CaseIterable, Codable {
 
     public var label: String { self == .macOS ? "macOS" : "Windows" }
 
+    /// Platforms the default analyzer registry previews: the current platform
+    /// first, then Windows as a cross-platform preview on macOS hosts.
+    public static var previewPlatforms: [FormPlatform] {
+        current == .macOS ? [.macOS, .windows] : [current]
+    }
+
     /// Project stylesheet loaded after `styleSheets.css` (4D's platform-specific file).
     public var stylesheetName: String { self == .macOS ? "styleSheets_mac.css" : "styleSheets_windows.css" }
 

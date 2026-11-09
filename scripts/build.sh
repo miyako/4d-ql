@@ -40,6 +40,10 @@ cp "$BIN/FourDQuickLookHost" "$APP/Contents/MacOS/"
 cp "$BIN/FourDQuickLookExtension" "$APPEX/Contents/MacOS/"
 cp "$BIN/fourdql" "$ROOT/build/fourdql"
 cp "$BIN/FourDProjectPreviewService" "$SERVICE/Contents/MacOS/"
+# The embedded Selawik font (Windows form previews) is licensed under the SIL OFL 1.1.
+mkdir -p "$APPEX/Contents/Resources"
+cp "$ROOT/ThirdParty/Selawik/OFL.txt" "$APP/Contents/Resources/Selawik-OFL.txt"
+cp "$ROOT/ThirdParty/Selawik/OFL.txt" "$APPEX/Contents/Resources/Selawik-OFL.txt"
 
 TEAM_ID=""
 if [ "$SIGN_IDENTITY" != "-" ]; then

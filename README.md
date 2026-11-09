@@ -33,6 +33,13 @@ Windows, where forms render with the Windows Classic and Fluent UI light/dark
 appearances calibrated against 4D 21; select the platform with
 `FormRenderer.render(url:preferredLanguages:platform:options:)`.
 
+On macOS the Quick Look form preview also includes the Windows appearances
+behind a macOS/Windows switch. Segoe UI cannot be redistributed, so where it
+is not installed Windows text is measured and drawn with the embedded
+[Selawik](https://github.com/microsoft/Selawik) font, Microsoft's open-source
+substitute with Segoe UI's Latin advance widths; glyph shapes differ and
+non-Latin text falls back to other fonts.
+
 Import/export settings previews preserve field order (which can differ from field
 numbers), display missing values explicitly, and retain unknown field types and
 extra options. Summary cards show the table, selected field count, format, and
@@ -550,3 +557,9 @@ particular data file.
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+The embedded Selawik font (`Sources/FourDRender/FormSubstituteFontData.swift`,
+generated unmodified from the Selawik 1.01 release by
+`scripts/embed-selawik.py`) is © Microsoft Corporation and licensed under the
+SIL Open Font License 1.1, see [ThirdParty/Selawik/OFL.txt](ThirdParty/Selawik/OFL.txt).
+The app bundle and Quick Look extension ship that license as `Selawik-OFL.txt`.

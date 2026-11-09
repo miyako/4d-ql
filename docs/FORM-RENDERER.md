@@ -46,6 +46,12 @@ themes; `.windows` produces `windowsClassic`, `fluentLight` and `fluentDark`
 using `styleSheets_windows.css`. Pass the platform explicitly for output that
 does not depend on the host.
 
+The Quick Look preview on macOS instead analyzes both platforms with
+`FormFileAnalyzer(platforms: FormPlatform.previewPlatforms)` and shows them
+behind a CSS-only macOS/Windows switch; see
+[Windows previews on macOS](WINDOWS-HANDOVER.md#windows-previews-on-macos-quick-look).
+`FormRenderer` output and its JSON document remain single-platform.
+
 ## Swift API
 
 Import the existing `FourDRender` and `FourDFileKit` libraries:

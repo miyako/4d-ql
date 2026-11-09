@@ -29,7 +29,7 @@ public final class AnalyzerRegistry {
         TextFileAnalyzer(format: .json),
         QueryFileAnalyzer(),
         MethodFileAnalyzer(),
-        FormFileAnalyzer(),
+        FormFileAnalyzer(platforms: FormPlatform.previewPlatforms),
     ])
 
     public var allContentTypes: [String] { analyzers.flatMap(\.contentTypes) }
