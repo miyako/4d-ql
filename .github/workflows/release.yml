@@ -208,6 +208,9 @@ jobs:
           tag_name: ${{ needs.version.outputs.tag }}
           name: ${{ needs.version.outputs.tag }}
           generate_release_notes: true
+          # prepended to the generated notes; keep in sync with README "Upgrading"
+          body: |
+            **Upgrading:** replace the app in `/Applications`, delete any other copies (Downloads, mounted DMG) and open it once. Then run `pkill -f FourDQuickLookExtension; pkill -f FourDProjectPreviewService; qlmanage -r; qlmanage -r cache` (or log out and back in). `pluginkit -mAvvv -i com.github.miyako.FourDQuickLook.Preview` should list a single, current copy. See [Upgrading](https://github.com/miyako/4d-ql#upgrading).
           # re-running a tag replaces its assets
           overwrite_files: true
           files: |
