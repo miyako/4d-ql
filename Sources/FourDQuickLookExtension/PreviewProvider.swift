@@ -3,27 +3,34 @@ import QuickLookUI
 import UniformTypeIdentifiers
 import FourDRender
 import FourDProjectAccess
+import FourDQuickLookUI
+import AppKit
 
-/// Data-based Quick Look preview (macOS 12+): we hand Quick Look an HTML page
-/// and it renders it, so the extension contains no UI code at all.
-///
-/// The class name is fixed with @objc so Info.plist can name it without a
-/// module prefix (NSExtensionPrincipalClass = FourDPreviewProvider).
 @objc(FourDPreviewProvider)
-final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
+final class PreviewProvider: NSViewController, QLPreviewingController {
+    private var preparation: Task<Void, Never>?
+    private var webView: PreviewWebView!
 
-    func providePreview(for request: QLFilePreviewRequest) async throws -> QLPreviewReply {
-        let url = request.fileURL
-        let html = await Self.html(for: url)
-        let reply = QLPreviewReply(dataOfContentType: .html, contentSize: CGSize(width: 860, height: 1000)) { _ in
-            Data(html.utf8)
-        }
-        reply.stringEncoding = .utf8
-        reply.title = url.lastPathComponent
-        return reply
+    override func loadView() {
+        webView = PreviewWebView(frame: NSRect(x: 0, y: 0, width: 860, height: 1000))
+        view = webView
+        preferredContentSize = NSSize(width: 860, height: 1000)
     }
 
-    static func html(for url: URL) async -> String {
+    func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
+        preparation?.cancel()
+        preparation = Task { @MainActor in
+            let html = await Self.html(for: url)
+            guard !Task.isCancelled else {
+                handler(CancellationError())
+                return
+            }
+            _ = view
+            webView.loadPreview(html: html, completion: handler)
+        }
+    }
+
+    nonisolated static func html(for url: URL) async -> String {
         let contentType = (try? url.resourceValues(forKeys: [.contentTypeKey]))?.contentType?.identifier
 
         let pipeline = PreviewPipeline()

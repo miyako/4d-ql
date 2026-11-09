@@ -97,7 +97,6 @@ struct StructureDiagramRenderer {
                         && boxes[j].y < boxes[i].y + boxes[i].height + 24 { overlapping = true }
                 }
             }
-            let extentX = saved.map { boxes[$0].x + boxes[$0].width }.max() ?? 0
             let extentY = saved.map { boxes[$0].y + boxes[$0].height }.max() ?? 0
             if !overlapping {
                 var bottom = extentY + 48
@@ -204,6 +203,10 @@ struct StructureDiagramRenderer {
     .diagram-zoom-controls{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px;font-size:12px}
     .diagram-zoom-controls>span{color:var(--muted);margin-right:4px}
     .diagram-zoom-controls label{cursor:pointer;padding:4px 8px;border:1px solid var(--line);border-radius:5px}
+    .diagram-zoom-controls button{font:inherit;color:var(--fg);background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:4px 8px;cursor:pointer}
+    .diagram-zoom-controls input[type=range]{width:180px;max-width:40vw;vertical-align:middle;accent-color:var(--accent)}
+    .diagram-zoom-controls output{min-width:4em;text-align:right;font-variant-numeric:tabular-nums}
+    .diagram-zoom-controls button:focus-visible,.diagram-zoom-controls input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     .diagram-viewport{max-width:100%;max-height:max(320px,calc(100vh - 180px));overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
     .diagram-viewport:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     .diagram-svg{display:block;max-width:none;width:calc(var(--diagram-width) * var(--diagram-scale,1));height:calc(var(--diagram-height) * var(--diagram-scale,1));font:12px "Helvetica Neue",Helvetica,sans-serif}

@@ -219,10 +219,10 @@ class ReleaseVerificationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "4D Form previews"):
             self.verify()
         attributes["QLSupportedContentTypes"] = ["com.4d.4d.form"]
-        attributes["QLIsDataBasedPreview"] = False
+        attributes["QLIsDataBasedPreview"] = True
         with self.assertRaises(ValueError):
             self.verify()
-        attributes["QLIsDataBasedPreview"] = True
+        attributes["QLIsDataBasedPreview"] = False
         form = host["UTImportedTypeDeclarations"][0]
         form["UTTypeTagSpecification"]["public.filename-extension"] = ["4dform"]
         with self.assertRaisesRegex(ValueError, "both filename cases"):

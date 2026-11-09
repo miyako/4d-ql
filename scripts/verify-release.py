@@ -112,9 +112,9 @@ def verify(app, version, build, identity, bundle_id, project_group=None):
             and extension.get("NSExtensionPrincipalClass") == "FourDPreviewProvider",
             "Quick Look extension registration mismatch")
     attributes = extension.get("NSExtensionAttributes", {})
-    require(attributes.get("QLIsDataBasedPreview") is True and
+    require(attributes.get("QLIsDataBasedPreview") is False and
             "com.4d.4d.form" in attributes.get("QLSupportedContentTypes", []),
-            "Quick Look must register data-based 4D Form previews")
+            "Quick Look must register view-based 4D Form previews")
     forms = [item for item in host_info.get("UTImportedTypeDeclarations", [])
              if item.get("UTTypeIdentifier") == "com.4d.4d.form"]
     require(len(forms) == 1, "Host must import the 4D Form UTI exactly once")
