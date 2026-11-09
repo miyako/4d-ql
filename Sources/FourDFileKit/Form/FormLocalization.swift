@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 
 /// 4D XLIFF 1.x static references; never reads application bundles or runs
 /// SET DATABASE LOCALIZATION. Locale choice is explicitly a preview context.
@@ -242,7 +245,7 @@ private final class FormXLIFFParser: NSObject, XMLParserDelegate {
         parser.shouldResolveExternalEntities = false
         parser.externalEntityResolvingPolicy = .never
         parser.delegate = self
-        guard parser.parse(), valid, depth == 0 else {
+        guard parser.parseStrictly(), valid, depth == 0 else {
             throw FormError.dependency("Invalid/unsupported XLIFF (1.x plain text only; 20,000 XML nodes, depth 64, 1 MiB text).")
         }
         return units
@@ -250,38 +253,39 @@ private final class FormXLIFFParser: NSObject, XMLParserDelegate {
 
     func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?,
                 qualifiedName qName: String?, attributes: [String: String]) {
+        guard valid else { return }
         depth += 1
         nodes += 1
         let parent = elements.last
         elements.append(name)
-        if depth > 64 || nodes > 20_000 { valid = false; parser.abortParsing(); return }
+        if depth > 64 || nodes > 20_000 { valid = false; parser.stopFromDelegate(); return }
         if depth == 1, name != "xliff" || !["1.0", "1.1", "1.2"].contains(attributes["version"] ?? "") {
-            valid = false; parser.abortParsing(); return
+            valid = false; parser.stopFromDelegate(); return
         }
         if let namespaceURI, !namespaceURI.isEmpty,
            !["urn:oasis:names:tc:xliff:document:1.0", "urn:oasis:names:tc:xliff:document:1.1", "urn:oasis:names:tc:xliff:document:1.2"].contains(namespaceURI) {
-            valid = false; parser.abortParsing(); return
+            valid = false; parser.stopFromDelegate(); return
         }
         if field != nil { unsupportedUnit = true }
         switch name {
         case "file":
-            guard parent == "xliff" else { valid = false; parser.abortParsing(); return }
+            guard parent == "xliff" else { valid = false; parser.stopFromDelegate(); return }
             sourceLanguage = attributes["source-language"]
             targetLanguage = attributes["target-language"]
         case "body":
-            guard parent == "file" else { valid = false; parser.abortParsing(); return }
+            guard parent == "file" else { valid = false; parser.stopFromDelegate(); return }
         case "group":
-            guard parent == "body" || parent == "group" else { valid = false; parser.abortParsing(); return }
+            guard parent == "body" || parent == "group" else { valid = false; parser.stopFromDelegate(); return }
             groups.append(Group(name: attributes["resname"] ?? "", id: attributes["id"]))
         case "trans-unit":
-            guard unit == nil, parent == "body" || parent == "group" else { valid = false; parser.abortParsing(); return }
+            guard unit == nil, parent == "body" || parent == "group" else { valid = false; parser.stopFromDelegate(); return }
             unit = Unit(name: attributes["resname"] ?? "", id: attributes["id"], groups: groups,
                         sourceLanguage: sourceLanguage, targetLanguage: targetLanguage)
             unsupportedUnit = attributes["translate"] == "no"
         case "source", "target":
             guard parent == "trans-unit" else {
                 if field != nil { unsupportedUnit = true; return }
-                valid = false; parser.abortParsing(); return
+                valid = false; parser.stopFromDelegate(); return
             }
             if unit != nil {
                 if (name == "source" ? unit?.source : unit?.target) != nil { unsupportedUnit = true }
@@ -296,13 +300,14 @@ private final class FormXLIFFParser: NSObject, XMLParserDelegate {
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
+        guard valid else { return }
         textBytes += string.utf8.count
-        if textBytes > 1_048_576 { valid = false; parser.abortParsing(); return }
+        if textBytes > 1_048_576 { valid = false; parser.stopFromDelegate(); return }
         if field != nil { text += string }
     }
 
     func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
-        guard let string = String(data: CDATABlock, encoding: .utf8) else { valid = false; parser.abortParsing(); return }
+        guard let string = String(data: CDATABlock, encoding: .utf8) else { valid = false; parser.stopFromDelegate(); return }
         self.parser(parser, foundCharacters: string)
     }
 
@@ -321,7 +326,7 @@ private final class FormXLIFFParser: NSObject, XMLParserDelegate {
         depth -= 1
     }
 
-    func parser(_ parser: XMLParser, foundInternalEntityDeclarationWithName name: String, value: String?) { valid = false; parser.abortParsing() }
-    func parser(_ parser: XMLParser, foundExternalEntityDeclarationWithName name: String, publicID: String?, systemID: String?) { valid = false; parser.abortParsing() }
-    func parser(_ parser: XMLParser, resolveExternalEntityName name: String, systemID: String?) -> Data? { valid = false; parser.abortParsing(); return nil }
+    func parser(_ parser: XMLParser, foundInternalEntityDeclarationWithName name: String, value: String?) { valid = false; parser.stopFromDelegate() }
+    func parser(_ parser: XMLParser, foundExternalEntityDeclarationWithName name: String, publicID: String?, systemID: String?) { valid = false; parser.stopFromDelegate() }
+    func parser(_ parser: XMLParser, resolveExternalEntityName name: String, systemID: String?) -> Data? { valid = false; parser.stopFromDelegate(); return nil }
 }

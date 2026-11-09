@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 
 /// Static composition only. Inheritance contributes objects from pages 0 and 1,
 /// not form properties or methods (4D Design Reference, "Using inherited forms").
@@ -207,26 +210,27 @@ private final class FormTableNames: NSObject, XMLParserDelegate {
         parser.shouldResolveExternalEntities = false
         parser.externalEntityResolvingPolicy = .never
         parser.delegate = self
-        guard parser.parse(), valid else { throw FormError.dependency("Invalid static table catalog (20,000 nodes/depth 64).") }
+        guard parser.parseStrictly(), valid else { throw FormError.dependency("Invalid static table catalog (20,000 nodes/depth 64).") }
         return names
     }
 
     func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?,
                 qualifiedName qName: String?, attributes: [String: String]) {
+        guard valid else { return }
         depth += 1
         count += 1
         if count > 20_000 || depth > 64 || (depth == 1 && name != "base") {
-            valid = false; parser.abortParsing(); return
+            valid = false; parser.stopFromDelegate(); return
         }
         if depth == 2, name == "table", let number = attributes["id"].flatMap(Int.init),
            number > 0, number <= 32_767, let name = attributes["name"] {
-            if names[number] != nil { valid = false; parser.abortParsing() }
+            if names[number] != nil { valid = false; parser.stopFromDelegate() }
             else { names[number] = name }
         }
     }
 
     func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName qName: String?) { depth -= 1 }
-    func parser(_ parser: XMLParser, foundInternalEntityDeclarationWithName name: String, value: String?) { valid = false; parser.abortParsing() }
-    func parser(_ parser: XMLParser, foundExternalEntityDeclarationWithName name: String, publicID: String?, systemID: String?) { valid = false; parser.abortParsing() }
-    func parser(_ parser: XMLParser, resolveExternalEntityName name: String, systemID: String?) -> Data? { valid = false; parser.abortParsing(); return nil }
+    func parser(_ parser: XMLParser, foundInternalEntityDeclarationWithName name: String, value: String?) { valid = false; parser.stopFromDelegate() }
+    func parser(_ parser: XMLParser, foundExternalEntityDeclarationWithName name: String, publicID: String?, systemID: String?) { valid = false; parser.stopFromDelegate() }
+    func parser(_ parser: XMLParser, resolveExternalEntityName name: String, systemID: String?) -> Data? { valid = false; parser.stopFromDelegate(); return nil }
 }

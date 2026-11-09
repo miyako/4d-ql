@@ -3,7 +3,7 @@ import XCTest
 
 final class FormStaticTests: XCTestCase {
     private func analyze(_ url: URL, languages: [String] = ["en"]) throws -> FormFileInfo {
-        try XCTUnwrap(FormFileAnalyzer(preferredLanguages: languages).analyze(ByteSource(url: url), options: AnalysisOptions()) as? FormFileInfo)
+        try XCTUnwrap(FormFileAnalyzer(preferredLanguages: languages, platform: .macOS).analyze(ByteSource(url: url), options: AnalysisOptions()) as? FormFileInfo)
     }
 
     private func fixture() throws -> URL {
@@ -217,7 +217,7 @@ final class FormStaticTests: XCTestCase {
         let outside = try write(form(#"{"private":{"type":"text","text":"DO NOT READ"}}"#), "outside/child.json", in: folder)
         let rootFolder = folder.appendingPathComponent("standalone")
         try FileManager.default.createDirectory(at: rootFolder, withIntermediateDirectories: true)
-        try FileManager.default.createSymbolicLink(at: rootFolder.appendingPathComponent("link.json"), withDestinationURL: outside)
+        try createSymbolicLink(at: rootFolder.appendingPathComponent("link.json"), to: outside)
         let url = try write(form(#"{"symlink":{"type":"subform","detailForm":"link.json"},"escape":{"type":"subform","detailForm":"../outside/child.json"}}"#), "form.4DForm", in: rootFolder)
         let info = try analyze(url)
         XCTAssertTrue(try objects(info).allSatisfy { $0.children.isEmpty })
@@ -285,7 +285,7 @@ final class FormStaticTests: XCTestCase {
         let xml = #"<!DOCTYPE xliff [<!ENTITY replacement "INTERNAL ENTITY MUST NOT EXPAND">]>"# +
             xliff(#"<trans-unit resname="key"><target>&replacement;</target></trans-unit>"#)
         let info = try localized([("en.lproj/a.xlf", xml)])
-        for theme in FormTheme.allCases {
+        for theme in FormPlatform.macOS.themes {
             XCTAssertEqual(try objects(info, theme: theme).first?.properties["text"]?.string, ":xliff:key")
         }
         XCTAssertTrue(info.text.contains(":xliff:key"))
@@ -302,7 +302,7 @@ final class FormStaticTests: XCTestCase {
         ]
         for xml in documents {
             let info = try localized([("en.lproj/a.xlf", xml)])
-            for theme in FormTheme.allCases {
+            for theme in FormPlatform.macOS.themes {
                 XCTAssertEqual(try objects(info, theme: theme).first?.properties["text"]?.string, ":xliff:key")
             }
             XCTAssertTrue(info.text.contains(":xliff:key"))
@@ -352,7 +352,7 @@ final class FormStaticTests: XCTestCase {
         try write(xliff(#"<trans-unit resname="key"><target>DO NOT READ</target></trans-unit>"#), "en.lproj/a.xlf", in: outside)
         let project = folder.appendingPathComponent("package")
         let url = try write(form(#"{"label":{"type":"text","text":":xliff:key"}}"#), "Project/Sources/Forms/Root/form.4DForm", in: project)
-        try FileManager.default.createSymbolicLink(at: project.appendingPathComponent("Resources"), withDestinationURL: outside)
+        try createSymbolicLink(at: project.appendingPathComponent("Resources"), to: outside)
         let info = try analyze(url)
         XCTAssertEqual(try objects(info).first?.properties["text"]?.string, ":xliff:key")
         XCTAssertEqual(info.dependencies, [])

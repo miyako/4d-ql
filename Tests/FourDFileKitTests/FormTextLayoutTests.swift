@@ -1,4 +1,6 @@
+#if canImport(AppKit)
 import AppKit
+#endif
 import XCTest
 @testable import FourDFileKit
 @testable import FourDRender
@@ -9,7 +11,7 @@ final class FormTextLayoutTests: XCTestCase {
     func testWrappingUsesWordBoundariesAndShapedAdvances() {
         let text = "office affinity alpha beta gamma"
         let font = FormTextLayout.font(size: 13, properties: plain)
-        let width = ("office affinity " as NSString).size(withAttributes: [.font: font]).width + 1
+        let width = font.width("office affinity ") + 1
         let layout = FormTextLayout(text: text, width: width, size: 13, properties: plain, maxLines: 10)
         XCTAssertEqual(layout.lines.first?.text, "office affinity ")
         XCTAssertEqual(layout.lines.map(\.text).joined(), text)
@@ -47,38 +49,12 @@ final class FormTextLayoutTests: XCTestCase {
         XCTAssertEqual(characters.lines.first?.text.count, 4_096)
     }
 
-    func testFontTraitsAndFallbackAreConsistent() {
-        let styled = FormValue.object([FormMember(name: "fontWeight", value: .string("bold")),
-                                       FormMember(name: "fontStyle", value: .string("italic"))])
-        let font = FormTextLayout.font(size: 13, properties: styled)
-        XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.bold))
-        XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.italic))
-        let missing = FormValue.object([FormMember(name: "fontFamily", value: .string("Missing Form Font"))])
-        XCTAssertEqual(FormTextLayout.font(size: 13, properties: missing).fontName,
-                       FormTextLayout.font(size: 13, properties: plain).fontName)
-    }
-
     func testUTF16BudgetDoesNotShapeAnUnboundedGrapheme() {
         let hugeCluster = "a" + String(repeating: "\u{301}", count: 6_000)
         XCTAssertEqual(FormTextLayout.bounded(hugeCluster), "")
         let text = String(repeating: "x", count: 4_095) + "👨‍👩‍👧‍👦"
         XCTAssertEqual(FormTextLayout.bounded(text), String(repeating: "x", count: 4_095))
         XCTAssertEqual(FormTextLayout.bounded("e\u{301}"), "e\u{301}")
-    }
-
-    func testMainFontThemeHasBoldDefaultAndRespectsWeightOverride() {
-        let main = FormValue.object([FormMember(name: "fontTheme", value: .string("main"))])
-        XCTAssertTrue(FormTextLayout.font(size: 13, properties: main).fontDescriptor.symbolicTraits.contains(.bold))
-        var normal = main
-        normal["fontWeight"] = .string("normal")
-        XCTAssertFalse(FormTextLayout.font(size: 13, properties: normal).fontDescriptor.symbolicTraits.contains(.bold))
-    }
-
-    func testExplicitHelveticaKeepsNativeParagraphLeading() {
-        let properties = FormValue.object([FormMember(name: "fontFamily", value: .string("Helvetica"))])
-        let layout = FormTextLayout(text: "First\n\nLast", width: 200, size: 15, properties: properties, maxLines: 10)
-        XCTAssertEqual(layout.lineHeight, 18)
-        XCTAssertEqual(layout.lines.map(\.text), ["First", "", "Last"])
     }
 
     func testNoWordwrapPreservesExplicitLinesWithoutSoftWrapping() throws {
@@ -89,6 +65,35 @@ final class FormTextLayoutTests: XCTestCase {
         XCTAssertEqual(layout.lines.map(\.text), ["Long first line", "", "Long last line", ""])
         XCTAssertGreaterThan(try XCTUnwrap(layout.lines.first).width, 1)
     }
+}
+
+#if canImport(AppKit)
+extension FormTextLayoutTests {
+    func testFontTraitsAndFallbackAreConsistent() {
+        let styled = FormValue.object([FormMember(name: "fontWeight", value: .string("bold")),
+                                       FormMember(name: "fontStyle", value: .string("italic"))])
+        let font = FormTextLayout.font(size: 13, properties: styled).font
+        XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.bold))
+        XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.italic))
+        let missing = FormValue.object([FormMember(name: "fontFamily", value: .string("Missing Form Font"))])
+        XCTAssertEqual(FormTextLayout.font(size: 13, properties: missing).font.fontName,
+                       FormTextLayout.font(size: 13, properties: plain).font.fontName)
+    }
+
+    func testMainFontThemeHasBoldDefaultAndRespectsWeightOverride() {
+        let main = FormValue.object([FormMember(name: "fontTheme", value: .string("main"))])
+        XCTAssertTrue(FormTextLayout.font(size: 13, properties: main).font.fontDescriptor.symbolicTraits.contains(.bold))
+        var normal = main
+        normal["fontWeight"] = .string("normal")
+        XCTAssertFalse(FormTextLayout.font(size: 13, properties: normal).font.fontDescriptor.symbolicTraits.contains(.bold))
+    }
+
+    func testExplicitHelveticaKeepsNativeParagraphLeading() {
+        let properties = FormValue.object([FormMember(name: "fontFamily", value: .string("Helvetica"))])
+        let layout = FormTextLayout(text: "First\n\nLast", width: 200, size: 15, properties: properties, maxLines: 10)
+        XCTAssertEqual(layout.lineHeight, 18)
+        XCTAssertEqual(layout.lines.map(\.text), ["First", "", "Last"])
+    }
 
     func testArialUsesItsMeasuredNativeLineAdvance() {
         let properties = FormValue.object([FormMember(name: "fontFamily", value: .string("Arial"))])
@@ -98,3 +103,18 @@ final class FormTextLayoutTests: XCTestCase {
         }
     }
 }
+#endif
+
+#if os(Windows)
+extension FormTextLayoutTests {
+    func testDirectWriteMeasuresSegoeUI() {
+        XCTAssertTrue(FormFontFace.installed("Segoe UI", size: 12))
+        let font = FormTextLayout.font(size: 12, properties: plain, platform: .windows)
+        XCTAssertGreaterThan(font.width("Windows"), font.width("W"))
+        XCTAssertGreaterThan(font.lineHeight, 12)
+        let layout = FormTextLayout(text: "alpha beta gamma delta", width: font.width("alpha beta ") + 1, size: 12,
+                                    properties: plain, maxLines: 10, platform: .windows)
+        XCTAssertEqual(layout.lines.first?.text, "alpha beta ")
+    }
+}
+#endif

@@ -1,6 +1,7 @@
 import Foundation
-import ImageIO
-import UniformTypeIdentifiers
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 
 public struct FormObject: Encodable {
     public var name: String
@@ -52,13 +53,18 @@ public struct FormFileInfo: AnalysisModel {
     public var dependencies: [String]
     public var warnings: [String]
     public var localizationLanguage: String? = nil
+    /// The platform whose appearances were analyzed (derived; not encoded).
+    public var platform: FormPlatform { appearances.first?.theme.platform ?? .macOS }
 }
 
 public struct FormFileAnalyzer: FileAnalyzer {
     public var preferredLanguages: [String]
+    /// Native platform whose stylesheets and appearances are analyzed.
+    public var platform: FormPlatform
     /// No 4D application language is inferred or read from an installed application.
-    public init(preferredLanguages: [String] = Locale.preferredLanguages) {
+    public init(preferredLanguages: [String] = Locale.preferredLanguages, platform: FormPlatform = .current) {
         self.preferredLanguages = preferredLanguages
+        self.platform = platform
     }
     public var identifier: String { "4dform" }
     public var contentTypes: [String] { ["com.4d.4d.form"] }
@@ -89,7 +95,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
             if !FileManager.default.isReadableFile(atPath: sources.path) {
                 dependencies.warn("Project stylesheets are inaccessible. Quick Look may grant access only to the selected form.")
             }
-            for name in ["styleSheets.css", "styleSheets_mac.css"] {
+            for name in ["styleSheets.css", platform.stylesheetName] {
                 let cssURL = sources.appendingPathComponent(name)
                 if FileManager.default.fileExists(atPath: cssURL.path) {
                     try loadCSS(cssURL, stylesheet: &stylesheet, parsed: &parsedStylesheets, dependencies: dependencies)
@@ -124,7 +130,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
         let imageLoader = FormImageLoader(dependencies: dependencies, document: url)
         let localization = FormLocalization(dependencies: dependencies, preferredLanguages: preferredLanguages)
         var appearances: [FormAppearance] = []
-        for theme in FormTheme.allCases {
+        for theme in platform.themes {
             var remaining = 1_000
             var themedPages: [FormPage] = []
             for page in rawPages.prefix(17) {
@@ -154,10 +160,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
                        stylesheets: [String: FormStylesheet], fallback: FormStylesheet,
                        localization: FormLocalization, imageLoader: FormImageLoader,
                        visible: Bool = true) throws -> FormObject {
-        let effectiveTheme: FormTheme
-        if form["colorScheme"]?.string == "dark" { effectiveTheme = theme.glass ? .glassDark : .classicDark }
-        else if form["colorScheme"]?.string == "light" { effectiveTheme = theme.glass ? .glassLight : .classicLight }
-        else { effectiveTheme = theme }
+        let effectiveTheme = theme.forcing(form["colorScheme"]?.string)
         let stylesheet = object.stylesheetContext.flatMap { stylesheets[$0] } ?? fallback
         var styled = object
         styled.properties = stylesheet.apply(object.properties, name: object.name, type: object.type, theme: effectiveTheme)
@@ -201,7 +204,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
         let entries: [FormValue]
         if case .array(let list) = css { entries = list } else { entries = [css] }
         for entry in entries {
-            if entry["media"]?.string == "windows" { continue }
+            if let media = entry["media"]?.string, FormPlatform.allCases.contains(where: { $0 != platform && $0.cssMedia == media }) { continue }
             guard let path = entry.string ?? entry["path"]?.string else {
                 dependencies.warn("Invalid form CSS reference.")
                 continue
@@ -276,32 +279,15 @@ private final class FormImageLoader {
                 parser.shouldResolveExternalEntities = false
                 parser.delegate = validator
                 let text = String(decoding: data, as: UTF8.self)
-                guard data.count <= 512 * 1024, !text.contains("<!DOCTYPE"), parser.parse(), validator.safe else {
+                guard data.count <= 512 * 1024, !text.contains("<!DOCTYPE"), parser.parseStrictly(), validator.safe else {
                     throw FormError.dependency("SVG has unsupported external/active content or invalid XML.")
                 }
                 image = FormImage(id: id, dataURI: "data:image/svg+xml;base64," + data.base64EncodedString(),
                                   width: validator.width, height: validator.height)
             } else {
-                guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-                      let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
-                      let height = properties[kCGImagePropertyPixelHeight] as? NSNumber,
-                      width.doubleValue > 0, height.doubleValue > 0,
-                      width.doubleValue * height.doubleValue <= 32_000_000,
-                      let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                        kCGImageSourceCreateThumbnailFromImageAlways: true,
-                        kCGImageSourceCreateThumbnailWithTransform: true,
-                        kCGImageSourceThumbnailMaxPixelSize: 2_048
-                      ] as CFDictionary) else { throw FormError.dependency("Unsupported image or image exceeds 32 megapixels.") }
-                let output = NSMutableData()
-                guard let destination = CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil) else {
-                    throw FormError.dependency("Cannot create preview image.")
-                }
-                CGImageDestinationAddImage(destination, thumbnail, nil)
-                guard CGImageDestinationFinalize(destination) else { throw FormError.dependency("Cannot encode preview image.") }
-                guard output.length <= 4 * 1024 * 1024 else { throw FormError.limit("Converted image exceeds 4 MiB.") }
-                image = FormImage(id: id, dataURI: "data:image/png;base64," + (output as Data).base64EncodedString(),
-                                  width: width.doubleValue, height: height.doubleValue)
+                let raster = try FormRasterImage.convert(data)
+                image = FormImage(id: id, dataURI: "data:image/png;base64," + raster.png.base64EncodedString(),
+                                  width: raster.width, height: raster.height)
             }
             encodedBytes += image.dataURI.utf8.count
             guard encodedBytes <= 24 * 1024 * 1024 else { throw FormError.limit("Embedded preview images exceed 24 MiB.") }
@@ -330,6 +316,7 @@ private final class FormSVGValidator: NSObject, XMLParserDelegate {
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
                 qualifiedName qName: String?, attributes: [String: String]) {
+        guard safe else { return }
         count += 1
         depth += 1
         if !foundRoot {
@@ -354,10 +341,10 @@ private final class FormSVGValidator: NSObject, XMLParserDelegate {
             }
             if key == "style", value.contains("@") { safe = false }
         }
-        if !safe { parser.abortParsing() }
+        if !safe { parser.stopFromDelegate() }
     }
 
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) { depth -= 1 }
-    func parser(_ parser: XMLParser, foundInternalEntityDeclarationWithName name: String, value: String?) { safe = false; parser.abortParsing() }
-    func parser(_ parser: XMLParser, foundExternalEntityDeclarationWithName name: String, publicID: String?, systemID: String?) { safe = false; parser.abortParsing() }
+    func parser(_ parser: XMLParser, foundInternalEntityDeclarationWithName name: String, value: String?) { safe = false; parser.stopFromDelegate() }
+    func parser(_ parser: XMLParser, foundExternalEntityDeclarationWithName name: String, publicID: String?, systemID: String?) { safe = false; parser.stopFromDelegate() }
 }

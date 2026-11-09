@@ -1,8 +1,10 @@
 import Foundation
-import AppKit
 import FourDFileKit
 
 struct FormPreviewRenderer {
+    /// Platform whose fonts and families measure text; matches the rendered themes.
+    var platform: FormPlatform = .macOS
+
     static let supported: Set<String> = ["text", "input", "button", "checkbox", "radio", "dropdown", "combo", "groupBox", "tab",
                                           "line", "rectangle", "oval", "picture", "listbox", "splitter", "progress", "ruler",
                                           "spinner", "stepper", "list", "buttonGrid", "pictureButton", "picturePopup"]
@@ -28,7 +30,8 @@ struct FormPreviewRenderer {
         if objects.contains(where: { object in
             guard ["text", "input"].contains(object.type) else { return false }
             let p = object.properties
-            let size = Self().font(p, height: bounds(p, theme: .glassLight).h)
+            let theme: FormTheme = form.platform == .windows ? .windowsClassic : .glassLight
+            let size = Self(platform: form.platform).font(p, height: bounds(p, theme: theme).h, theme: theme)
             return ["paddingLeft", "paddingRight", "paddingTop", "paddingBottom"].contains { key in
                 guard let value = p[key] else { return false }
                 guard let length = Self.length(value, size: size) else { return true }
@@ -42,8 +45,10 @@ struct FormPreviewRenderer {
     }
 
     func render(_ preview: FormPreview) -> String {
-        let defaultGlass = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
-        var html = "<style>\(Self.css)</style><div class=\"form-preview\">"
+        guard platform == preview.platform else { return Self(platform: preview.platform).render(preview) }
+        let windows = platform == .windows
+        let defaultGlass = !windows && ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
+        var html = "<style>\(Self.css)\(windows ? "\n" + FormPlatformStyle.windowsCSS : "")</style><div class=\"form-preview\">"
         html += "<svg width=\"0\" height=\"0\" aria-hidden=\"true\" style=\"position:absolute\"><defs>"
         for image in preview.images {
             html += "<image id=\"\(image.id)\" width=\"\(n(image.width))\" height=\"\(n(image.height))\" href=\"\(image.dataURI)\"/>"
@@ -51,21 +56,24 @@ struct FormPreviewRenderer {
         html += "</defs></svg>"
         let fixedScheme = preview.properties["colorScheme"]?.string
         let variants = preview.appearances.filter { fixedScheme == nil || $0.theme.dark == (fixedScheme == "dark") }
+        // Windows selection never depends on prefers-color-scheme: exactly one theme radio is checked.
+        let windowsDefault = windows ? (preview.initialTheme ?? Self.windowsDefaultTheme(variants.map(\.theme), properties: preview.properties)) : nil
         for appearance in variants {
-            let selected = preview.initialTheme.map { $0 == appearance.theme }
+            let selected = windows ? appearance.theme == windowsDefault
+                : preview.initialTheme.map { $0 == appearance.theme }
                 ?? (appearance.theme.glass == defaultGlass && fixedScheme != nil)
             let checked = selected ? " checked" : ""
             // Two checked defaults, one per system color scheme, are selected by CSS.
-            let defaultClass = appearance.theme.glass == defaultGlass ? (appearance.theme.dark ? " default-dark" : " default-light") : ""
+            let defaultClass = !windows && appearance.theme.glass == defaultGlass ? (appearance.theme.dark ? " default-dark" : " default-light") : ""
             html += "<input class=\"theme-choice\(defaultClass)\" type=\"radio\" name=\"form-theme\" id=\"theme-\(appearance.theme.rawValue)\"\(checked)>"
         }
-        html += "<div class=\"form-themes\" role=\"group\" aria-label=\"macOS appearance\">"
+        html += "<div class=\"form-themes\" role=\"group\" aria-label=\"\(FormPlatformStyle(platform).appearanceLabel)\">"
         html += variants.map { "<label for=\"theme-\($0.theme.rawValue)\">\(esc($0.theme.label))</label>" }.joined()
         html += "</div>"
         for appearance in variants {
             let theme = appearance.theme
             let size = Self.canvas(appearance, properties: preview.properties)
-            html += "<div class=\"form-appearance \(theme.dark ? "dark" : "light") \(theme.glass ? "glass" : "classic")\" data-theme=\"\(theme.rawValue)\">"
+            html += "<div class=\"form-appearance \(FormPlatformStyle.classes(theme))\" data-theme=\"\(theme.rawValue)\">"
             let initialPage = preview.initialPage
                 ?? (appearance.pages.contains { $0.number == 1 } ? 1 : appearance.pages.first?.number ?? 0)
             for page in appearance.pages {
@@ -93,7 +101,7 @@ struct FormPreviewRenderer {
         }
         html += "</div>"
         var selectors = ""
-        if fixedScheme == nil {
+        if fixedScheme == nil && !windows {
             let light = variants.first { $0.theme.glass == defaultGlass && !$0.theme.dark }?.theme.rawValue ?? "classicLight"
             let dark = variants.first { $0.theme.glass == defaultGlass && $0.theme.dark }?.theme.rawValue ?? "classicDark"
             selectors += ".form-appearance[data-theme=\"\(light)\"]{display:block}"
@@ -113,6 +121,13 @@ struct FormPreviewRenderer {
         return html + "<style>\(selectors)</style>"
     }
 
+    /// 4D shows Windows Classic unless the form opts into Fluent UI.
+    static func windowsDefaultTheme(_ themes: [FormTheme], properties: FormValue) -> FormTheme? {
+        let preferred: [FormTheme] = properties["fluentUI"]?.bool == true
+            ? [.fluentLight, .fluentDark, .windowsClassic] : [.windowsClassic, .fluentLight, .fluentDark]
+        return preferred.first(where: themes.contains) ?? themes.first
+    }
+
     private static func validGeometry(_ properties: FormValue) -> Bool {
         guard let x = properties["left"]?.double, let y = properties["top"]?.double else { return false }
         let keys = ["left", "top", "width", "height", "right", "bottom"]
@@ -126,7 +141,10 @@ struct FormPreviewRenderer {
         let x = properties["left"]?.double ?? 0
         let y = properties["top"]?.double ?? 0
         let w = properties["width"]?.double ?? properties["right"]?.double.map { $0 - x } ?? 100
-        let defaultHeight: Double = theme.glass && ["checkbox", "radio"].contains(properties["type"]?.string ?? "") ? 16 : 20
+        let type = properties["type"]?.string ?? ""
+        let defaultHeight: Double = theme.platform == .windows
+            ? (["button", "dropdown"].contains(type) ? FormPlatformStyle.windowsDefaultControlHeight(theme) : 20)
+            : theme.glass && ["checkbox", "radio"].contains(type) ? 16 : 20
         let h = properties["height"]?.double ?? properties["bottom"]?.double.map { $0 - y } ?? defaultHeight
         return (x, y, max(0, w), max(0, h))
     }
@@ -151,7 +169,7 @@ struct FormPreviewRenderer {
         let stroke = color(p["stroke"]?.string, fallback: "var(--form-ink)")
         let fill = color(p["fill"]?.string, fallback: "transparent")
         let border = p["borderStyle"]?.string ?? "system"
-        let fontSize = font(p, height: b.h, glass: theme.glass)
+        let fontSize = font(p, height: b.h, theme: theme)
         let tip = "\(object.name) · \(object.type)" + (p["dataSource"]?.string.map { "\n\($0)" } ?? "")
         var svg = "<g transform=\"translate(\(n(b.x)) \(n(b.y)))\"><title>\(esc(tip))</title>"
         let clip = "form-clip-\(id)"
@@ -179,7 +197,7 @@ struct FormPreviewRenderer {
             let frames = max(1,min(256,p["iconFrames"]?.double ?? 1))
             let sourceHeight = asset.height/frames
             let placement = p["textPlacement"]?.string ?? "bottom"
-            let lineHeight = FormTextLayout(text: label, width: width, size: fontSize, properties: p, maxLines: 1).lineHeight
+            let lineHeight = FormTextLayout(text: label, width: width, size: fontSize, properties: p, maxLines: 1, platform: platform).lineHeight
             let stacked = placement == "top" || placement == "bottom"
             let gap: Double = label.isEmpty ? 0 : stacked ? 8 : 6
             let availableHeight = stacked ? max(0,h-(label.isEmpty ? 0 : lineHeight)-gap) : h
@@ -212,6 +230,74 @@ struct FormPreviewRenderer {
                 + text(label, x: x+textX, width: textWidth, center: true, ink: ink)
         }
         switch object.type {
+        case _ where ["button", "dropdown"].contains(object.type) && theme.platform == .windows && (object.type == "dropdown" || ["regular", "flat"].contains(nativeStyle)):
+            let popup = object.type == "dropdown"
+            let defaultButton = !popup && p["defaultButton"]?.bool == true
+            let accentFill = defaultButton && theme.fluent
+            let radius = min(FormPlatformStyle.windowsControlRadius(theme), h/2)
+            let background = accentFill ? "var(--form-accent)" : popup ? "var(--form-popup)"
+                : nativeStyle == "flat" ? color(p["fill"]?.string, fallback: "var(--form-control)") : "var(--form-control)"
+            let outline = defaultButton ? "var(--form-accent)" : "var(--form-border)"
+            svg += "<rect x=\"0.5\" y=\"0.5\" width=\"\(n(max(0,w-1)))\" height=\"\(n(max(0,h-1)))\" rx=\"\(n(radius))\" fill=\"\(background)\" stroke=\"\(outline)\" stroke-width=\"1\"/>"
+            if !defaultButton && w > 2*radius+1 {
+                svg += "<path d=\"M\(n(radius+0.5)) \(n(h-0.5))H\(n(w-radius-0.5))\" stroke=\"var(--form-control-edge)\"/>"
+            }
+            let chevronInset: Double = theme.fluent ? 15 : 9
+            let captionInset: Double = theme.fluent ? 11 : 4
+            svg += "<g clip-path=\"url(#\(clip))\">" + iconCaption(label, x: popup ? captionInset : 0,
+                           width: max(0,w-(popup ? captionInset+chevronInset+8 : 0)), center: !popup,
+                           ink: accentFill && (p["stroke"] == nil || p["stroke"]?.string == "automatic") ? "var(--form-accent-ink)" : stroke) + "</g>"
+            if popup || p["popupPlacement"]?.string.map({ $0 != "none" }) == true {
+                svg += chevrons(x: w - chevronInset, y: h/2, both: false, ink: "var(--form-ink)")
+            }
+        case _ where ["checkbox", "radio"].contains(object.type) && theme.platform == .windows && ["regular", "flat"].contains(nativeStyle):
+            let side = FormPlatformStyle.windowsToggleSide(theme)
+            let gap = FormPlatformStyle.windowsToggleGap(theme)
+            svg += "<g clip-path=\"url(#\(clip))\">"
+            if object.type == "radio" {
+                svg += "<circle cx=\"\(n(side/2))\" cy=\"\(n(h/2))\" r=\"\(n(side/2-0.5))\" fill=\"var(--form-toggle)\" stroke=\"var(--form-toggle-border)\"/>"
+            } else {
+                svg += "<rect x=\"0.5\" y=\"\(n((h-side)/2+0.5))\" width=\"\(n(side-1))\" height=\"\(n(side-1))\" rx=\"\(n(FormPlatformStyle.windowsControlRadius(theme)))\" fill=\"var(--form-toggle)\" stroke=\"var(--form-toggle-border)\"/>"
+            }
+            svg += "</g>" + text(label, x: side + gap, width: max(0,w-side-gap))
+        case "tab" where theme.platform == .windows:
+            let labels = p["dataSource"]?.string.map { [$0] } ?? listLabels(p["labels"])
+            let titles = Array((labels.isEmpty ? ["\"\(object.name)\""] : labels).prefix(32))
+            let widths = titles.map { max(theme.fluent ? 40 : 28, measure($0, size: fontSize, p: p) + (theme.fluent ? 32 : 12)) }
+            let total = widths.reduce(0, +)
+            let scale = total > w ? w / total : 1
+            let stripHeight = min(h, theme.fluent ? 32 : 21)
+            let bottom = p["labelsPlacement"]?.string == "bottom"
+            let y = bottom ? h-stripHeight : 0
+            if !theme.fluent && h > stripHeight {
+                svg += "<rect x=\"0.5\" y=\"\(n(bottom ? 0.5 : stripHeight-0.5))\" width=\"\(n(max(0,w-1)))\" height=\"\(n(max(0,h-stripHeight)))\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-tab)"))\" stroke=\"var(--form-tab-border)\"/>"
+            }
+            var x: Double = 0
+            for (index, title) in titles.enumerated() {
+                let width = widths[index] * scale
+                if index == 0 {
+                    let raise: Double = theme.fluent ? 0 : 2
+                    svg += "<rect x=\"\(n(x+0.5))\" y=\"\(n(y+0.5-(bottom ? 0 : raise)))\" width=\"\(n(max(0,width-1)))\" height=\"\(n(stripHeight+raise))\" rx=\"\(theme.fluent ? "6" : "0")\" fill=\"var(--form-tab-selected)\" stroke=\"var(--form-tab-border)\"/>"
+                } else if theme.fluent {
+                    svg += "<line x1=\"\(n(x))\" y1=\"\(n(y+8))\" x2=\"\(n(x))\" y2=\"\(n(y+max(8,stripHeight-8)))\" stroke=\"var(--form-tab-border)\"/>"
+                } else {
+                    svg += "<rect x=\"\(n(x+0.5))\" y=\"\(n(y+0.5))\" width=\"\(n(max(0,width-1)))\" height=\"\(n(max(0,stripHeight-1)))\" fill=\"var(--form-tab)\" stroke=\"var(--form-tab-border)\"/>"
+                }
+                svg += text(title, x: x, y: y, width: width, height: stripHeight, center: true,
+                            ink: index == 0 || theme.fluent == false ? stroke : "var(--form-muted)")
+                x += width
+            }
+        case "groupBox" where theme.platform == .windows:
+            let title = p["text"]?.string ?? ""
+            let titleHeight = title.isEmpty ? 0 : min(h, fontSize+4)
+            svg += "<rect x=\"0.5\" y=\"\(n(titleHeight/2+0.5))\" width=\"\(n(max(0,w-1)))\" height=\"\(n(max(0,h-titleHeight/2-1)))\" rx=\"\(n(FormPlatformStyle.windowsControlRadius(theme)))\" fill=\"\(color(p["fill"]?.string, fallback: "var(--form-group)"))\" stroke=\"var(--form-border)\"/>"
+            if !title.isEmpty {
+                let titleWidth = min(max(0,w-16), measure(title, size: fontSize, p: p)+4)
+                let x = p["textAlign"]?.string == "center" ? (w-titleWidth)/2
+                    : p["textAlign"]?.string == "right" ? w-titleWidth-8 : 8
+                svg += "<rect x=\"\(n(x))\" width=\"\(n(titleWidth))\" height=\"\(n(titleHeight))\" fill=\"var(--form-bg)\"/>"
+                svg += text(title, x: x+2, width: max(0,titleWidth-2), height: titleHeight)
+            }
         case "text":
             if fill != "transparent" || border != "system" && border != "none" {
                 let radius = max(0,min(256,p["borderRadius"]?.double ?? 0))
@@ -242,7 +328,7 @@ struct FormPreviewRenderer {
             let background = color(p["fill"]?.string, fallback: object.type == "combo" && theme.glass ? "var(--form-control)" : "var(--form-input)")
             let outline = bordered && p["stroke"]?.string.map({ $0 != "automatic" }) == true ? stroke : "var(--form-border)"
             if border != "none" {
-                svg += "<rect x=\"\(n(-expansionX))\" y=\"\(n(-expansionY))\" width=\"\(n(w+2*expansionX))\" height=\"\(n(h+2*expansionY))\" rx=\"\(n(min(h/2,max(0,p["borderRadius"]?.double ?? (border == "system" ? 3 : 0)))))\" fill=\"\(background)\" stroke=\"\(color(p["borderColor"]?.string, fallback: outline))\"\(border == "dotted" ? " stroke-dasharray=\"2 2\"" : "")/>"
+                svg += "<rect x=\"\(n(-expansionX))\" y=\"\(n(-expansionY))\" width=\"\(n(w+2*expansionX))\" height=\"\(n(h+2*expansionY))\" rx=\"\(n(min(h/2,max(0,p["borderRadius"]?.double ?? (border == "system" ? (theme.platform == .windows ? FormPlatformStyle.windowsControlRadius(theme) : 3) : 0)))))\" fill=\"\(background)\" stroke=\"\(color(p["borderColor"]?.string, fallback: outline))\"\(border == "dotted" ? " stroke-dasharray=\"2 2\"" : "")/>"
             } else { svg += rect(background, outline: "none") }
             svg += "<g clip-path=\"url(#\(clip))\">" + text(p["dataSource"]?.string ?? "\"\(object.name)\"", x: object.type == "combo" ? 3 : 0, width: max(0,w - (object.type == "combo" ? 23 : 0))) + "</g>"
             if object.type == "combo" { svg += chevrons(x: w - 12, y: h / 2, both: false) }
@@ -343,7 +429,7 @@ struct FormPreviewRenderer {
                 svg += rect("var(--form-input)") + text(p["picture"]?.string ?? object.type, x: 5, width: max(0,w-10), center: true, ink: "var(--form-muted)")
             }
         case "listbox":
-            svg += listbox(p, width: w, height: h, id: id, ink: stroke)
+            svg += listbox(p, width: w, height: h, id: id, ink: stroke, theme: theme)
         case "list":
             svg += rect(color(p["fill"]?.string, fallback: "var(--form-input)"))
             let labels = listLabels(p["list"])
@@ -368,9 +454,8 @@ struct FormPreviewRenderer {
             svg += rect("var(--form-border)", outline: "none")
         case "subform" where object.embeddedProperties != nil:
             let scheme = object.embeddedProperties?["colorScheme"]?.string
-            let childTheme: FormTheme = scheme == "light" ? (theme.glass ? .glassLight : .classicLight)
-                : scheme == "dark" ? (theme.glass ? .glassDark : .classicDark) : theme
-            svg += "<g class=\"static-subform \(childTheme.dark ? "dark" : "light") \(childTheme.glass ? "glass" : "classic")\" clip-path=\"url(#\(clip))\"><rect width=\"\(n(w))\" height=\"\(n(h))\" fill=\"var(--form-bg)\"/>"
+            let childTheme = theme.forcing(scheme)
+            svg += "<g class=\"static-subform \(FormPlatformStyle.classes(childTheme))\" clip-path=\"url(#\(clip))\"><rect width=\"\(n(w))\" height=\"\(n(h))\" fill=\"var(--form-bg)\"/>"
             for (index, child) in object.children.enumerated() {
                 svg += draw(child, theme: childTheme, images: images, id: "\(id)-child-\(index)", depth: depth + 1)
             }
@@ -384,8 +469,10 @@ struct FormPreviewRenderer {
         return svg + "</g>"
     }
 
-    private func listbox(_ p: FormValue, width: Double, height: Double, id: String, ink: String) -> String {
-        let fontSize = font(p, height: 22)
+    private func listbox(_ p: FormValue, width: Double, height: Double, id: String, ink: String, theme: FormTheme) -> String {
+        // macOS list boxes always used the Liquid Glass automatic font rules.
+        let theme: FormTheme = theme.platform == .windows ? theme : .glassLight
+        let fontSize = font(p, height: 22, theme: theme)
         let headerHeight = p["showHeaders"]?.bool == false ? 0 : unit(p["headerHeight"], size: fontSize, fallback: 22)
         let footerHeight = p["showFooters"]?.bool == true ? unit(p["footerHeight"], size: fontSize, fallback: 22) : 0
         let rowHeight = max(1, unit(p["rowHeight"], size: fontSize, fallback: 20))
@@ -412,13 +499,13 @@ struct FormPreviewRenderer {
                 svg += "<rect x=\"\(n(x))\" width=\"\(n(w))\" height=\"\(n(headerHeight))\" fill=\"\(color(header["fill"]?.string, fallback: "var(--form-header)"))\"/>"
                 if headerHeight > 12 && w > 0 { headerDividers.append(x+w) }
                 svg += text(header["text"]?.string ?? column["name"]?.string ?? "", p: header, x: x+2, y: 1,
-                            width: max(0,w-4), height: headerHeight, size: font(header, height: headerHeight),
+                            width: max(0,w-4), height: headerHeight, size: font(header, height: headerHeight, theme: theme),
                             center: false, ink: color(header["stroke"]?.string, fallback: ink),
                             singleLine: header["multiline"]?.string != "yes" && header["wordwrap"]?.string != "normal")
             }
             let expression = column["dataSource"]?.string ?? column["name"]?.string ?? ""
             svg += text(expression, p: column, x: x+5, y: headerHeight, width: max(0,w-10),
-                        height: rowHeight, size: font(column,height:rowHeight), center: false,
+                        height: rowHeight, size: font(column,height:rowHeight,theme:theme), center: false,
                         ink: color(column["stroke"]?.string, fallback: "var(--form-muted)"),
                         singleLine: column["multiline"]?.string != "yes" && column["wordwrap"]?.string != "normal")
             svg += "<line x1=\"\(n(x+w))\" y1=\"\(n(headerHeight))\" x2=\"\(n(x+w))\" y2=\"\(n(height))\" stroke=\"\(color(p["verticalLineStroke"]?.string, fallback: "var(--form-grid)"))\"/>"
@@ -426,7 +513,7 @@ struct FormPreviewRenderer {
                 let footer = column["footer"] ?? .object([])
                 svg += "<rect x=\"\(n(x))\" y=\"\(n(height-footerHeight))\" width=\"\(n(w))\" height=\"\(n(footerHeight))\" fill=\"\(color(footer["fill"]?.string, fallback: "var(--form-input)"))\" stroke=\"var(--form-footer-border)\"/>"
                 svg += text(footer["text"]?.string ?? footer["dataSource"]?.string ?? "", p: footer, x: x+2, y: height-footerHeight+1,
-                            width: max(0,w-4), height: footerHeight, size: font(footer,height:footerHeight), center: false,
+                            width: max(0,w-4), height: footerHeight, size: font(footer,height:footerHeight,theme:theme), center: false,
                             ink: color(footer["stroke"]?.string, fallback: ink),
                             singleLine: footer["multiline"]?.string != "yes" && footer["wordwrap"]?.string != "normal")
             }
@@ -458,23 +545,26 @@ struct FormPreviewRenderer {
         let alignment = p["textAlign"]?.string ?? (center ? "center" : "left")
         let anchor = alignment == "center" ? "middle" : alignment == "right" ? "end" : "start"
         let origin = anchor == "middle" ? width/2 : anchor == "end" ? width : 0
+        let fallbackFamily = FormPlatformStyle(platform).fallbackFamily
         let family = p["fontFamily"]?.string.flatMap {
-            !$0.hasPrefix("%") && NSFont(name: $0, size: size) != nil ? $0 + ", " + FormTextLayout.fallbackFamily : nil
-        } ?? FormTextLayout.fallbackFamily
+            !$0.hasPrefix("%") && FormFontFace.installed($0, size: size) ? $0 + ", " + fallbackFamily : nil
+        } ?? fallbackFamily
         let weight = p["fontWeight"]?.string == "bold"
             || p["fontWeight"] == nil && p["fontTheme"]?.string == "main" ? "bold" : "normal"
         let italic = p["fontStyle"]?.string == "italic" ? "italic" : "normal"
         let decoration = p["textDecoration"]?.string == "underline" ? "underline" : "none"
         let layout = FormTextLayout(text: value, width: width, size: size, properties: p,
-                                    maxLines: singleLine ? 1 : Int(max(1, min(100, ceil(height / max(1, size * 1.2))))))
+                                    maxLines: singleLine ? 1 : Int(max(1, min(100, ceil(height / max(1, size * 1.2))))),
+                                    platform: platform)
+        let face = FormTextLayout.font(size: size, properties: p, platform: platform)
         let ascent = layout.lines.first?.ascent ?? size
         let descent = layout.lines.first?.descent ?? 0
-        let capHeight = Double(FormTextLayout.font(size: size, properties: p).capHeight)
+        let capHeight = face.capHeight
         var vertical = ["text", "groupBox"].contains(p["type"]?.string ?? "") || layout.lines.count > 1
             ? max(size, ceil(ascent)) : (height-capHeight-descent)/2+capHeight
         if (p["type"] == nil || ["text", "input", "listbox", "listboxColumn", "listboxHeader", "listboxFooter"].contains(p["type"]?.string ?? "")),
            let alignment = p["verticalAlign"]?.string, ["top", "middle", "bottom"].contains(alignment) {
-            let baseline = max(ceil(ascent), Double(NSLayoutManager().defaultBaselineOffset(for: FormTextLayout.font(size: size, properties: p))))
+            let baseline = max(ceil(ascent), face.baselineOffset)
             let blockHeight = ceil(baseline + (layout.lines.last?.descent ?? descent)) + (Double(layout.lines.count)-1)*layout.lineHeight + 1
             let space = max(0, height-blockHeight)
             vertical = baseline + (alignment == "middle" ? floor(space/2) : alignment == "bottom" ? space : 0)
@@ -501,12 +591,15 @@ struct FormPreviewRenderer {
     }
 
     private func measure(_ text: String, size: Double, p: FormValue) -> Double {
-        let font = FormTextLayout.font(size: size, properties: p)
-        return (FormTextLayout.bounded(text) as NSString).size(withAttributes: [.font: font]).width
+        FormTextLayout.font(size: size, properties: p, platform: platform).width(FormTextLayout.bounded(text))
     }
 
-    private func font(_ properties: FormValue, height: Double, glass: Bool = true) -> Double {
+    private func font(_ properties: FormValue, height: Double, theme: FormTheme = .glassLight) -> Double {
         if let size = properties["fontSize"]?.double, size > 0, size.isFinite { return max(1,min(256,size)) }
+        if theme.platform == .windows {
+            return FormPlatformStyle.windowsFontSize(theme, fontTheme: properties["fontTheme"]?.string)
+        }
+        let glass = theme.glass
         if properties["fontTheme"]?.string == "main" { return 13 }
         if properties["fontTheme"]?.string == "normal",
            !["button", "dropdown", "checkbox", "radio", "groupBox"].contains(properties["type"]?.string ?? "") { return 13 }

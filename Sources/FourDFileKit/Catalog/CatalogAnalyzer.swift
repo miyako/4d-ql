@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 
 public enum CatalogError: Error, CustomStringConvertible {
     case invalid(String)
@@ -18,12 +21,14 @@ public struct CatalogAnalyzer: FileAnalyzer {
         guard source.size <= 32 * 1024 * 1024 else {
             throw CatalogError.invalid("XML exceeds the 32 MiB catalog size limit")
         }
-        let parser = XMLParser(data: try source.read(at: 0, length: Int(source.size)))
+        let data = try source.read(at: 0, length: Int(source.size))
+        if XMLParser.declaresUnreportedEntities(data) { throw CatalogError.invalid("custom XML entities are not supported") }
+        let parser = XMLParser(data: data)
         let document = CatalogDocument()
         parser.delegate = document
         parser.shouldResolveExternalEntities = false
         parser.externalEntityResolvingPolicy = .never
-        let parsed = parser.parse()
+        let parsed = parser.parseStrictly()
         if let failure = document.failure { throw CatalogError.invalid(failure) }
         guard parsed else {
             throw CatalogError.invalid("XML at line \(parser.lineNumber), column \(parser.columnNumber): \(parser.parserError?.localizedDescription ?? "parse failed")")
@@ -58,10 +63,11 @@ private final class CatalogDocument: NSObject, XMLParserDelegate {
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
                 qualifiedName qName: String?, attributes attributeDict: [String: String]) {
+        guard failure == nil else { return }
         elementCount += 1
         guard elementCount <= 200_000, stack.count < 128 else {
             failure = "XML exceeds the element or nesting limit"
-            parser.abortParsing()
+            parser.stopFromDelegate()
             return
         }
         let node = CatalogNode(elementName, attributeDict)
@@ -75,17 +81,17 @@ private final class CatalogDocument: NSObject, XMLParserDelegate {
 
     func parser(_ parser: XMLParser, foundInternalEntityDeclarationWithName name: String, value: String?) {
         failure = "custom XML entities are not supported"
-        parser.abortParsing()
+        parser.stopFromDelegate()
     }
 
     func parser(_ parser: XMLParser, foundExternalEntityDeclarationWithName name: String, publicID: String?, systemID: String?) {
         failure = "external XML entities are not supported"
-        parser.abortParsing()
+        parser.stopFromDelegate()
     }
 
     func parser(_ parser: XMLParser, resolveExternalEntityName name: String, systemID: String?) -> Data? {
         failure = "external XML entities are not supported"
-        parser.abortParsing()
+        parser.stopFromDelegate()
         return nil
     }
 }

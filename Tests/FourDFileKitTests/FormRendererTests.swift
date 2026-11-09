@@ -12,15 +12,15 @@ final class FormRendererTests: XCTestCase {
         for (project, form) in [("FormProject", "Controls"), ("FormStaticProject", "Root"),
                                 ("FormBenchmarkProject", "References")] {
             let url = try fixture(project, form)
-            let result = try FormRenderer().render(url: url)
-            XCTAssertEqual(result.html, PreviewPipeline().html(for: url))
+            let result = try FormRenderer().render(url: url, platform: .macOS)
+            XCTAssertEqual(result.html, PreviewPipeline(analyzers: .macOSReference).html(for: url))
             XCTAssertFalse(result.html.contains("<script"))
             XCTAssertTrue(result.html.contains("Content-Security-Policy"))
         }
     }
 
     func testVersionedDocumentContainsResolvedProjectResources() throws {
-        let result = try FormRenderer().render(url: fixture("FormProject", "Controls"), preferredLanguages: ["en"])
+        let result = try FormRenderer().render(url: fixture("FormProject", "Controls"), preferredLanguages: ["en"], platform: .macOS)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: result.document.jsonData()) as? [String: Any])
         XCTAssertEqual(json["schemaVersion"] as? Int, 1)
         XCTAssertEqual(json["referencePlatform"] as? String, "macOS")
@@ -38,10 +38,10 @@ final class FormRendererTests: XCTestCase {
     }
 
     func testExplicitThemeAndPageAreInitiallySelected() throws {
-        let result = try FormRenderer().render(url: fixture("FormProject", "Controls"),
+        let result = try FormRenderer().render(url: fixture("FormProject", "Controls"), platform: .macOS,
             options: FormRenderOptions(initialTheme: .classicDark, initialPage: 2))
         XCTAssertTrue(result.html.contains("id=\"theme-classicDark\" checked>"))
-        for theme in FormTheme.allCases {
+        for theme in FormPlatform.macOS.themes {
             XCTAssertTrue(result.html.contains("id=\"page-\(theme.rawValue)-2\" checked>"))
             XCTAssertFalse(result.html.contains("id=\"page-\(theme.rawValue)-1\" checked>"))
         }
@@ -51,14 +51,14 @@ final class FormRendererTests: XCTestCase {
 
     func testForcedColorSchemeCannotBeOverridden() throws {
         let url = try fixture("FormStaticProject", "Base")
-        XCTAssertThrowsError(try FormRenderer().render(url: url, options: FormRenderOptions(initialTheme: .classicLight))) {
+        XCTAssertThrowsError(try FormRenderer().render(url: url, platform: .macOS, options: FormRenderOptions(initialTheme: .classicLight))) {
             guard case FormRenderError.unavailableTheme(.classicLight) = $0 else { return XCTFail("\($0)") }
         }
-        XCTAssertNoThrow(try FormRenderer().render(url: url, options: FormRenderOptions(initialTheme: .classicDark)))
+        XCTAssertNoThrow(try FormRenderer().render(url: url, platform: .macOS, options: FormRenderOptions(initialTheme: .classicDark)))
     }
 
     func testUnavailablePageReportsAnError() throws {
-        XCTAssertThrowsError(try FormRenderer().render(url: fixture("FormProject", "Controls"),
+        XCTAssertThrowsError(try FormRenderer().render(url: fixture("FormProject", "Controls"), platform: .macOS,
             options: FormRenderOptions(initialPage: 99))) {
             guard case FormRenderError.unavailablePage(99) = $0 else { return XCTFail("\($0)") }
         }
@@ -66,7 +66,7 @@ final class FormRendererTests: XCTestCase {
 
     func testEmptyTypedModelsReportAnError() throws {
         let renderer = FormRenderer()
-        var form = try renderer.analyze(url: fixture("FormProject", "Controls"))
+        var form = try renderer.analyze(url: fixture("FormProject", "Controls"), platform: .macOS)
         for index in form.appearances.indices { form.appearances[index].pages = [] }
         XCTAssertThrowsError(try renderer.render(form: form)) {
             guard case FormRenderError.noAppearance = $0 else { return XCTFail("\($0)") }
@@ -79,7 +79,7 @@ final class FormRendererTests: XCTestCase {
 
     func testLanguageAndStaticCompositionUseTheSameAnalyzedModel() throws {
         let renderer = FormRenderer()
-        let form = try renderer.analyze(url: fixture("FormStaticProject", "Root"), preferredLanguages: ["fr"])
+        let form = try renderer.analyze(url: fixture("FormStaticProject", "Root"), preferredLanguages: ["fr"], platform: .macOS)
         let result = try renderer.render(form: form)
         XCTAssertEqual(form.localizationLanguage, "fr")
         XCTAssertTrue(result.html.contains("Enregistrer"))
@@ -95,16 +95,16 @@ final class FormRendererTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("FormRenderer-" + UUID().uuidString + ".4DForm")
         try Data("{invalid".utf8).write(to: url)
         addTeardownBlock { try FileManager.default.removeItem(at: url) }
-        XCTAssertThrowsError(try FormRenderer().render(url: url))
+        XCTAssertThrowsError(try FormRenderer().render(url: url, platform: .macOS))
     }
 
     func testPageZeroOnlyFormsHaveAVisibleDefaultPage() throws {
-        var form = try FormRenderer().analyze(url: fixture("FormProject", "Controls"))
+        var form = try FormRenderer().analyze(url: fixture("FormProject", "Controls"), platform: .macOS)
         for index in form.appearances.indices {
             form.appearances[index].pages = form.appearances[index].pages.filter { $0.number == 0 }
         }
         let result = try FormRenderer().render(form: form)
-        for theme in FormTheme.allCases {
+        for theme in FormPlatform.macOS.themes {
             XCTAssertTrue(result.html.contains("id=\"page-\(theme.rawValue)-0\" checked>"))
         }
         XCTAssertTrue(result.html.contains("Contact"))

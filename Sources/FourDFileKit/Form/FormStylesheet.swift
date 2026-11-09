@@ -1,11 +1,86 @@
 import Foundation
 
+/// The native platform whose form appearances are reproduced.
+public enum FormPlatform: String, CaseIterable, Codable {
+    case macOS, windows
+
+    /// The platform of the running process.
+    public static var current: FormPlatform {
+        #if os(Windows)
+        return .windows
+        #else
+        return .macOS
+        #endif
+    }
+
+    /// Appearances analyzed for this platform, in output order.
+    public var themes: [FormTheme] {
+        switch self {
+        case .macOS: return [.classicLight, .classicDark, .glassLight, .glassDark]
+        case .windows: return [.windowsClassic, .fluentLight, .fluentDark]
+        }
+    }
+
+    public var label: String { self == .macOS ? "macOS" : "Windows" }
+
+    /// Project stylesheet loaded after `styleSheets.css` (4D's platform-specific file).
+    public var stylesheetName: String { self == .macOS ? "styleSheets_mac.css" : "styleSheets_windows.css" }
+
+    /// The `media` value of form `css` entries that apply to this platform.
+    public var cssMedia: String { self == .macOS ? "mac" : "windows" }
+}
+
 public enum FormTheme: String, CaseIterable, Encodable {
     case classicLight, classicDark, glassLight, glassDark
-    public var dark: Bool { self == .classicDark || self == .glassDark }
+    /// Windows Classic (Win32 controls) is light-only in 4D.
+    case windowsClassic
+    /// Fluent UI (WinUI 3) light and dark.
+    case fluentLight, fluentDark
+
+    public var platform: FormPlatform {
+        switch self {
+        case .classicLight, .classicDark, .glassLight, .glassDark: return .macOS
+        case .windowsClassic, .fluentLight, .fluentDark: return .windows
+        }
+    }
+    public var dark: Bool { self == .classicDark || self == .glassDark || self == .fluentDark }
     public var glass: Bool { self == .glassLight || self == .glassDark }
+    public var fluent: Bool { self == .fluentLight || self == .fluentDark }
     public var label: String {
-        "\(glass ? "Liquid Glass" : "Classic") \(dark ? "dark" : "light")"
+        switch self {
+        case .windowsClassic: return "Windows Classic"
+        case .fluentLight: return "Fluent UI light"
+        case .fluentDark: return "Fluent UI dark"
+        default: return "\(glass ? "Liquid Glass" : "Classic") \(dark ? "dark" : "light")"
+        }
+    }
+    /// The CSS `form-theme` media value 4D matches for this appearance.
+    public var mediaName: String {
+        switch self {
+        case .classicLight, .classicDark: return "mac-classic"
+        case .glassLight, .glassDark: return "liquid-glass"
+        case .windowsClassic: return "win-classic"
+        case .fluentLight, .fluentDark: return "fluent-ui"
+        }
+    }
+
+    /// The appearance used when a form or subform forces `colorScheme`.
+    /// Windows Classic has no dark variant and ignores the request.
+    public func forcing(_ colorScheme: String?) -> FormTheme {
+        guard colorScheme == "light" || colorScheme == "dark" else { return self }
+        let dark = colorScheme == "dark"
+        switch self {
+        case .classicLight, .classicDark: return dark ? .classicDark : .classicLight
+        case .glassLight, .glassDark: return dark ? .glassDark : .glassLight
+        case .windowsClassic: return .windowsClassic
+        case .fluentLight, .fluentDark: return dark ? .fluentDark : .fluentLight
+        }
+    }
+
+    /// Whether this appearance is rendered for a form whose `colorScheme` is forced.
+    public func permits(colorScheme: String?) -> Bool {
+        guard colorScheme == "light" || colorScheme == "dark" else { return true }
+        return dark == (colorScheme == "dark")
     }
 }
 
@@ -93,7 +168,7 @@ struct FormStylesheet {
                 let feature = ns.substring(with: match.range(at: 1))
                 let value = ns.substring(with: match.range(at: 2))
                 return feature == "prefers-color-scheme" ? value == (theme.dark ? "dark" : "light")
-                    : value == (theme.glass ? "liquid-glass" : "mac-classic")
+                    : value == theme.mediaName
             }
         }
     }

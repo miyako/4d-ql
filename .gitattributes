@@ -1,0 +1,3 @@
+# Fixtures are byte-exact inputs; never convert their line endings.
+Tests/Fixtures/** -text
+Tests/FourDFileKitTests/Fixtures/** -text
