@@ -1,0 +1,83 @@
+{
+  "kind": 1,
+  "table": 1,
+  "columns": [
+    {
+      "title": "Region",
+      "source": "[Customers]Region",
+      "hidden": 0,
+      "width": 120,
+      "repeated": 0,
+      "format": "",
+      "titleSize": 12,
+      "titleBold": 1,
+      "titleColor": 0,
+      "titleBackground": 14544639,
+      "titleJustification": 0,
+      "totalOperators": 0,
+      "totalText": "Grand total",
+      "bottomBorderThickness": 1,
+      "bottomBorderColor": 0
+    },
+    {
+      "title": "Customer",
+      "source": "[Customers]Name",
+      "hidden": 0,
+      "width": 180,
+      "repeated": 1,
+      "format": "",
+      "titleSize": 12,
+      "titleBold": 1,
+      "titleColor": 0,
+      "titleBackground": 14544639,
+      "titleJustification": 0,
+      "totalOperators": 0,
+      "totalText": "",
+      "bottomBorderThickness": 1,
+      "bottomBorderColor": 0
+    },
+    {
+      "title": "Amount",
+      "source": "[Customers]Amount",
+      "hidden": 0,
+      "width": 110,
+      "repeated": 1,
+      "format": "###,##0.00",
+      "titleSize": 12,
+      "titleBold": 1,
+      "titleColor": 0,
+      "titleBackground": 14544639,
+      "titleJustification": 0,
+      "totalOperators": 17,
+      "totalText": "",
+      "bottomBorderThickness": 4,
+      "bottomBorderColor": 1193046
+    }
+  ],
+  "rows": [
+    0,
+    0,
+    0
+  ],
+  "unit": 0,
+  "header": {
+    "left": "Sales report",
+    "center": "Quarterly summary",
+    "right": "2026",
+    "height": 40
+  },
+  "footer": {
+    "left": "Confidential",
+    "center": "",
+    "right": "Page #",
+    "height": 30
+  },
+  "sortColumns": [
+    1,
+    3
+  ],
+  "sortOrders": [
+    1,
+    -1
+  ]
+}
