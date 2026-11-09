@@ -2,14 +2,15 @@ import AppKit
 import CoreGraphics
 import Foundation
 import IOKit
+import Vision
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(1)
 }
 
-guard CommandLine.arguments.count == 3 else {
-    fail("usage: finder-form-preview <form.4DForm> <screenshot.png>")
+guard (3...4).contains(CommandLine.arguments.count) else {
+    fail("usage: finder-form-preview <preview-file> <screenshot.png> [expected-visible-text]")
 }
 let form = URL(fileURLWithPath: CommandLine.arguments[1]).standardizedFileURL
 let output = URL(fileURLWithPath: CommandLine.arguments[2]).standardizedFileURL
@@ -113,6 +114,23 @@ do {
         if visible { break }
     }
     guard visible else { fail("The OS screenshot is transparent, not usable preview evidence.") }
+    if CommandLine.arguments.count == 4 {
+        let recognition = VNRecognizeTextRequest()
+        recognition.recognitionLevel = .accurate
+        let handler = VNImageRequestHandler(url: output)
+        try handler.perform([recognition])
+        let text = (recognition.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+        let expected = CommandLine.arguments[3]
+        guard text.localizedCaseInsensitiveContains(expected) else {
+            fail("Finder preview is missing expected visible text '\(expected)'. Recognized text:\n\(text)")
+        }
+        for error in ["No preview available", "could not be initialized", "web content process stopped"] {
+            guard !text.localizedCaseInsensitiveContains(error) else {
+                fail("Finder preview contains an error: \(error)")
+            }
+        }
+        print("Verified visible preview content: \(expected)")
+    }
     print("Finder window \(number): \(bitmap.pixelsWide) x \(bitmap.pixelsHigh), \(output.path)")
 } catch {
     fail(String(describing: error))
