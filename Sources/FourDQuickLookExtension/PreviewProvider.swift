@@ -28,7 +28,7 @@ final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
 
         let pipeline = PreviewPipeline()
         let html: String
-        if url.pathExtension.lowercased() == "4dform" {
+        if ["4dform", "4dcatalog"].contains(url.pathExtension.lowercased()) {
             do {
                 let group = Bundle.main.object(forInfoDictionaryKey: "FourDProjectGroupIdentifier") as? String ?? ""
                 if group.isEmpty {

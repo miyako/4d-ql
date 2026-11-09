@@ -202,6 +202,23 @@ final class ProjectAccessTests: XCTestCase {
         assertError(.unsupportedVersion) { _ = try exchange.readReply(to: request) }
     }
 
+    func testCatalogSourceUsesCatalogSizeLimitAndVerifiesChanges() throws {
+        let catalog = root.appendingPathComponent("catalog.4DCatalog")
+        try Data(repeating: 32, count: ProjectPreviewExchange.maximumSourceBytes + 1).write(to: catalog)
+        let request = try exchange.prepareRequest(fileURL: catalog, rendererBuild: "test-build")
+        try ProjectPreviewExchange.verifySource(fileURL: catalog, expectedHash: request.sourceSHA)
+        try Data("<base/>".utf8).write(to: catalog)
+        assertError(.sourceChanged) {
+            try ProjectPreviewExchange.verifySource(fileURL: catalog, expectedHash: request.sourceSHA)
+        }
+        let handle = try FileHandle(forWritingTo: catalog)
+        try handle.truncate(atOffset: UInt64(ProjectPreviewExchange.maximumCatalogBytes + 1))
+        try handle.close()
+        assertError(.oversizedFile) {
+            _ = try exchange.prepareRequest(fileURL: catalog, rendererBuild: "test-build")
+        }
+    }
+
     func testReplyCannotContainBothHTMLAndError() throws {
         let request = try post()
         try writeReply(ProjectPreviewReply(id: request.id, sourceSHA: request.sourceSHA,
@@ -496,6 +513,9 @@ final class ProjectPreviewServiceTests: XCTestCase {
         let id = UUID().uuidString
         try ProjectPreviewServiceTransport.validatePreview(fileURL: url, nonce: id, sourceSHA: sourceHash,
                                                            rendererBuild: "42", expectedRendererBuild: "42")
+        try ProjectPreviewServiceTransport.validatePreview(
+            fileURL: URL(fileURLWithPath: "/project/Project/Sources/catalog.4DCatalog"),
+            nonce: id, sourceSHA: sourceHash, rendererBuild: "42", expectedRendererBuild: "42")
         for nonce in ["../outside", id.lowercased(), ""] {
             XCTAssertThrowsError(try ProjectPreviewServiceTransport.validatePreview(fileURL: url, nonce: nonce,
                 sourceSHA: sourceHash, rendererBuild: "42", expectedRendererBuild: "42"))

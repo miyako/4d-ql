@@ -82,7 +82,7 @@ public enum ProjectPreviewServiceTransport {
                                        rendererBuild: String, expectedRendererBuild: String) throws {
         guard fileURL.isFileURL, fileURL.path.hasPrefix("/"), fileURL.path.utf8.count <= 4_096,
               !fileURL.path.utf8.contains(0), fileURL.path == fileURL.standardizedFileURL.path,
-              fileURL.pathExtension.lowercased() == "4dform",
+              ["4dform", "4dcatalog"].contains(fileURL.pathExtension.lowercased()),
               UUID(uuidString: nonce)?.uuidString == nonce,
               sourceSHA.utf8.count == 64,
               sourceSHA.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),

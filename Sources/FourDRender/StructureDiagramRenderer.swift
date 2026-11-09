@@ -15,8 +15,7 @@ struct StructureDiagramRenderer {
     }
 
     func render(_ diagram: StructureDiagram) -> String {
-        // Bound even hand-built reports, not just reports produced by presenters.
-        let nodes = diagram.nodes.prefix(24).map { node -> DiagramNode in
+        let nodes = diagram.nodes.map { node -> DiagramNode in
             var node = node
             node.omittedFields = max(0, node.omittedFields) + max(0, node.fields.count - 8)
             node.fields = Array(node.fields.prefix(8))
@@ -27,7 +26,7 @@ struct StructureDiagramRenderer {
         for (index, box) in boxes.enumerated() where indices[box.node.id] == nil {
             indices[box.node.id] = index
         }
-        let edges = diagram.edges.prefix(64).filter {
+        let edges = diagram.edges.filter {
             indices[$0.sourceNode] != nil && indices[$0.destinationNode] != nil
         }
         let omittedTables = max(0, diagram.omittedTables) + max(0, diagram.nodes.count - nodes.count)
@@ -63,7 +62,7 @@ struct StructureDiagramRenderer {
         }
         let valid = nodes.map { node -> DiagramPosition? in
             guard let p = node.position, p.x.isFinite, p.y.isFinite,
-                  abs(p.x) <= 10_000, abs(p.y) <= 10_000 else { return nil }
+                  abs(p.x) <= 1_000_000_000, abs(p.y) <= 1_000_000_000 else { return nil }
             return p
         }
         // Preserve a mostly complete saved layout only if the cards do not collide.
@@ -85,7 +84,7 @@ struct StructureDiagramRenderer {
             }
             let extentX = saved.map { boxes[$0].x + boxes[$0].width }.max() ?? 0
             let extentY = saved.map { boxes[$0].y + boxes[$0].height }.max() ?? 0
-            if !overlapping && extentX <= 12_000 && extentY <= 12_000 {
+            if !overlapping {
                 var bottom = extentY + 48
                 for i in boxes.indices where valid[i] == nil {
                     boxes[i].x = margin
@@ -95,7 +94,7 @@ struct StructureDiagramRenderer {
                 return boxes
             }
         }
-        let columns = min(3, boxes.count)
+        let columns = min(boxes.count, max(3, Int(ceil(sqrt(Double(boxes.count))))))
         guard columns > 0 else { return boxes }
         let columnWidths = (0..<columns).map { column in
             boxes.indices.filter { $0 % columns == column }.map { boxes[$0].width }.max() ?? 0

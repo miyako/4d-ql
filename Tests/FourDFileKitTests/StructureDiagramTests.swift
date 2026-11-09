@@ -115,14 +115,15 @@ final class StructureDiagramTests: XCTestCase {
             XCTAssertFalse(html.contains("NaN"))
             XCTAssertFalse(html.contains("Infinity"))
         }
-        let excessiveSpan = render(StructureDiagram(nodes: [
+        let wideLayout = render(StructureDiagram(nodes: [
             node("A", position: DiagramPosition(x: -10_000, y: 0)),
             node("B", position: DiagramPosition(x: 10_000, y: 0))
         ], edges: []))
-        XCTAssertEqual(grid, excessiveSpan)
+        XCTAssertTrue(wideLayout.contains("width=\"20264.0\" height=\"124.0\" viewBox=\"0 0 20264.0 124.0\""))
+        XCTAssertTrue(wideLayout.contains("data-node-id=\"B\" transform=\"translate(20024.0 24.0)\""))
     }
 
-    func testOmissionsAndDefensiveLimits() {
+    func testFieldOmissionsWithoutTableOrRelationCaps() {
         let fields = (0..<10).map { DiagramField(id: "\($0)", name: "Field \($0)", type: "Text") }
         let nodes = (0..<25).map { DiagramNode(id: "\($0)", title: "Table \($0)", fields: fields, omittedFields: 3) }
         let edges = (0..<65).map {
@@ -130,18 +131,41 @@ final class StructureDiagramTests: XCTestCase {
                         destinationField: "1", label: "Relation \($0)")
         }
         let html = render(StructureDiagram(nodes: nodes, edges: edges, omittedTables: 7, omittedRelations: 9))
-        XCTAssertTrue(html.contains("24 tables · 64 relations · 8 tables omitted · 10 relations omitted · 120 fields omitted"))
+        XCTAssertTrue(html.contains("25 tables · 65 relations · 7 tables omitted · 9 relations omitted · 125 fields omitted"))
         XCTAssertFalse(html.contains("<p class=\"diagram-summary\">"))
         XCTAssertFalse(html.contains("<p class=\"diagram-key\">"))
         XCTAssertTrue(html.contains(">5 fields omitted</text>"))
         XCTAssertFalse(html.contains("data-field-id=\"8\""))
-        XCTAssertFalse(html.contains("data-node-id=\"24\""))
+        XCTAssertTrue(html.contains("data-node-id=\"24\""))
         let dangling = render(StructureDiagram(nodes: [node("A")], edges: [
             DiagramEdge(sourceNode: "A", sourceField: "id", destinationNode: "missing",
                         destinationField: "id", label: "Missing")
         ]))
         XCTAssertTrue(dangling.contains("1 relations omitted"))
         XCTAssertTrue(render(StructureDiagram(nodes: [], edges: [], omittedTables: 4)).contains("4 tables omitted"))
+    }
+
+    func testHundredsOfTablesAndRelationsFitInsideExpandedCanvas() {
+        let nodes = (0..<400).map { node("\($0)") }
+        let edges = (0..<399).map {
+            DiagramEdge(sourceNode: "\($0)", sourceField: "parent", destinationNode: "\($0 + 1)",
+                        destinationField: "id", label: "Join")
+        }
+        let html = render(StructureDiagram(nodes: nodes, edges: edges))
+        XCTAssertEqual(html.components(separatedBy: "class=\"diagram-node\"").count - 1, 400)
+        XCTAssertEqual(html.components(separatedBy: "class=\"diagram-edge\"").count - 1, 399)
+        XCTAssertTrue(html.contains("400 tables · 399 relations."))
+        XCTAssertTrue(html.contains("width=\"4216.0\" height=\"2480.0\" viewBox=\"0 0 4216.0 2480.0\""))
+        XCTAssertTrue(html.contains("data-node-id=\"399\" transform=\"translate(3976.0 2380.0)\""))
+        XCTAssertFalse(html.contains("tables omitted"))
+        XCTAssertFalse(html.contains("relations omitted"))
+    }
+
+    func testHundredsOfSavedPositionsBeyondFormerCanvasLimitArePreserved() {
+        let nodes = (0..<300).map { node("\($0)", position: DiagramPosition(x: Double($0) * 500, y: Double($0) * 100)) }
+        let html = render(StructureDiagram(nodes: nodes, edges: []))
+        XCTAssertTrue(html.contains("data-node-id=\"299\" transform=\"translate(149524.0 29924.0)\""))
+        XCTAssertTrue(html.contains("width=\"149764.0\" height=\"30024.0\" viewBox=\"0 0 149764.0 30024.0\""))
     }
 
     func testConnectorsAnchorToActualFieldRowsAndMissingFieldHeader() {

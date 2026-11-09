@@ -4,9 +4,7 @@ import FourDFileKit
 public struct CatalogPresenter: ReportPresenter {
     public init() {}
     public var kinds: [String] { ["catalog.structure"] }
-    static let maxDiagramTables = 24
     static let maxDiagramFields = 8
-    static let maxDiagramRelations = 64
 
     public func report(for model: AnalysisModel) -> Report? {
         guard let info = model as? CatalogInfo else { return nil }
@@ -46,12 +44,12 @@ public struct CatalogPresenter: ReportPresenter {
     }
 
     private func diagram(_ info: CatalogInfo) -> StructureDiagram {
-        let shown = info.tables.prefix(Self.maxDiagramTables)
-        let eligible = info.relations.filter {
+        let shown = info.tables
+        let relations = info.relations.filter {
             guard let source = $0.source.tableIndex, let destination = $0.destination.tableIndex else { return false }
-            return source < shown.count && destination < shown.count && $0.source.fieldIndex != nil && $0.destination.fieldIndex != nil
+            return shown.indices.contains(source) && shown.indices.contains(destination)
+                && $0.source.fieldIndex != nil && $0.destination.fieldIndex != nil
         }
-        let relations = Array(eligible.prefix(Self.maxDiagramRelations))
         var connected: [Int: Set<Int>] = [:]
         for relation in relations {
             for endpoint in [relation.source, relation.destination] {
