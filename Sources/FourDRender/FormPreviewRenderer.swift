@@ -589,7 +589,7 @@ struct FormPreviewRenderer {
         return svg + "</g>"
     }
 
-    private func text(_ value: String, p: FormValue, x: Double, y: Double, width: Double, height: Double,
+    func text(_ value: String, p: FormValue, x: Double, y: Double, width: Double, height: Double,
                       size: Double, center: Bool, ink: String, singleLine: Bool = false) -> String {
         let padded = ["text", "input"].contains(p["type"]?.string ?? "")
         let left = padded ? unit(p["paddingLeft"], size: size, fallback: 0) : 0
@@ -728,7 +728,7 @@ struct FormPreviewRenderer {
         return values.isEmpty ? "" : " stroke-dasharray=\"\(values.map(n).joined(separator:" "))\""
     }
 
-    private func color(_ value: String?, fallback: String) -> String {
+    func color(_ value: String?, fallback: String) -> String {
         guard let value else { return fallback }
         if value == "automatic" { return fallback }
         if value == "automaticAlternate" { return "var(--form-alternate)" }

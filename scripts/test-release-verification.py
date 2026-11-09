@@ -38,7 +38,7 @@ class ReleaseVerificationTests(unittest.TestCase):
             for token, value in [
                 ("__BUNDLE_ID__", BUNDLE_ID), ("__VERSION__", "1.2.3"),
                 ("__BUILD__", "123"), ("__PROJECT_GROUP__", GROUP),
-                ("__CONTENT_TYPES__", "<string>com.4d.4d.form</string>"),
+                ("__CONTENT_TYPES__", "<string>com.4d.4d.form</string><string>com.4d.4d.labelFile</string>"),
             ]:
                 text = text.replace(token, value)
             info = plistlib.loads(text.encode())
@@ -239,7 +239,8 @@ class ReleaseVerificationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.verify()
         attributes["QLIsDataBasedPreview"] = False
-        form = host["UTImportedTypeDeclarations"][0]
+        form = next(item for item in host["UTImportedTypeDeclarations"]
+                    if item["UTTypeIdentifier"] == "com.4d.4d.form")
         form["UTTypeTagSpecification"]["public.filename-extension"] = ["4dform"]
         with self.assertRaisesRegex(ValueError, "both filename cases"):
             self.verify()
@@ -254,6 +255,18 @@ class ReleaseVerificationTests(unittest.TestCase):
     def test_non_hash_identity_rejected(self):
         with self.assertRaisesRegex(ValueError, "certificate SHA-1"):
             verifier.verify(self.app, "1.2.3", "123", "-", BUNDLE_ID)
+
+    def test_label_registration_is_required(self):
+        attributes = self.info[self.bundles[1]]["NSExtension"]["NSExtensionAttributes"]
+        attributes["QLSupportedContentTypes"] = ["com.4d.4d.form"]
+        with self.assertRaisesRegex(ValueError, "4D Label previews"):
+            self.verify()
+        attributes["QLSupportedContentTypes"].append("com.4d.4d.labelFile")
+        label = next(item for item in self.info[self.app]["UTImportedTypeDeclarations"]
+                     if item["UTTypeIdentifier"] == "com.4d.4d.labelFile")
+        label["UTTypeTagSpecification"]["public.filename-extension"] = ["4lbp"]
+        with self.assertRaisesRegex(ValueError, "both filename cases"):
+            self.verify()
 
 
 if __name__ == "__main__":

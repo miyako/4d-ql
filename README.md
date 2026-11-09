@@ -16,6 +16,7 @@ file to see what is inside instead of a generic icon.
 | `.4df` saved query | condition cards with table/field numbers, comparison labels, AND/OR/EXCEPT connectors, saved values, and selection destination; original JSON folded below |
 | `.4st` saved set | selected-record count, address-span coverage and distribution, contiguous record-number ranges, and saved current record; empty/full-page compression decoded |
 | `.4qr` Quick Report | list/cross-table design template with saved widths, titles, fonts, colors, borders, header/footer text, sorts, subtotals and grand totals; no database or 4D runtime required |
+| `.4lbp` label | native XML label artwork and sheet layout, saved text, shapes, raster pictures, print order, margins, gaps and project table-form references |
 | `.4dm` method / class source | syntax-highlighted UTF-8 source with line numbers, line count and file size |
 | `.4DForm` form | approximate macOS form layout, page 0 plus selectable numbered pages, Classic / Liquid Glass light and dark appearances, local stylesheets, JSON pointers, static inherited/subforms and XLIFF labels |
 
@@ -39,6 +40,15 @@ These are design previews, not live/printed reports: field references use table
 and field numbers; tokenized formulas, records, total macros, pictures,
 pagination and native printer settings are not evaluated. See the
 [binary-format evidence and fixture workflow](docs/QUICK-REPORT-FORMAT.md).
+
+Label previews read the native XML `.4lbp` format used by the
+[4D Labels component](https://github.com/4d/4D-Labels), not JSON or legacy
+binary `.4lb` files. They show a static label design and inferred sheet layout;
+fields, formulas, label methods and printer settings are not executed.
+Saved table forms reuse the `.4DForm` renderer when a label resides within its
+project's `Project/Sources` or `Resources` tree and the form name resolves
+unambiguously. Missing forms and unsupported artwork produce preview notices.
+See [format semantics and limits](docs/LABEL-FORMAT.md).
 
 ### Shared form rendering
 

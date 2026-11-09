@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<label columns="2" rows="3" labels-per-record="1" start="1" document-name="Saved form reference (ShippingLabel in host project)" standard-code="" version="2">
+  <setting id="setting" auto-width="false" landscape="false" vertical="false" />
+  <size id="size" unit="pt" height="179" width="252" />
+  <margin id="margin" left="36" top="36" right="36" bottom="36" />
+  <gap id="gap" horizontal="12" vertical="12" />
+  <form id="form" name="ShippingLabel" number="999" />
+  <method id="method" name="" evaluate-per-label="false" />
+  <selects id="selects" />
+  </label>

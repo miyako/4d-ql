@@ -95,6 +95,60 @@ final class PreviewWebViewTests: XCTestCase {
         XCTAssertEqual(try evaluate("return document.querySelector('.form-zoom-controls output').value;", in: webView) as? String, "100%")
     }
 
+    func testLabelSheetArtworkAndZoomShareTheOwnedViewer() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".4lbp")
+        try Data("""
+        <label version="2" columns="2" rows="2" start="2">
+          <size width="200" height="100"/>
+          <objects><object type="rect" left="321" top="110.5" right="361" bottom="140.5"
+            fill-color="#ff0000" stroke-color="none"/></objects>
+        </label>
+        """.utf8).write(to: url)
+        addTeardownBlock { try FileManager.default.removeItem(at: url) }
+        let webView = load(PreviewPipeline().html(for: url))
+        let values = try XCTUnwrap(evaluate("""
+        const root = document.querySelector('.label-preview');
+        const canvases = [...root.querySelectorAll('.form-scroll>svg')];
+        const before = canvases.map(svg => svg.getBoundingClientRect().width);
+        const uses = canvases.map(svg => svg.querySelectorAll('use').length);
+        const target = document.getElementById(canvases[0].querySelector('use').getAttribute('href').slice(1));
+        const fill = getComputedStyle(target.querySelector(':scope > g > rect')).fill;
+        const slider = root.querySelector('input[type=range]');
+        slider.value = Math.log(2);
+        slider.dispatchEvent(new Event('input', {bubbles:true}));
+        return {before, after:canvases.map(svg => svg.getBoundingClientRect().width),
+            uses, fill, output:root.querySelector('output').value,
+            linked:target.id === canvases[1].querySelector('use').getAttribute('href').slice(1)};
+        """, in: webView) as? [String: Any])
+        XCTAssertEqual(values["before"] as? [Double], [200, 460])
+        XCTAssertEqual(values["after"] as? [Double], [400, 920])
+        XCTAssertEqual(values["uses"] as? [Int], [1, 3])
+        XCTAssertEqual(values["fill"] as? String, "rgb(255, 0, 0)")
+        XCTAssertEqual(values["output"] as? String, "200%")
+        XCTAssertEqual(values["linked"] as? Bool, true)
+        let point = try XCTUnwrap(evaluate("""
+        const svg = document.querySelector('.label-preview .form-scroll>svg');
+        svg.scrollIntoView({block:'start'});
+        const rect = svg.getBoundingClientRect();
+        return {x:rect.left+40, y:rect.top+40};
+        """, in: webView) as? [String: Double])
+        let configuration = WKSnapshotConfiguration()
+        configuration.rect = NSRect(x: try XCTUnwrap(point["x"]), y: try XCTUnwrap(point["y"]), width: 8, height: 8)
+        let captured = expectation(description: "Label artwork painted")
+        var image: NSImage?
+        webView.takeSnapshot(with: configuration) { result, error in
+            XCTAssertNil(error)
+            image = result
+            captured.fulfill()
+        }
+        wait(for: [captured], timeout: 10)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(image?.tiffRepresentation)))
+        let color = try XCTUnwrap(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.sRGB))
+        XCTAssertGreaterThan(color.redComponent, 0.9)
+        XCTAssertGreaterThan(color.redComponent - color.greenComponent, 0.7)
+        XCTAssertGreaterThan(color.redComponent - color.blueComponent, 0.7)
+    }
+
     func testFormZoomControlsBoundsAndScrollExtents() throws {
         let webView = load(try formHTML())
         let values = try XCTUnwrap(evaluate("""

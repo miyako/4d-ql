@@ -124,6 +124,16 @@ def verify(app, version, build, identity, bundle_id, project_group=None):
             set(forms[0].get("UTTypeTagSpecification", {}).get(
                 "public.filename-extension", [])) == {"4DForm", "4dform"},
             "4D Form UTI must register JSON conformance and both filename cases")
+    require("com.4d.4d.labelFile" in attributes.get("QLSupportedContentTypes", []),
+            "Quick Look must register 4D Label previews")
+    labels = [item for item in host_info.get("UTImportedTypeDeclarations", [])
+              if item.get("UTTypeIdentifier") == "com.4d.4d.labelFile"]
+    require(len(labels) == 1, "Host must import the 4D Label UTI exactly once")
+    require("public.data" in labels[0].get("UTTypeConformsTo", []) and
+            set(labels[0].get("UTTypeTagSpecification", {}).get(
+                "public.filename-extension", [])) == {"4lbp", "4LBP"} and
+            labels[0].get("UTTypeTagSpecification", {}).get("com.apple.ostype") == "4DET",
+            "4D Label UTI must register both filename cases and the native OSType")
     run("codesign", "--verify", "--deep", "--strict", "--all-architectures", str(app))
 
 
