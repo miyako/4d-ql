@@ -1,0 +1,46 @@
+//%attributes = {"invisible":true}
+var $i : Integer
+var $e : 4D.Entity
+var $out : Text
+Get database parameter(User param value; $out)
+$out:=Convert path POSIX to system($out)
+START TRANSACTION
+For ($i; 1; 100000)
+	$e:=ds.Plain.new()
+	$e.name:=String($i)
+	$e.save()
+End for
+VALIDATE TRANSACTION
+CREATE EMPTY SET([Plain]; "probe")
+SAVE SET("probe"; $out+"empty.4st")
+ALL RECORDS([Plain])
+CREATE SET([Plain]; "probe")
+SAVE SET("probe"; $out+"full.4st")
+QUERY([Plain]; [Plain]ID=1)
+CREATE SET([Plain]; "probe")
+SAVE SET("probe"; $out+"first.4st")
+QUERY([Plain]; [Plain]ID=32769)
+CREATE SET([Plain]; "probe")
+SAVE SET("probe"; $out+"boundary.4st")
+QUERY([Plain]; [Plain]ID=100000)
+CREATE SET([Plain]; "probe")
+SAVE SET("probe"; $out+"last.4st")
+QUERY([Plain]; [Plain]ID<=32768)
+CREATE SET([Plain]; "probe")
+SAVE SET("probe"; $out+"page.4st")
+QUERY([Plain]; [Plain]ID>=32769; *)
+QUERY([Plain]; &; [Plain]ID<=65536)
+CREATE SET([Plain]; "probe")
+SAVE SET("probe"; $out+"middle.4st")
+QUERY([Plain]; [Plain]ID<=65536)
+CREATE SET([Plain]; "probe")
+SAVE SET("probe"; $out+"two-pages.4st")
+QUERY([Plain]; [Plain]ID>=32769)
+CREATE SET([Plain]; "probe")
+SAVE SET("probe"; $out+"tail.4st")
+QUERY([Plain]; [Plain]ID<=10; *)
+QUERY([Plain]; |; [Plain]ID>=99990)
+CREATE SET([Plain]; "probe")
+SAVE SET("probe"; $out+"ends.4st")
+LOG EVENT(Into system standard outputs; "SET FIXTURES COMPLETE\n")
+QUIT 4D
