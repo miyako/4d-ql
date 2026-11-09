@@ -2,163 +2,151 @@
 
 ## Status and entry point
 
-The calibrated macOS implementation is shared by a public Swift API and the
-Quick Look extension. The independent image CLI lives in
-[4d-form](https://github.com/miyako/4d-form) and consumes the same libraries;
-the preliminary HTML/JSON-only executable is no longer packaged here.
-The macOS phase baseline is `16d44b6`; the shared interface is documented in
-[FORM-RENDERER.md](FORM-RENDERER.md).
+`FourDFileKit` and `FourDRender` build and test with Swift on Windows. The
+shared `FormRenderer` API renders forms for an explicit `FormPlatform`
+(`.macOS` or `.windows`); the Windows platform has three calibrated
+appearances: Windows Classic, Fluent UI light and Fluent UI dark. The macOS
+implementation, its output and its tests are unchanged. The shared interface
+is documented in [FORM-RENDERER.md](FORM-RENDERER.md).
 
-**No Windows executable, Windows native screenshot, Explorer integration or
-Windows runtime validation exists in this handover.** The current environment
-is macOS. The package declares macOS 12 and imports Apple frameworks; running
-`swift build` on Windows is not expected to succeed before adapters/package
-changes. Mac Classic/Liquid Glass measurements are not Windows measurements.
+The image CLI and its rasterizer live in
+[4d-form](https://github.com/miyako/4d-form); on Windows it rasterizes this
+HTML with WebView2 (Chromium). This repository still has **no Explorer preview
+handler or Windows packaging**; the Quick Look app, extension and
+project-access/XPC targets are declared only on macOS.
 
-The generated HTML and version-1 JSON are self-contained reference artifacts.
-A Windows browser may be useful for early inspection, but that is neither a
-validated Windows-native renderer nor a substitute for Windows font metrics.
+## Platform model
 
-## Reusable implementation and contracts
+| Platform | Themes (`rawValue`, label) | Project stylesheets | JSON |
+|---|---|---|---|
+| `.macOS` | `classicLight`, `classicDark`, `glassLight`, `glassDark` (Classic/Liquid Glass light/dark) | `styleSheets.css` + `styleSheets_mac.css`, media `mac` | schema 1, `"macOS"` |
+| `.windows` | `windowsClassic` "Windows Classic", `fluentLight` "Fluent UI light", `fluentDark` "Fluent UI dark" | `styleSheets.css` + `styleSheets_windows.css`, media `windows` | schema 2, `"Windows"` |
 
-| Surface | Reuse | Platform work |
+- `FormPlatform.current` is the host OS and is the default of
+  `FormRenderer.analyze/render` and `FormFileAnalyzer`. Pass the platform
+  explicitly for reproducible output on any host.
+- `FormTheme.platform` places every theme on exactly one platform. Windows
+  styles are never relabelled macOS styles, and vice versa.
+- Windows Classic is light-only. A form forcing `colorScheme: dark` renders
+  only `fluentDark`; forcing `light` renders `windowsClassic` and `fluentLight`.
+- CSS `form-theme` media: `win-classic` and `fluent-ui`; `prefers-color-scheme`
+  in form CSS follows the analyzed appearance, as on macOS.
+
+### Windows HTML contract
+
+The structure is the macOS one:
+`.form-preview > .form-appearance > .form-page > .form-scroll > svg[width][height]`,
+theme radios `#theme-<rawValue>`, `.form-themes`, `.form-pages` and
+`.form-caption` chrome, embedded pictures as `data:` URIs and no script.
+
+Unlike macOS, Windows selection never depends on the browser's
+`prefers-color-scheme`: exactly one theme radio is checked. It is the requested
+`initialTheme`, otherwise Fluent UI light when the form sets `fluentUI: true`
+(4D's opt-in), otherwise Windows Classic, restricted to the themes a forced
+`colorScheme` permits. A rasterizer selects another theme by checking its
+radio. `.form-appearance` carries `light win-classic`, `light fluent` or
+`dark fluent`. The shared report chrome (page palette, syntax colours) still
+follows the browser scheme; it is outside the form preview.
+
+## Platform services
+
+Algorithms (JSON, pointers, inheritance, CSS cascade, localization, wrapping,
+clipping, SVG generation) are shared. Only these narrow services differ:
+
+| Service | macOS | Windows |
 |---|---|---|
-| `FormValue.swift` | Ordered JSON, duplicate rejection, RFC 6901 value representation | Confirm Foundation Unicode/number behavior on Windows |
-| `FormDependencies.swift` | File/byte budgets, project conventions, local pointer rebasing, dependency provenance | Adapt path roots, drive/UNC handling, case sensitivity and reparse-point confinement |
-| `FormStaticExpansion.swift` | Ordered inheritance/subforms, cycles/limits, source context | Preserve the same contracts; do not execute methods |
-| `FormLocalization.swift` | XLIFF 1.x selection/ambiguity/budgets, entity rejection | Verify FoundationXML availability, locale data and XML behavior |
-| `FormStylesheet.swift` | Parsing/selectors/precedence and bounded matching | Separate platform/appearance context; current theme enum/media handling is macOS-specific and ignores Windows-only references |
-| `FormFileAnalyzer.analyzeForm` | Typed analysis seam and image-ID mapping | Extract/replace Apple image conversion |
-| `FormRenderer`, `FormPresenter` | Throwing API, versioned document, notices, shared report construction | Retain the API contract while selecting an actual Windows backend |
-| `FormPreviewRenderer` | Script-free SVG structure, ordering, clipping, sprites and control dispatch | Isolate font/control/palette policy; calibrate it on Windows |
-| `4d-form` (separate repository) | Independent image-product packaging around the shared API | Establish its Windows backend and image/output/error contracts separately |
+| Random-access reads (`ByteSource`) | `open`/`fstat`/`pread` | `CreateFileW`/`GetFileSizeEx`/`ReadFile` at explicit 64-bit offsets |
+| Picture conversion (`FormRasterImage`) | ImageIO | Windows Imaging Component (`CFourDWindows`); same 32-megapixel, 2,048-pixel and 4 MiB limits, EXIF orientation, PNG output |
+| Font measurement (`FormFontFace`, `DiagramTypography`) | CoreText/AppKit | DirectWrite (`CFourDWindows`): family lookup, weight/style, ascent/descent/cap height, line gap, advances |
+| Form palette/metrics/fonts (`FormPlatformStyle`) | existing calibration | measured Windows Classic and Fluent values; selected by the requested theme's platform, never by the host OS |
+| XML (`XMLParserPortability`) | Foundation `XMLParser` | FoundationXML (libxml2) hardened: documents declaring entities are rejected before parsing, strict error checking, no re-entrant abort |
 
-Do not fork the entire SVG renderer or start a second JSON/CSS parser.
-Introduce narrow platform services around the existing seams once a Windows
-environment can verify them. If another language is selected, use the version-1
-JSON as a reference/contract and port the bounded algorithms deliberately,
-rather than treating macOS effective styles as Windows output.
+`CFourDWindows` is a small C++17 target that compiles to nothing off Windows
+and links `windowscodecs`, `dwrite` and `ole32`. No SF Pro or other Apple
+font is used or redistributed on Windows; Windows text is measured with the
+installed Segoe UI (falling back through Tahoma and Arial).
 
-## Apple and POSIX dependencies to replace
+Rendering `.windows` on a macOS host, or `.macOS` on a Windows host, uses the
+host's font service with the target platform's palette and metrics. Text
+positions are then approximate; calibrated output requires a matching host.
 
-| Current dependency | Exact code location | Windows work to establish |
-|---|---|---|
-| `open`, `fstat`, `pread`, POSIX error text | `FourDFileKit/Core/ByteSource.swift` | Bounded random-access file implementation with 64-bit sizes/offsets and explicit short-read errors |
-| ImageIO, CoreGraphics, UniformTypeIdentifiers | `FourDFileKit/Form/FormAnalyzer.swift` (`FormImageLoader`) | Passive image decode/thumbnail/PNG encoding with the same pixel/byte limits; Windows Imaging Component is a candidate, not implemented |
-| CoreText/AppKit | `FourDRender/FormTextLayout.swift`, font/baseline helpers in `FormPreviewRenderer.swift` | Font lookup, traits, shaping, grapheme-safe wrapping, ascent/descent, line advances and justification; DirectWrite is a candidate, not implemented |
-| CoreText for non-form reports | `FourDRender/DiagramTypography.swift` | Split or adapt this dependency too if retaining the whole render target |
-| Foundation/macOS locale/XML facilities | `FormLocalization.swift` and related analyzers | Check Windows Swift/Foundation support and import boundaries rather than assuming parity |
-| QuickLookUI/AppKit, Security, NSXPC, app groups, scoped bookmarks | Host, extension, `FourDProjectAccess`, `FourDProjectPreviewService` | Exclude these from a Windows standalone target; they are macOS integration, not required rendering algorithms |
-| Bash, `codesign`, `lipo`, universal architectures | `scripts/build.sh` | Separate Windows build/package instructions and executable signing |
+## Calibration methodology (Windows)
 
-The shared library products have no dependency on the host, Quick Look or
-project-access service. They still depend on Apple rendering/image frameworks.
-An `#if os(Windows)` branch returning guessed metrics or skipping pictures is
-not an acceptable completed port.
+| Item | Value |
+|---|---|
+| OS | Windows 11 Enterprise 25H2 (build 26200), ARM64 |
+| Display scale | 200 % (captures halved to points) |
+| Windows Classic reference | 4D 21.0 |
+| Fluent UI reference | 4D 21 R4 (21R4.100208); Fluent light/dark via `fluentUI` forms and `SET APPLICATION COLOR SCHEME` |
+| Fonts | Segoe UI: 12 pt Classic, 14 pt Fluent (system font size, `fontTheme: additional` one point smaller) |
+| Rasterizer used for comparison | Microsoft Edge/WebView2 (Chromium), `--force-color-profile=srgb`, device scale 2 |
 
-Do not redistribute Apple's SF Pro font files. Current fallback-family CSS and
-CoreText positions were calibrated on macOS; a Windows font substitution can
-change wrapping, baselines and bounds. Choose and measure Windows fonts in a
-real Windows environment.
+Captures used private copies of `Fixtures/FormBenchmarkProject` (Typography,
+Controls, ContactInvoice, References), each opened in a live `DIALOG` window
+by an authored startup method, with `Project/Sources/dependencies.json` created
+before launch and no upstream code executed. `FORM SCREENSHOT` is unsuitable:
+it ignores runtime CSS and returns black images for Fluent forms. Window
+captures and comparison images are private development artifacts and are not
+committed.
 
-## Build/run reference
+Measured values (see `FormPlatformStyle.swift`):
 
-### Verified macOS reference generation
+| | Windows Classic | Fluent light | Fluent dark |
+|---|---|---|---|
+| Window background | `#F0F0F0` | `#F3F3F3` | `#202020` |
+| Text | `#000000` | `#1A1A1A` | `#FFFFFF` |
+| Input field | `#FFFFFF` | `#FBFBFB` | `#2D2D2D` |
+| Default button | `#0078D4` border | `#0055A1` fill | `#40BDFF` fill |
+| Default control height | 22 pt | 25 pt | 25 pt |
+| Check box/radio glyph, label gap | 13 pt, 3 pt | 20 pt, 8 pt | 20 pt, 8 pt |
+| Control corner radius | 0 | 4 pt | 4 pt |
 
-From this checkout:
+Known approximations:
+Windows Classic tab-control and group-box outlines, Fluent tab sizes, and
+popup/combo contents (the preview shows the object name or saved value; 4D
+shows an empty runtime list). Fluent UI is calibrated on 4D 21 R4 only.
 
-```sh
-.build/debug/fourdql --html \
-  Tests/FourDFileKitTests/Fixtures/FormProject/Project/Sources/Forms/Controls/form.4DForm
-swift test --filter FormRendererTests
-```
+## Build and test on Windows
 
-Build the development tool first with `swift build --product fourdql`.
-For explicit language selection and versioned JSON, use `FormRenderer` as
-documented in [FORM-RENDERER.md](FORM-RENDERER.md); `fourdql --json` exports the
-analyzer model, not the versioned renderer document.
-Explicit languages reduce dependence on the machine's locale. For fixed
-macOS reference screenshots, select a permitted theme and numbered page.
-Copy HTML/JSON reference outputs, not a macOS executable, to Windows.
-
-### Windows setup and commands after the port
-
-Follow the official [Swift Windows installation](https://www.swift.org/install/windows/)
-and [manual dependencies](https://www.swift.org/install/windows/manual/) guidance.
-It requires the appropriate Visual Studio C++ build tools and Windows SDK;
-install an architecture-matched supported Swift toolchain. Python is needed
-for the CLI contract harness, not by the renderer at runtime.
-
-The following is the intended shared-library smoke-test shape **after**
-implementing the adapters and excluding macOS-only targets. It is not a claim
-these commands work against the current package on Windows:
+Install Swift (see the official [Windows installation](https://www.swift.org/install/windows/)),
+Visual Studio 2022 C++ build tools and a Windows 10/11 SDK. In a fresh shell,
+`SDKROOT` must be set (the installer stores it in the user environment):
 
 ```powershell
-swift --version
-swift build -c release --target FourDRender
-swift test --filter FormRendererTests
+$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+$env:SDKROOT = [Environment]::GetEnvironmentVariable('SDKROOT','User')
+swift build --product FourDRender
+swift test
+& "$(swift build --show-bin-path)\fourdql.exe" --html Tests\FourDFileKitTests\Fixtures\FormProject\Project\Sources\Forms\Controls\form.4DForm
 ```
 
-Image CLI packaging and commands belong in `4d-form`, not the Quick Look
-release workflow. Keep the shared HTML/JSON/error behavior intact. Decide Windows appearance
-selection only with Windows evidence; do not silently redefine `glass-light`
-or label the existing macOS styles as Windows. Adjust the API tests'
-platform/theme assertions explicitly when adding a Windows export version or
-appearance schema.
+Verified with Swift 6.4.2 (`aarch64-unknown-windows-msvc`). `wchar_t ... broken
+by a context change` warnings from the Windows SDK module map are benign.
 
-## Fixtures and development reference evidence
+On Windows, tests whose expected values were measured with macOS system fonts,
+and symlink-confinement tests when the account cannot create symbolic links
+(Developer Mode off), are skipped with a stated reason. Form tests that assert
+macOS reference output pin `platform: .macOS`; `FormWindowsRendererTests`
+covers the Windows themes, schema, stylesheet selection and HTML contract.
+`.gitattributes` keeps fixtures byte-exact under `core.autocrlf`.
 
-- `Fixtures/FormProject`: CSS, external JSON pointer and passive SVG; input
-  width 430 and five loaded dependencies provide deterministic checks.
-- `Fixtures/FormStaticProject`: multi-level inheritance, duplicate-name paint
-  order, repeated subforms, nested clipping, source CSS and English/French XLIFF.
-  Inline object-form fixtures deliberately carry noncanonical-schema notices.
+## Fixtures and reference evidence
+
+- `Fixtures/FormProject`: CSS, external JSON pointer and passive SVG.
+- `Fixtures/FormStaticProject`: inheritance, subforms, clipping, XLIFF.
 - `Fixtures/FormBenchmarkProject`: Typography, Controls, ContactInvoice and
-  References, covering authored layouts and all four macOS appearances.
-- `FormTests`, `FormStaticTests`, `FormTextLayoutTests`, `FormStaticRenderTests`,
-  `FormRendererTests`: ordering, confinement, budgets, source/data preservation,
-  wrapping, pictures, localization, clipping and API regression contracts.
-- `scripts/form-benchmark.py`, `form-hdi-benchmark.py`,
-  `form-padding-probe.py`, `form-static-benchmark.py`,
-  `form-subform-clip-probe.py`: macOS-only native-reference tooling. Do not run
-  them unchanged on Windows or make the renderer depend on them.
+  References; the Windows calibration forms were private copies of these.
+- `scripts/form-*.py`: macOS-only native-reference tooling.
 
-Mac evidence includes Classic LTS and R5 Glass references, pinned public HDI
-cases, and authored static-form checks. The explicit subform overflow probe
-matched native and actual WebKit paint at `[100,80,220,120]`: 4,800 exact-color
-pixels with both outside markers clipped. Omitted-format pictures stayed
-16 x 16 at the full-object center. These prove those macOS behaviors, not
-Windows geometry. Original native captures and comparison galleries are
-private development artifacts, not committed fixture assets.
+External HDI sources are not vendored. All committed form fixtures are
+self-authored.
 
-External HDI sources are not vendored. The benchmark download tooling records
-pinned revisions; verify licenses before redistributing any external forms.
-All committed form fixtures above are self-authored.
+## Remaining Windows work
 
-## Windows acceptance sequence
-
-1. Build the shared libraries and the separate image product on Windows without
-   4D, the macOS host or an Explorer extension. Run parsing, confinement,
-   XML rejection and CLI failures in their owning repositories.
-2. Check generated JSON ordering, source provenance, dependency/image IDs,
-   localization and limits against the self-authored reference contracts.
-3. Generate purpose-built static native forms on Windows using a supported
-   full 4D application solely as a development reference. Create
-   `Project/Sources/dependencies.json` before launch. Never run upstream project
-   methods/components; only authored capture methods belong in private copies.
-4. Keep named screenshots, loaded/offscreen, printed and live-dialog captures
-   separate. Named captures can ignore CSS; do not use them as CSS runtime proof.
-5. Measure actual font glyph bounds, wrapping, baselines, control heights,
-   padding, default picture placement, listbox surfaces and nested clipping.
-   Report fixed-region RGB error, mask overlap and geometry together; capture
-   coverage alone is not a visual score.
-6. Preserve static behavior and visible notices, then calibrate Windows
-   appearance/palettes with measured references. Test fresh dependency edits
-   and permissions on the standalone caller's filesystem.
-7. Add and validate Windows preview-shell integration separately. The
-   macOS scoped-bookmark/XPC authorization solution is not a Windows design.
-
-The concrete blocker for Windows refinement is a Windows execution/capture
-environment with the required SDKs, fonts and native 4D development reference.
-This handover prepares the code boundary and tests; it does not resolve that
-environmental requirement.
+1. Explorer preview-handler integration and Windows packaging (separate from
+   4d-form's CLI). The macOS bookmark/XPC authorization is not a Windows design.
+2. Refine the approximations listed above with more native references,
+   including per-control pixel scores and printed/offscreen captures.
+3. Verify other display scales and Windows 10 font metrics.
+4. Path handling for UNC and long (`\\?\`) paths and reparse-point confinement
+   are exercised only through Foundation's standard paths so far.

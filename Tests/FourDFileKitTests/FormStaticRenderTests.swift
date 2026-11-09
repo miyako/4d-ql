@@ -6,7 +6,7 @@ final class FormStaticRenderTests: XCTestCase {
     private func fixture() throws -> FormFileInfo {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "form", withExtension: "4DForm",
                                                 subdirectory: "Fixtures/FormStaticProject/Project/Sources/Forms/Root"))
-        return try XCTUnwrap(AnalyzerRegistry.default.analyze(url: url) as? FormFileInfo)
+        return try XCTUnwrap(AnalyzerRegistry.macOSReference.analyze(url: url) as? FormFileInfo)
     }
 
     func testResolvedSubformUsesLocalCoordinatesAndContainerClip() throws {
@@ -67,7 +67,7 @@ final class FormStaticRenderTests: XCTestCase {
         panel["colorScheme"] = "light"
         try JSONSerialization.data(withJSONObject: panel, options: .sortedKeys).write(to: panelURL, options: .atomic)
         let rootURL = temporary.appendingPathComponent("Project/Sources/Forms/Root/form.4DForm")
-        let info = try XCTUnwrap(AnalyzerRegistry.default.analyze(url: rootURL) as? FormFileInfo)
+        let info = try XCTUnwrap(AnalyzerRegistry.macOSReference.analyze(url: rootURL) as? FormFileInfo)
         let appearance = try XCTUnwrap(info.appearances.first { $0.theme == .glassDark })
         let html = FormPreviewRenderer().render(FormPreview(name: info.formName, properties: info.properties,
                                                             appearances: [appearance], images: info.images))

@@ -13,7 +13,7 @@ final class FormBenchmarkTests: XCTestCase {
 
     private func analyze(_ name: String) throws -> FormFileInfo {
         let url = try fixture("Project/Sources/Forms/\(name)/form.4DForm")
-        return try XCTUnwrap(AnalyzerRegistry.default.analyze(url: url) as? FormFileInfo)
+        return try XCTUnwrap(AnalyzerRegistry.macOSReference.analyze(url: url) as? FormFileInfo)
     }
 
     private func object(_ info: FormFileInfo, _ name: String,
@@ -48,7 +48,7 @@ final class FormBenchmarkTests: XCTestCase {
                 XCTAssertEqual(appearance.pages.map(\.number), [0, 1, 2])
                 XCTAssertFalse(appearance.pages[0].objects.isEmpty)
             }
-            let html = PreviewPipeline().html(for: try fixture("Project/Sources/Forms/\(name)/form.4DForm"))
+            let html = PreviewPipeline(analyzers: .macOSReference).html(for: try fixture("Project/Sources/Forms/\(name)/form.4DForm"))
             XCTAssertFalse(html.lowercased().contains("<script"))
             for theme in ["classicLight", "classicDark", "glassLight", "glassDark"] {
                 XCTAssertTrue(html.contains("id=\"theme-\(theme)\""))

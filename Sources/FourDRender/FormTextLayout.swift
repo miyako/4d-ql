@@ -1,9 +1,8 @@
-import AppKit
-import CoreText
+import Foundation
 import FourDFileKit
 
 struct FormTextLayout {
-    // An explicit text face keeps CoreText measurement and WebKit SVG widths aligned.
+    // An explicit text face keeps platform measurement and browser SVG widths aligned.
     static let fallbackFamily = "SF Pro Text, -apple-system, Helvetica Neue, sans-serif"
     struct Line {
         let text: String
@@ -24,41 +23,27 @@ struct FormTextLayout {
         return source.substring(to: end)
     }
 
-    static func font(size: Double, properties: FormValue) -> NSFont {
-        let family = properties["fontFamily"]?.string
-        let base = family.flatMap { $0.hasPrefix("%") ? nil : NSFont(name: $0, size: size) }
-            ?? NSFont(name: "SF Pro Text", size: size) ?? NSFont.systemFont(ofSize: size)
-        var traits = base.fontDescriptor.symbolicTraits
-        if properties["fontWeight"]?.string == "bold"
-            || properties["fontWeight"] == nil && properties["fontTheme"]?.string == "main" { traits.insert(.bold) }
-        if properties["fontStyle"]?.string == "italic" { traits.insert(.italic) }
-        return NSFont(descriptor: base.fontDescriptor.withSymbolicTraits(traits), size: size) ?? base
+    static func font(size: Double, properties: FormValue, platform: FormPlatform = .macOS) -> FormFontFace {
+        FormFontFace(size: size, properties: properties, primary: FormPlatformStyle(platform).primaryFamily)
     }
 
-    init(text: String, width: Double, size: Double, properties: FormValue, maxLines: Int) {
-        let font = Self.font(size: size, properties: properties)
-        let fontLineHeight = Double(NSLayoutManager().defaultLineHeight(for: font))
+    init(text: String, width: Double, size: Double, properties: FormValue, maxLines: Int, platform: FormPlatform = .macOS) {
+        let font = Self.font(size: size, properties: properties, platform: platform)
+        let fontLineHeight = font.lineHeight
         let normalized = Self.bounded(text)
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
         let singleLine = properties["multiline"]?.string == "no" || maxLines <= 1
         let noWrap = properties["wordwrap"]?.string == "none"
         let source = (singleLine ? normalized.components(separatedBy: "\n").first ?? "" : normalized) as NSString
-        let attributed = NSAttributedString(string: source as String, attributes: [.font: font])
-        let typesetter = CTTypesetterCreateWithAttributedString(attributed)
         var result: [Line] = []
         var offset = 0
         let limit = max(1, min(100, maxLines))
 
         func append(_ range: NSRange, endsParagraph: Bool? = nil) {
             let visible = source.substring(with: range).replacingOccurrences(of: "\n", with: "")
-            let line = CTLineCreateWithAttributedString(NSAttributedString(string: visible, attributes: [.font: font]))
-            var ascent: CGFloat = 0
-            var descent: CGFloat = 0
-            var leading: CGFloat = 0
-            let advance = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
-            result.append(Line(text: visible, ascent: max(Double(ascent), Double(font.ascender)),
-                               descent: max(Double(descent), Double(-font.descender)), width: advance,
+            let bounds = font.line(visible)
+            result.append(Line(text: visible, ascent: bounds.ascent, descent: bounds.descent, width: bounds.width,
                                endsParagraph: endsParagraph ?? (NSMaxRange(range) == source.length
                                    || source.substring(with: range).contains("\n"))))
         }
@@ -72,10 +57,15 @@ struct FormTextLayout {
                 offset += length+1
             }
         } else {
+            let suggest = font.lineBreaker(for: source)
             while offset < source.length && result.count < limit {
-                let suggested = CTTypesetterSuggestLineBreak(typesetter, offset, max(0, width))
+                let suggested = suggest(offset, max(0, width))
                 // A glyph wider than the box still needs one complete grapheme to make progress.
-                let count = suggested > 0 ? suggested : source.rangeOfComposedCharacterSequence(at: offset).length
+                var count = suggested > 0 ? suggested : source.rangeOfComposedCharacterSequence(at: offset).length
+                if offset + count < source.length {
+                    // Never end a line inside a composed character sequence.
+                    count = NSMaxRange(source.rangeOfComposedCharacterSequence(at: offset + count - 1)) - offset
+                }
                 let range = NSRange(location: offset, length: min(count, source.length - offset))
                 append(range)
                 offset += range.length

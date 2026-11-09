@@ -140,8 +140,10 @@ final class FourDFileKitTests: XCTestCase {
     }
 
     func testPosixPathFromHFS() {
+        #if os(macOS)
         let boot = (try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeNameKey]))?.volumeName ?? "Macintosh HD"
         XCTAssertEqual(DB4DAnalysis.posixPath(fromHFS: "\(boot):Users:me:a.journal"), "/Users/me/a.journal")
+        #endif
         XCTAssertEqual(DB4DAnalysis.posixPath(fromHFS: "Backup:j:a.journal"), "/Volumes/Backup/j/a.journal")
         XCTAssertEqual(DB4DAnalysis.posixPath(fromHFS: "C:\\data\\a.journal"), "C:\\data\\a.journal")
     }

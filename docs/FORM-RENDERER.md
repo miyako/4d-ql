@@ -11,14 +11,17 @@ The independent image CLI is developed and released in
 The preliminary HTML/JSON-only `fourdform` executable and its packaging have
 been removed; reusable API, static behavior and calibration tests remain here.
 
-**Runtime:** macOS 12 or later; no 4D installation, hosting app, Quick Look,
-XPC service, browser automation or network connection is required to generate
-output. Viewing the HTML requires a browser. AppKit, CoreText, ImageIO and
-Foundation are system dependencies. This is not yet a native Windows binary.
+**Runtime:** macOS 12 or later, or Windows 10/11 with the Swift runtime; no
+4D installation, hosting app, Quick Look, XPC service, browser automation or
+network connection is required to generate output. Viewing the HTML requires
+a browser. AppKit, CoreText and ImageIO are the macOS system dependencies;
+DirectWrite and Windows Imaging Component are the Windows ones. See the
+[Windows handover](WINDOWS-HANDOVER.md) for the Windows platform.
 
 ## Build
 
-From the repository root with Swift 5.9 or later and the macOS SDK:
+From the repository root with Swift 5.9 or later and the macOS SDK, or a
+Swift toolchain for Windows:
 
 ```sh
 swift build --target FourDRender
@@ -37,6 +40,12 @@ selectors remain in the HTML. A form's explicit `colorScheme` is honored;
 a conflicting requested theme is an error. Without explicit selections,
 the calibrated viewer defaults remain unchanged.
 
+Each render targets one `FormPlatform`, defaulting to `FormPlatform.current`
+(the host OS). `.macOS` produces the Classic and Liquid Glass light/dark
+themes; `.windows` produces `windowsClassic`, `fluentLight` and `fluentDark`
+using `styleSheets_windows.css`. Pass the platform explicitly for output that
+does not depend on the host.
+
 ## Swift API
 
 Import the existing `FourDRender` and `FourDFileKit` libraries:
@@ -50,6 +59,7 @@ let renderer = FormRenderer()
 let result = try renderer.render(
     url: URL(fileURLWithPath: "/path/to/Project/Sources/Forms/Contact/form.4DForm"),
     preferredLanguages: ["en"],
+    platform: .macOS,
     options: FormRenderOptions(initialTheme: .glassLight, initialPage: 1)
 )
 try Data(result.html.utf8).write(to: URL(fileURLWithPath: "/path/to/preview.html"))
@@ -59,9 +69,14 @@ let export = try result.document.jsonData()
 Analysis and presentation are also separate:
 
 ```swift
-let form: FormFileInfo = try renderer.analyze(url: formURL, preferredLanguages: ["fr"])
-let result = try renderer.render(form: form, options: FormRenderOptions(initialPage: 2))
+let form: FormFileInfo = try renderer.analyze(url: formURL, preferredLanguages: ["fr"], platform: .windows)
+let result = try renderer.render(form: form, options: FormRenderOptions(initialTheme: .fluentDark, initialPage: 2))
 ```
+
+`FormPlatform` (`macOS`, `windows`) lists its `themes`; every `FormTheme` has a
+`platform`, `label` and `dark` flag. An analyzed `FormFileInfo` reports its
+`platform` (derived from its appearances), and rendering it keeps that platform. Requesting a theme of the
+other platform throws `FormRenderError.unavailableTheme`.
 
 `FormFileAnalyzer.analyzeForm(_:options:)` is the typed analyzer entry point
 for callers already holding a `ByteSource`. Existing registry-based analysis
@@ -74,14 +89,14 @@ Language selection occurs during analysis. Rendering an already analyzed
 Callers are responsible for filesystem access. Only Finder uses the separate
 folder-authorization/XPC boundary; library callers do not need it.
 
-## JSON boundary: schema version 1
+## JSON boundary: schema versions 1 and 2
 
 `FormRenderDocument.jsonData()` exports:
 
 | Field | Meaning |
 |---|---|
-| `schemaVersion` | `1`; consumers must reject unsupported versions |
-| `referencePlatform` | `"macOS"`; the appearance data is not Windows calibration |
+| `schemaVersion` | `1` for macOS, `2` for Windows; consumers must reject unsupported versions |
+| `referencePlatform` | `"macOS"` or `"Windows"`: the platform whose appearances, stylesheets and metrics were applied |
 | `initialTheme`, `initialPage` | Explicit presentation choices, omitted when not specified |
 | `form` | `FormFileInfo`, including original source, resolved properties, appearances, embedded assets, dependency paths and analyzer warnings |
 | `notices` | Analyzer warnings plus renderer approximation/omission notices |
@@ -95,15 +110,18 @@ describe bounded embedded artwork.
 
 Keep duplicate object names and source provenance. Do not rebuild paint order
 from the object-name maps in original JSON. The effective appearance properties
-have already applied macOS CSS media and localization; Windows must not
-interpret them as native Windows metrics or a Windows stylesheet cascade.
+have already applied the reference platform's CSS media and localization.
+Version 2 is the Windows document: appearance `theme` values are
+`windowsClassic`, `fluentLight` and `fluentDark`; its structure is otherwise
+version 1.
+Do not reinterpret one platform's document as the other's.
 The export is an interchange/reference boundary, not an import API or a claim
 of Swift ABI stability.
 
 ## Supported static subset
 
 - Ordered JSON, bounded local/external RFC 6901 pointers and local overrides.
-- Project/global/mac/form stylesheets, supported selector/media rules and
+- Project/global/platform (`_mac`/`_windows`)/form stylesheets, supported selector/media rules and
   JSON-versus-`!important` precedence.
 - Page-zero layering, numbered pages, saved geometry, static inheritance and
   statically resolvable subforms with nested clipping.
@@ -111,7 +129,9 @@ of Swift ABI stability.
   initial sprite frames.
 - Project XLIFF 1.x named, numeric and object-name references, explicit language
   preferences and bounded fallback.
-- Calibrated macOS typography and common controls across the four appearances.
+- Calibrated macOS typography and common controls across the four macOS
+  appearances, and Windows Classic/Fluent UI light/dark controls measured
+  against 4D 21 on Windows 11.
 
 No project methods, expressions, data bindings, components or localization
 commands execute. Bound controls show saved expressions, not runtime records.
@@ -133,6 +153,7 @@ rendering just as they do in Finder.
 ```sh
 swift test --filter FormRendererTests
 swift test --filter 'FormStatic|FormTextLayout|FormBenchmark'
+swift test --filter FormWindowsRendererTests
 ```
 
 The API tests check CSS/pointers/pictures, inherited/subform order, French
@@ -141,4 +162,5 @@ Default API HTML is tested byte-for-byte against the shared preview pipeline.
 Image CLI output and isolated-executable checks belong to `4d-form`.
 Native-reference tools in the main README are development-only.
 
-See [Windows handover](WINDOWS-HANDOVER.md) for the remaining platform work.
+See [Windows handover](WINDOWS-HANDOVER.md) for the Windows calibration
+methodology and remaining platform work.

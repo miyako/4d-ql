@@ -8,6 +8,8 @@ public struct FormPreview {
     public var images: [FormImage]
     public var initialTheme: FormTheme? = nil
     public var initialPage: Int? = nil
+    /// Platform whose native appearances the preview reproduces.
+    public var platform: FormPlatform = .macOS
 }
 
 public struct FormPresenter: ReportPresenter {
@@ -24,7 +26,8 @@ public struct FormPresenter: ReportPresenter {
         var blocks: [Block] = [
             .formPreview(FormPreview(name: form.formName, properties: form.properties,
                                      appearances: form.appearances, images: form.images,
-                                     initialTheme: initialTheme, initialPage: initialPage))
+                                     initialTheme: initialTheme, initialPage: initialPage,
+                                     platform: form.platform))
         ]
         var notes = form.warnings
         notes += FormPreviewRenderer.diagnostics(form)
@@ -41,7 +44,7 @@ public struct FormPresenter: ReportPresenter {
                 KeyValue("Localization", form.localizationLanguage ?? "No project translation selected"),
                 KeyValue("Dependencies loaded", "\(form.dependencies.count)")
             ]),
-            .text("Approximate macOS editor layout with stylesheets applied. Expressions and methods are not executed; bound controls show their saved expressions, not runtime values."),
+            .text("Approximate \(form.platform.label) editor layout with stylesheets applied. Expressions and methods are not executed; bound controls show their saved expressions, not runtime values."),
             .text(form.dependencies.joined(separator: "\n"))
         ]))
         let source = String(form.text.prefix(256 * 1024))

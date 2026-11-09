@@ -28,8 +28,10 @@ maintaining a second parser or calibrated renderer. The preliminary HTML/JSON-on
 `FourDRender.FormRenderer` provides in-process HTML and versioned JSON without
 4D, Quick Look, the hosting app or its XPC service. See the
 [shared API and static-feature contract](docs/FORM-RENDERER.md) and the
-[Windows handover](docs/WINDOWS-HANDOVER.md). The current libraries are
-macOS-specific, not a validated Windows port.
+[Windows handover](docs/WINDOWS-HANDOVER.md). The libraries also build on
+Windows, where forms render with the Windows Classic and Fluent UI light/dark
+appearances calibrated against 4D 21; select the platform with
+`FormRenderer.render(url:preferredLanguages:platform:options:)`.
 
 Import/export settings previews preserve field order (which can differ from field
 numbers), display missing values explicitly, and retain unknown field types and
@@ -91,7 +93,8 @@ layout. Justified wrapped paragraphs expand word spaces, not their last lines.
 
 Stylesheets load in 4D order: `Project/Sources/styleSheets.css`,
 `styleSheets_mac.css`, then the form's `css` references (Windows-only
-references are ignored). Supported selectors are object types, names,
+references are ignored; Windows rendering uses `styleSheets_windows.css`
+and Windows-only references instead). Supported selectors are object types, names,
 classes, compounds, universal and attribute selectors; nested
 `prefers-color-scheme` / `form-theme` media queries are evaluated for
 each appearance. JSON properties beat ordinary CSS, while `!important`

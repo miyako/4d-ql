@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 
 public struct ImportExportSettingsInfo: AnalysisModel {
     public let kind = "4d.import-export-settings"
@@ -41,13 +44,16 @@ public struct ImportExportSettingsAnalyzer: FileAnalyzer {
             data = Data(trimmed)
             warnings.append("Ignored whitespace before the XML declaration.")
         }
+        if XMLParser.declaresUnreportedEntities(data) {
+            throw ImportExportSettingsError.invalid("custom XML entities are not supported")
+        }
         let parser = XMLParser(data: data)
         let document = ImportExportSettingsDocument()
         parser.delegate = document
         // Request entity callbacks so unsupported references are reported, never loaded.
-        parser.shouldResolveExternalEntities = true
+        parser.shouldResolveExternalEntities = XMLParser.reportsExternalEntitiesSafely
         parser.externalEntityResolvingPolicy = .never
-        let parsed = parser.parse()
+        let parsed = parser.parseStrictly()
         if let failure = document.failure { throw ImportExportSettingsError.invalid(failure) }
         guard parsed else {
             throw ImportExportSettingsError.invalid("XML at line \(parser.lineNumber), column \(parser.columnNumber): \(parser.parserError?.localizedDescription ?? "parse failed")")
@@ -67,21 +73,22 @@ private final class ImportExportSettingsDocument: NSObject, XMLParserDelegate {
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
                 qualifiedName qName: String?, attributes attributeDict: [String: String]) {
+        guard failure == nil else { return }
         elementCount += 1
         guard elementCount <= 20_000, stack.count < 32 else {
             failure = "XML exceeds the element or nesting limit"
-            parser.abortParsing()
+            parser.stopFromDelegate()
             return
         }
         stack.append(ImportExportSettingsNode(name: elementName, attributes: attributeDict))
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-        if !stack.isEmpty { stack[stack.count - 1].text += string }
+        if failure == nil, !stack.isEmpty { stack[stack.count - 1].text += string }
     }
 
     func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
-        if !stack.isEmpty { stack[stack.count - 1].text += String(decoding: CDATABlock, as: UTF8.self) }
+        if failure == nil, !stack.isEmpty { stack[stack.count - 1].text += String(decoding: CDATABlock, as: UTF8.self) }
     }
 
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
@@ -104,6 +111,6 @@ private final class ImportExportSettingsDocument: NSObject, XMLParserDelegate {
 
     private func rejectEntity(_ parser: XMLParser) {
         failure = "custom XML entities are not supported"
-        parser.abortParsing()
+        parser.stopFromDelegate()
     }
 }

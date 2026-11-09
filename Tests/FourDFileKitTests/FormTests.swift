@@ -23,7 +23,7 @@ final class FormTests: XCTestCase {
     }
 
     private func analyze(_ url: URL) throws -> FormFileInfo {
-        let result = try AnalyzerRegistry.default.analyze(url: url)
+        let result = try AnalyzerRegistry.macOSReference.analyze(url: url)
         return try XCTUnwrap(result as? FormFileInfo)
     }
 
@@ -45,7 +45,7 @@ final class FormTests: XCTestCase {
         XCTAssertEqual(info.images.count, 1)
         XCTAssertEqual(info.dependencies.count, 5)
         XCTAssertTrue(AnalyzerRegistry.default.allContentTypes.contains("com.4d.4d.form"))
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         for expected in ["Liquid Glass light", "Liquid Glass dark", "Classic light", "Classic dark",
                          "Page 0", "Page 1", "Page 2", "Form.contact.name", "Email address",
                          "data:image/svg+xml;base64,", "Original JSON", "Form details"] {
@@ -63,7 +63,7 @@ final class FormTests: XCTestCase {
                                  extra: #","css":"missing.css""#), "form.4DForm", in: folder)
         let info = try analyze(url)
         XCTAssertFalse(info.warnings.isEmpty)
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         let notice = try XCTUnwrap(html.range(of: "Some resources or form features could not be reproduced."))
         let canvas = try XCTUnwrap(html.range(of: "class=\"form-preview\""))
         XCTAssertLessThan(notice.lowerBound, canvas.lowerBound)
@@ -99,10 +99,11 @@ final class FormTests: XCTestCase {
     }
 
     func testBlankLinesUseAbsoluteSVGPositions() throws {
+        try requireMacOSFontMetrics()
         let folder = try folder()
         let url = try write(form(#"{"label":{"type":"text","left":0,"top":0,"width":200,"height":100,"fontSize":13,"text":"First\r\n\r\nLast"}}"#),
                              "form.4DForm", in: folder)
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         XCTAssertTrue(html.contains("<tspan x=\"0\" y=\"29\"></tspan>"))
         XCTAssertTrue(html.contains("<tspan x=\"0\" y=\"45\">Last</tspan>"))
         XCTAssertFalse(html.contains(" dy=\""))
@@ -113,7 +114,7 @@ final class FormTests: XCTestCase {
         for (scrollbar, width) in [("visible", "184"), ("hidden", "200")] {
             let url = try write(form(#"{"grid":{"type":"listbox","left":0,"top":0,"width":200,"height":100,"scrollbarVertical":"\#(scrollbar)","headerHeight":30,"columns":[{"name":"total","width":100,"header":{"text":"Total"}}]}}"#),
                                  scrollbar+".4DForm", in: folder)
-            let html = PreviewPipeline().html(for: url)
+            let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
             XCTAssertTrue(html.contains("<rect x=\"0\" width=\"\(width)\" height=\"30\""))
         }
     }
@@ -123,7 +124,7 @@ final class FormTests: XCTestCase {
         for wrapping in ["", #","multiline":"yes""#] {
             let url = try write(form(#"{"grid":{"type":"listbox","left":0,"top":0,"width":118,"height":100,"scrollbarVertical":"hidden","showFooters":true,"footerHeight":28,"columns":[{"name":"price","width":118,"footer":{"dataSource":"Form.invoice.currency"\#(wrapping)}}]}}"#),
                                  UUID().uuidString+".4DForm", in: folder)
-            XCTAssertEqual(PreviewPipeline().html(for: url).contains(">Form.invoice.currency</tspan>"), wrapping.isEmpty)
+            XCTAssertEqual(PreviewPipeline(analyzers: .macOSReference).html(for: url).contains(">Form.invoice.currency</tspan>"), wrapping.isEmpty)
         }
     }
 
@@ -131,7 +132,7 @@ final class FormTests: XCTestCase {
         let folder = try folder()
         let url = try write(form(#"{"titled":{"type":"groupBox","left":0,"top":0,"width":200,"height":100,"text":"Group","fontSize":10},"bare":{"type":"groupBox","left":0,"top":120,"width":200,"height":100,"fontSize":10}}"#),
                              "groups.4DForm", in: folder)
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         XCTAssertTrue(html.contains("<rect y=\"12\" width=\"200\" height=\"88\""))
         let bare = try XCTUnwrap(html.components(separatedBy: "<title>bare · groupBox</title>").dropFirst().first)
             .components(separatedBy: "</g>").first ?? ""
@@ -146,7 +147,7 @@ final class FormTests: XCTestCase {
         for (alignment, anchor) in [("center", 100.0), ("right", 188.0)] {
             let url = try write(form(#"{"group":{"type":"groupBox","left":0,"top":0,"width":200,"height":100,"text":"Group","fontSize":10,"textAlign":"\#(alignment)"}}"#),
                                  alignment+".4DForm", in: folder)
-            let html = PreviewPipeline().html(for: url)
+            let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
             let source = html as NSString
             let match = try XCTUnwrap(regex.firstMatch(in: html, range: NSRange(location: 0, length: source.length)))
             let x = try XCTUnwrap(Double(source.substring(with: match.range(at: 1))))
@@ -159,7 +160,7 @@ final class FormTests: XCTestCase {
         let folder = try folder()
         let url = try write(form(#"{"label":{"type":"text","left":0,"top":0,"width":100,"height":80,"text":"Hello","fontSize":13,"paddingLeft":8,"paddingRight":12,"paddingTop":10,"paddingBottom":14},"field":{"type":"input","left":0,"top":100,"width":100,"height":80,"dataSource":"Form.name","fontSize":13,"paddingLeft":8,"paddingRight":12,"paddingTop":10,"paddingBottom":14,"verticalAlign":"top"}}"#),
                              "padding.4DForm", in: folder)
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         XCTAssertEqual(html.components(separatedBy: "<svg x=\"8\" y=\"10\" width=\"80\" height=\"56\"").count-1, 8)
     }
 
@@ -167,18 +168,19 @@ final class FormTests: XCTestCase {
         let folder = try folder()
         let url = try write(form(#"{"label":{"type":"text","left":0,"top":0,"width":134,"height":29,"text":"Label","fill":"white","borderStyle":"solid","borderRadius":5},"field":{"type":"input","left":0,"top":100,"width":332,"height":34,"dataSource":"Form.name","borderStyle":"solid","borderRadius":20,"multiline":"no"}}"#),
                              "rounded.4DForm", in: folder)
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         XCTAssertTrue(html.contains("<rect x=\"-6\" y=\"-1\" width=\"146\" height=\"31\""))
         XCTAssertTrue(html.contains("<rect x=\"-18\" y=\"-1\" width=\"368\" height=\"36\""))
     }
 
     func testIconCaptionsUseSavedPlacementAndNativeDefaultStacking() throws {
+        try requireMacOSFontMetrics()
         let folder = try folder()
         try write(#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="black"/></svg>"#,
                   "icon.svg", in: folder)
         let url = try write(form(#"{"button":{"type":"button","left":0,"top":0,"width":160,"height":60,"text":"Button","icon":"icon.svg"},"check":{"type":"checkbox","left":0,"top":80,"width":160,"height":60,"text":"Check","style":"roundedBevel","icon":"icon.svg","textPlacement":"top"}}"#),
                              "icons.4DForm", in: folder)
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         XCTAssertTrue(html.contains("<svg x=\"68\" y=\"6\" width=\"24\" height=\"24\""))
         XCTAssertTrue(html.contains("<svg x=\"68\" y=\"30\" width=\"24\" height=\"24\""))
     }
@@ -187,7 +189,7 @@ final class FormTests: XCTestCase {
         let folder = try folder()
         let url = try write(form(#"{"label":{"type":"text","left":0,"top":0,"width":120,"height":100,"fontFamily":"Arial","fontSize":13,"textAlign":"justify","text":"One two three four five six seven eight nine ten."}}"#),
                              "justify.4DForm", in: folder)
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         XCTAssertTrue(html.contains(" word-spacing=\""))
         let finalLine = try XCTUnwrap(html.components(separatedBy: "<tspan").last?.components(separatedBy: "</tspan>").first)
         XCTAssertFalse(finalLine.contains("word-spacing"))
@@ -197,7 +199,7 @@ final class FormTests: XCTestCase {
         let folder = try folder()
         let url = try write(form(#"{"label":{"type":"text","left":0,"top":0,"width":100,"height":80,"text":"Hello","paddingLeft":"NaNpx","paddingTop":-1,"paddingBottom":9000}}"#),
                              "padding.4DForm", in: folder)
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         XCTAssertTrue(html.contains("Invalid text padding is ignored"))
         XCTAssertTrue(html.contains("Some resources or form features could not be reproduced"))
         XCTAssertFalse(html.contains("x=\"nan\""))
@@ -209,12 +211,12 @@ final class FormTests: XCTestCase {
         let url = try write("\u{FEFF}" + form(objects, extra: #","entryOrder":["a","z"]"#), "stack.4DFORM", in: folder)
         let info = try analyze(url)
         XCTAssertEqual(info.appearances[0].pages[1].objects.map(\.name), ["z", "あ", "a"])
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         let z = try XCTUnwrap(html.range(of: "<title>z · rectangle</title>"))
         let a = try XCTUnwrap(html.range(of: "<title>a · button</title>"))
         XCTAssertLessThan(z.lowerBound, a.lowerBound)
         XCTAssertTrue(html.contains("日本語"))
-        XCTAssertTrue(try AnalyzerRegistry.default.analyze(url: url, contentType: "com.4d.4d.form") is FormFileInfo)
+        XCTAssertTrue(try AnalyzerRegistry.macOSReference.analyze(url: url, contentType: "com.4d.4d.form") is FormFileInfo)
     }
 
     func testCSSCascadeSpecificityImportantMediaAndAttributes() throws {
@@ -261,14 +263,14 @@ final class FormTests: XCTestCase {
         """, "style.css", in: folder)
         let url = try write(form(#"{"a":{"type":"button","left":0,"top":0,"height":23,"text":"JSON"}}"#, extra: #","colorScheme":"dark","css":"style.css""#), "form.4DForm", in: folder)
         let info = try analyze(url)
-        for theme in FormTheme.allCases {
+        for theme in FormPlatform.macOS.themes {
             let p = try object(info, theme: theme, name: "a").properties
             XCTAssertEqual(p["height"]?.double, 23)
             XCTAssertEqual(p["text"]?.string, "JSON")
             XCTAssertEqual(p["stroke"]?.string, "white")
         }
         XCTAssertTrue(info.warnings.contains("CSS cannot set colorScheme."))
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         XCTAssertTrue(html.contains("Form forces dark"))
         XCTAssertFalse(html.contains("id=\"theme-classicLight\""))
         XCTAssertFalse(html.contains("id=\"theme-glassLight\""))
@@ -300,7 +302,7 @@ final class FormTests: XCTestCase {
             XCTAssertTrue(info.warnings.joined().contains(expected), expected)
         }
         XCTAssertEqual(try object(info,name:"missing").properties["$ref"]?.string, "absent.json#/x")
-        let html = PreviewPipeline().html(for: url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for: url)
         XCTAssertTrue(html.contains("Preview notices"))
         XCTAssertFalse(html.contains("href=\"https://"))
     }
@@ -309,7 +311,7 @@ final class FormTests: XCTestCase {
         let folder = try folder()
         let outside = try self.folder()
         let secret = try write(#"{"value":42}"#, "outside.json", in: outside)
-        try FileManager.default.createSymbolicLink(at: folder.appendingPathComponent("link.json"), withDestinationURL: secret)
+        try createSymbolicLink(at: folder.appendingPathComponent("link.json"), to: secret)
         let url = try write(form(#"{"a":{"$ref":"link.json","type":"text","left":0,"top":0}}"#), "form.4DForm", in: folder)
         XCTAssertTrue(try analyze(url).warnings.joined().contains("escapes"))
     }
@@ -335,7 +337,7 @@ final class FormTests: XCTestCase {
         let info = try analyze(url)
         XCTAssertEqual(try object(info,name:"a").properties["fill"]?.string, "red")
         XCTAssertTrue(info.warnings.isEmpty)
-        XCTAssertFalse(PreviewPipeline().html(for:url).contains("No preview available"))
+        XCTAssertFalse(PreviewPipeline(analyzers: .macOSReference).html(for:url).contains("No preview available"))
     }
 
     func testJSONCornerCoordinatesBeatCSSDimensions() throws {
@@ -345,7 +347,7 @@ final class FormTests: XCTestCase {
         let p = try object(analyze(url),name:"a").properties
         XCTAssertNil(p["height"])
         XCTAssertNil(p["width"])
-        XCTAssertTrue(PreviewPipeline().html(for:url).contains("width=\"100\" height=\"20\""))
+        XCTAssertTrue(PreviewPipeline(analyzers: .macOSReference).html(for:url).contains("width=\"100\" height=\"20\""))
     }
 
     func testCSSPicturePathsUseStylesheetDirectory() throws {
@@ -365,7 +367,7 @@ final class FormTests: XCTestCase {
         let css = try write("text { text: Wrong !important; }", "outside.css", in: outside)
         let url = try write(form(#"{"a":{"type":"text","left":0,"top":0,"text":"Right"}}"#), "Project/Sources/Forms/Example/form.4DForm", in: folder)
         let link = folder.appendingPathComponent("Project/Sources/styleSheets.css")
-        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: css)
+        try createSymbolicLink(at: link, to: css)
         let info = try analyze(url)
         XCTAssertEqual(try object(info,name:"a").properties["text"]?.string,"Right")
         XCTAssertTrue(info.warnings.joined().contains("escapes"))
@@ -379,7 +381,7 @@ final class FormTests: XCTestCase {
         XCTAssertTrue(info.warnings.joined().contains("Unsupported"))
         XCTAssertTrue(info.warnings.contains("CSS cannot set method."))
         XCTAssertEqual(info.appearances[0].pages[1].objects.count,2)
-        let html = PreviewPipeline().html(for:url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for:url)
         XCTAssertTrue(html.contains("invalid or out-of-range coordinates"))
         XCTAssertFalse(html.contains("<title>b · text</title>"))
     }
@@ -388,7 +390,7 @@ final class FormTests: XCTestCase {
         let folder = try folder()
         try write(#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="20" height="20" fill="red"/><rect x="20" width="20" height="20" fill="blue"/></svg>"#, "sprite.svg", in: folder)
         let url = try write(form(#"{"a":{"type":"pictureButton","left":0,"top":0,"width":50,"height":50,"picture":"sprite.svg","columnCount":2,"rowCount":1}}"#), "form.4DForm", in: folder)
-        let html = PreviewPipeline().html(for:url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for:url)
         XCTAssertTrue(html.contains("scale(2.50 2.50)"))
         XCTAssertTrue(html.contains("<svg width=\"20\" height=\"20\" overflow=\"hidden\"><use href=\"#form-image-0\""))
     }
@@ -412,7 +414,7 @@ final class FormTests: XCTestCase {
     func testStaticPlaceholdersNoExecutionAndEscaping() throws {
         let folder = try folder()
         let url = try write(form(#"{"bound":{"type":"input","left":10,"top":10,"width":300,"height":22,"dataSource":"Form.value","defaultValue":"Do not execute"},"unsafe":{"type":"text","left":10,"top":40,"width":300,"height":22,"text":"<script>alert(1)</script>","fontFamily":"\" onload=\"bad"},"web":{"type":"webArea","left":10,"top":80,"width":300,"height":100,"urlSource":"https://example.com"}}"#), "form.4DForm", in: folder)
-        let html = PreviewPipeline().html(for:url)
+        let html = PreviewPipeline(analyzers: .macOSReference).html(for:url)
         XCTAssertTrue(html.contains(">Form.value</tspan>"))
         XCTAssertTrue(html.contains("&lt;script&gt;"))
         XCTAssertFalse(html.contains("<script>"))
@@ -448,7 +450,7 @@ final class FormTests: XCTestCase {
     func testMeasuredSingleLineRadiusExpandsHorizontally() throws {
         let folder = try folder()
         let url = try write(form(#"{"a":{"type":"input","left":490,"top":64,"width":220,"height":24,"borderStyle":"solid","borderRadius":8,"dataSource":"Form.radius"}}"#), "form.4DForm", in:folder)
-        XCTAssertTrue(PreviewPipeline().html(for:url).contains("x=\"-9\" y=\"-1\" width=\"238\" height=\"26\" rx=\"8\""))
+        XCTAssertTrue(PreviewPipeline(analyzers: .macOSReference).html(for:url).contains("x=\"-9\" y=\"-1\" width=\"238\" height=\"26\" rx=\"8\""))
     }
 
     func testNativeOmittedHeightDefaultsAndTallDropdownException() throws {

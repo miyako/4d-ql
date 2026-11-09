@@ -1,3 +1,4 @@
+#if os(macOS)
 import Darwin
 import Foundation
 import XCTest
@@ -589,3 +590,4 @@ final class ProjectPreviewServiceTests: XCTestCase {
         wait(for: [recovered], timeout: 2)
     }
 }
+#endif
