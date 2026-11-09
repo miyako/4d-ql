@@ -16,7 +16,11 @@ struct FormPlatformStyle {
 
     /// CSS family stack emitted with each SVG text run.
     var fallbackFamily: String {
-        platform == .macOS ? FormTextLayout.fallbackFamily : "Segoe UI, Tahoma, Arial, sans-serif"
+        switch platform {
+        case .macOS: return FormTextLayout.fallbackFamily
+        case .windows: return FormSubstituteFont.isNeeded
+            ? "Segoe UI, Selawik, Tahoma, Arial, sans-serif" : "Segoe UI, Tahoma, Arial, sans-serif"
+        }
     }
 
     var appearanceLabel: String { "\(platform.label) appearance" }

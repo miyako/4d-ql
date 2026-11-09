@@ -55,16 +55,32 @@ public struct FormFileInfo: AnalysisModel {
     public var localizationLanguage: String? = nil
     /// The platform whose appearances were analyzed (derived; not encoded).
     public var platform: FormPlatform { appearances.first?.theme.platform ?? .macOS }
+    /// Every platform with appearances, in output order (derived; not encoded).
+    public var platforms: [FormPlatform] {
+        appearances.reduce(into: []) { if !$0.contains($1.theme.platform) { $0.append($1.theme.platform) } }
+    }
 }
 
 public struct FormFileAnalyzer: FileAnalyzer {
     public var preferredLanguages: [String]
-    /// Native platform whose stylesheets and appearances are analyzed.
-    public var platform: FormPlatform
+    /// Native platforms whose stylesheets and appearances are analyzed, in output order.
+    public var platforms: [FormPlatform]
+    /// The first analyzed platform; setting it analyzes only that platform.
+    public var platform: FormPlatform {
+        get { platforms.first ?? .current }
+        set { platforms = [newValue] }
+    }
     /// No 4D application language is inferred or read from an installed application.
     public init(preferredLanguages: [String] = Locale.preferredLanguages, platform: FormPlatform = .current) {
         self.preferredLanguages = preferredLanguages
-        self.platform = platform
+        self.platforms = [platform]
+    }
+    /// Analyzes several platforms in one pass; the form, its images and
+    /// translations are loaded once and styled per platform.
+    public init(preferredLanguages: [String] = Locale.preferredLanguages, platforms: [FormPlatform]) {
+        self.preferredLanguages = preferredLanguages
+        let unique = platforms.reduce(into: [FormPlatform]()) { if !$0.contains($1) { $0.append($1) } }
+        self.platforms = unique.isEmpty ? [.current] : unique
     }
     public var identifier: String { "4dform" }
     public var contentTypes: [String] { ["com.4d.4d.form"] }
@@ -89,8 +105,37 @@ public struct FormFileAnalyzer: FileAnalyzer {
         }
         let expansion = FormStaticExpansion(dependencies: dependencies)
         let rawPages = try expansion.expand(resolved, document: url)
-        var stylesheet = FormStylesheet(dependencies: dependencies)
         var parsedStylesheets: [URL: FormStylesheet] = [:]
+        let imageLoader = FormImageLoader(dependencies: dependencies, document: url)
+        let localization = FormLocalization(dependencies: dependencies, preferredLanguages: preferredLanguages)
+        var appearances: [FormAppearance] = []
+        for (index, platform) in platforms.enumerated() {
+            do {
+                appearances += try analyzeAppearances(platform, form: resolved, rawPages: rawPages, document: url,
+                                                      expansion: expansion, dependencies: dependencies,
+                                                      parsedStylesheets: &parsedStylesheets,
+                                                      imageLoader: imageLoader, localization: localization)
+            } catch let error as FormError where index > 0 {
+                // An additional platform never prevents the primary preview.
+                dependencies.warn("\(platform.label) appearances omitted: \(error)")
+            }
+        }
+        let conventional = url.lastPathComponent.lowercased() == "form.4dform"
+        var info = FormFileInfo(fileName: url.lastPathComponent,
+                            formName: resolved["name"]?.string ?? (conventional ? url.deletingLastPathComponent().lastPathComponent : url.deletingPathExtension().lastPathComponent),
+                            text: String(decoding: data, as: UTF8.self), properties: localization.localize(resolved, source: nil),
+                            appearances: appearances, images: imageLoader.images,
+                            dependencies: dependencies.loadedPaths, warnings: dependencies.warnings)
+        info.localizationLanguage = localization.language
+        return info
+    }
+
+    /// Applies one platform's stylesheets to the expanded pages for each of its themes.
+    private func analyzeAppearances(_ platform: FormPlatform, form resolved: FormValue, rawPages: [FormPage], document url: URL,
+                                    expansion: FormStaticExpansion, dependencies: FormDependencies,
+                                    parsedStylesheets: inout [URL: FormStylesheet],
+                                    imageLoader: FormImageLoader, localization: FormLocalization) throws -> [FormAppearance] {
+        var stylesheet = FormStylesheet(dependencies: dependencies)
         if let sources = dependencies.sources {
             if !FileManager.default.isReadableFile(atPath: sources.path) {
                 dependencies.warn("Project stylesheets are inaccessible. Quick Look may grant access only to the selected form.")
@@ -113,7 +158,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
         contextKeys.insert(String(url.path.dropFirst(dependencies.root.path.count + 1)))
         for key in contextKeys.sorted() {
             var formStylesheet = stylesheet
-            try loadFormCSS(expansion.contexts[key]!, stylesheet: &formStylesheet,
+            try loadFormCSS(expansion.contexts[key]!, platform: platform, stylesheet: &formStylesheet,
                             parsed: &parsedStylesheets, dependencies: dependencies, document: url)
             stylesheets[key] = formStylesheet
         }
@@ -127,8 +172,6 @@ public struct FormFileAnalyzer: FileAnalyzer {
         guard count * max(1, stylesheets.values.map { $0.rules.count }.max() ?? 0) * 4 <= 1_000_000 else {
             throw FormError.limit("Form/CSS combination exceeds 1,000,000 rule matches.")
         }
-        let imageLoader = FormImageLoader(dependencies: dependencies, document: url)
-        let localization = FormLocalization(dependencies: dependencies, preferredLanguages: preferredLanguages)
         var appearances: [FormAppearance] = []
         for theme in platform.themes {
             var remaining = 1_000
@@ -146,14 +189,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
             }
             appearances.append(FormAppearance(theme: theme, pages: themedPages))
         }
-        let conventional = url.lastPathComponent.lowercased() == "form.4dform"
-        var info = FormFileInfo(fileName: url.lastPathComponent,
-                            formName: resolved["name"]?.string ?? (conventional ? url.deletingLastPathComponent().lastPathComponent : url.deletingPathExtension().lastPathComponent),
-                            text: String(decoding: data, as: UTF8.self), properties: localization.localize(resolved, source: nil),
-                            appearances: appearances, images: imageLoader.images,
-                            dependencies: dependencies.loadedPaths, warnings: dependencies.warnings)
-        info.localizationLanguage = localization.language
-        return info
+        return appearances
     }
 
     private func style(_ object: FormObject, theme: FormTheme, form: FormValue,
@@ -197,7 +233,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
         return styled
     }
 
-    private func loadFormCSS(_ form: FormValue, stylesheet: inout FormStylesheet,
+    private func loadFormCSS(_ form: FormValue, platform: FormPlatform, stylesheet: inout FormStylesheet,
                              parsed: inout [URL: FormStylesheet],
                              dependencies: FormDependencies, document: URL) throws {
         guard let css = form["css"] else { return }

@@ -43,17 +43,30 @@ struct FormFontFace {
         let family = properties["fontFamily"]?.string.flatMap { $0.hasPrefix("%") ? nil : $0 }
         self.size = size
         #if canImport(AppKit)
-        let base = family.flatMap { NSFont(name: $0, size: size) }
-            ?? NSFont(name: primary, size: size) ?? NSFont.systemFont(ofSize: size)
-        var traits = base.fontDescriptor.symbolicTraits
-        if bold { traits.insert(.bold) }
-        if italic { traits.insert(.italic) }
-        font = NSFont(descriptor: base.fontDescriptor.withSymbolicTraits(traits), size: size) ?? base
-        ascent = Double(font.ascender)
-        descent = Double(-font.descender)
-        capHeight = Double(font.capHeight)
-        lineHeight = Double(NSLayoutManager().defaultLineHeight(for: font))
-        baselineOffset = Double(NSLayoutManager().defaultBaselineOffset(for: font))
+        let named = family.flatMap { NSFont(name: $0, size: size) } ?? NSFont(name: primary, size: size)
+        if named == nil, primary == FormSubstituteFont.replaces, FormSubstituteFont.isNeeded,
+           let substitute = FormSubstituteFont.font(size: size, bold: bold) {
+            // Mirror the DirectWrite line metrics used for Segoe UI on Windows.
+            font = substitute
+            let lineAscent = size * FormSubstituteFont.ascent
+            let lineDescent = size * FormSubstituteFont.descent
+            ascent = lineAscent
+            descent = lineDescent
+            capHeight = size * FormSubstituteFont.capHeight
+            lineHeight = lineAscent.rounded() + lineDescent.rounded()
+            baselineOffset = lineAscent.rounded()
+        } else {
+            let base = named ?? NSFont.systemFont(ofSize: size)
+            var traits = base.fontDescriptor.symbolicTraits
+            if bold { traits.insert(.bold) }
+            if italic { traits.insert(.italic) }
+            font = NSFont(descriptor: base.fontDescriptor.withSymbolicTraits(traits), size: size) ?? base
+            ascent = Double(font.ascender)
+            descent = Double(-font.descender)
+            capHeight = Double(font.capHeight)
+            lineHeight = Double(NSLayoutManager().defaultLineHeight(for: font))
+            baselineOffset = Double(NSLayoutManager().defaultBaselineOffset(for: font))
+        }
         #elseif os(Windows)
         handle = FormDirectWriteFont.cached(family: family, primary: primary, size: size, bold: bold, italic: italic)
         ascent = handle.metrics.ascent
@@ -85,11 +98,11 @@ struct FormFontFace {
     func line(_ text: String) -> (ascent: Double, descent: Double, width: Double) {
         #if canImport(AppKit)
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
-        var ascent: CGFloat = 0
-        var descent: CGFloat = 0
+        var lineAscent: CGFloat = 0
+        var lineDescent: CGFloat = 0
         var leading: CGFloat = 0
-        let advance = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
-        return (max(Double(ascent), Double(font.ascender)), max(Double(descent), Double(-font.descender)), advance)
+        let advance = CTLineGetTypographicBounds(line, &lineAscent, &lineDescent, &leading)
+        return (max(Double(lineAscent), ascent), max(Double(lineDescent), descent), advance)
         #else
         return (ascent, descent, width(text))
         #endif

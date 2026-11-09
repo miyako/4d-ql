@@ -10,8 +10,13 @@ public struct HTMLRenderer {
 
     public func render(_ report: Report) -> String {
         var h = "<!doctype html><html><head><meta charset=\"utf-8\">"
-        if report.sections.flatMap(\.blocks).contains(where: { if case .formPreview = $0 { return true }; return false }) {
-            h += "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'\">"
+        let previews = report.sections.flatMap(\.blocks).compactMap { block -> FormPreview? in
+            if case .formPreview(let preview) = block { return preview }
+            return nil
+        }
+        if !previews.isEmpty {
+            let fonts = previews.contains(where: FormPreviewRenderer.embedsSubstituteFont) ? " font-src data:;" : ""
+            h += "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: 'self'; style-src 'unsafe-inline';\(fonts) base-uri 'none'; form-action 'none'\">"
         }
         h += "<meta name=\"color-scheme\" content=\"light dark\">"
         h += "<title>\(esc(report.title))</title><style>\(Self.css)</style></head><body>"
