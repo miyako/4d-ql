@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<base name="QRFixture" uuid="95000000000000000000000000000001">
+	<schema name="DEFAULT_SCHEMA"/>
+	<table name="Customers" id="1" uuid="95000000000000000000000000000002">
+		<field name="Name" type="10" id="1" unique="true" not_null="true" uuid="95000000000000000000000000000003"/>
+		<field name="Amount" type="6" id="2" uuid="95000000000000000000000000000004"/>
+		<field name="Region" type="10" id="3" uuid="95000000000000000000000000000005"/>
+		<primary_key field_name="Name" field_uuid="95000000000000000000000000000003"/>
+	</table>
+</base>

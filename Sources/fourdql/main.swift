@@ -110,6 +110,17 @@ func printBlock(_ b: Block, indent: String) {
                 print("\(indent)  Page \(page.number): \(page.objects.count) objects")
             }
         }
+    case .quickReportPreview(let preview):
+        let report = preview.report
+        print("\(indent)\(report.crossTable ? "Cross-table" : "List") template, table \(report.tableNumber)")
+        for band in [report.header, report.footer] {
+            print(indent + [band.left, band.center, band.right].joined(separator: " | "))
+        }
+        for (index, column) in report.columns.enumerated() {
+            for (row, cell) in column.cells.enumerated() where !cell.text.isEmpty || cell.operators != 0 {
+                print("\(indent)  Column \(index + 1), row \(row + 1): \(cell.text) [operators \(cell.operators)]")
+            }
+        }
     }
 }
 
