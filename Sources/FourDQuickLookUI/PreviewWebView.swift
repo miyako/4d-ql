@@ -23,6 +23,9 @@ public final class PreviewWebView: WKWebView, WKNavigationDelegate {
 
     required init?(coder: NSCoder) { nil }
 
+    // Finder hosts the preview remotely; its key window need not be key in this process.
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     public func loadPreview(html: String, completion: @escaping (Error?) -> Void) {
         let previous = pending
         pending = nil
