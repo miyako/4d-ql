@@ -392,8 +392,9 @@ final class StructureDiagramTests: XCTestCase {
 
     func testVariableWidthCardsHaveCorrectPortsAndNonoverlappingColumns() {
         let renderer = StructureDiagramRenderer()
+        let name = String(repeating: "W", count: Int(ceil(320 / DiagramTypography.width("W"))))
         let wide = DiagramNode(id: "A", title: "A", fields: [
-            DiagramField(id: "id", name: String(repeating: "W", count: 31), type: "Text")
+            DiagramField(id: "id", name: name, type: "Text")
         ])
         let width = renderer.cardWidth(wide)
         let html = render(StructureDiagram(nodes: [wide, node("B")], edges: [

@@ -65,6 +65,32 @@ final class FormTextLayoutTests: XCTestCase {
         XCTAssertEqual(layout.lines.map(\.text), ["Long first line", "", "Long last line", ""])
         XCTAssertGreaterThan(try XCTUnwrap(layout.lines.first).width, 1)
     }
+
+    func testApproximateLineBreakRespectsWordsParagraphsAndGraphemes() {
+        func lines(_ text: String, width: Double) -> [String] {
+            let source = text as NSString
+            var result: [String] = []
+            var offset = 0
+            while offset < source.length {
+                let suggested = FormFontFace.approximateLineBreak(source, offset: offset, width: width, advance: 6.5)
+                let count = suggested > 0 ? suggested : source.rangeOfComposedCharacterSequence(at: offset).length
+                result.append(source.substring(with: NSRange(location: offset, length: count)))
+                offset += count
+            }
+            return result
+        }
+        XCTAssertEqual(lines("office affinity alpha beta", width: 105), ["office affinity ", "alpha beta"])
+        XCTAssertEqual(lines("First\n\nLast\n", width: 200), ["First\n", "\n", "Last\n"])
+        XCTAssertEqual(lines("First\r\n\r\nLast\r", width: 200), ["First\r\n", "\r\n", "Last\r"])
+        XCTAssertEqual(lines("e\u{301}👨‍👩‍👧‍👦日本語", width: 1), ["e\u{301}", "👨‍👩‍👧‍👦", "日", "本", "語"])
+        XCTAssertEqual(lines("🙂🙂x", width: 13), ["🙂🙂", "x"])
+        XCTAssertEqual(FormFontFace.approximateLineBreak("🙂x" as NSString, offset: 0, width: 6.5, advance: 6.5), 2)
+        let arabic = "مرحبا بالعالم هذا نص عربي"
+        let wrapped = lines(arabic, width: 90)
+        XCTAssertGreaterThan(wrapped.count, 1)
+        XCTAssertEqual(wrapped.joined(), arabic)
+        XCTAssertEqual(lines("xxxxxxxx", width: 0).count, 8)
+    }
 }
 
 #if canImport(AppKit)
