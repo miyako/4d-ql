@@ -1,5 +1,7 @@
 # 4D Quick Look
 
+English | [日本語](README.ja.md)
+
 Quick Look previews for 4D's proprietary files in Finder. Press Space on a
 file to see what is inside instead of a generic icon.
 
