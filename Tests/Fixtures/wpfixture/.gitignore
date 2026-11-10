@@ -1,0 +1,8 @@
+# Everything 4D writes while generating fixtures
+/Data/
+/Logs/
+/Settings/
+/userPreferences.*/
+/Project/DerivedData/
+/Output/
+/Libraries/

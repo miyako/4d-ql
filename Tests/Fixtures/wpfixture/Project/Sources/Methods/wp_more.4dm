@@ -1,0 +1,48 @@
+// Left/right subsections, explicit page size, nested lists, protection, custom attributes and escaping.
+var $doc : Object:=WP New()
+var $body : Object:=WP Get body($doc)
+var $r : Object
+WP SET ATTRIBUTES($doc; wk title; "More probe"; wk page size; "Letter"; wk page first right; wk false)
+$doc.custom:="user value"
+$doc.importLog:="none"
+var $s1 : Object:=WP Get section($doc; 1)
+WP SET ATTRIBUTES($s1; wk page margin left; "3cm"; wk page margin right; "1cm")
+var $left : Object:=WP New subsection($s1; wk left page)
+var $right : Object:=WP Get subsection($s1; wk right page)
+var $lh : Object:=WP New header($left)
+WP SET TEXT($lh; "Left header"; wk replace)
+var $rh : Object:=WP New header($right)
+WP SET TEXT($rh; "Right header"; wk replace)
+var $rf : Object:=WP New footer($right)
+WP SET TEXT($rf; "Right footer"; wk replace)
+var $pic : Picture
+READ PICTURE FILE(Get 4D folder(Database folder)+"Resources"+Folder separator+"checker.png"; $pic)
+WP INSERT PICTURE(WP Text range($rh; wk end text; wk end text); $pic; wk append)
+
+WP SET TEXT($body; "Escaping: <tag> & \"quotes\" 'apostrophes' non-breaking"+Char(160)+"space."; wk append)
+var $i : Integer
+For ($i; 1; 6)
+	$r:=WP Insert break($body; wk paragraph break; wk append)
+	WP SET TEXT($body; "Level item "+String($i); wk append)
+	$r:=WP Paragraph range(WP Text range($body; wk end text; wk end text))
+	WP SET ATTRIBUTES($r; wk list style type; ($i%2=1) ? wk decimal : wk lower latin; wk margin left; String(($i%2=0) ? 1 : 0)+"cm")
+End for
+$r:=WP Insert break($body; wk paragraph break; wk append)
+WP SET TEXT($body; "Protected paragraph"; wk append)
+$r:=WP Paragraph range(WP Text range($body; wk end text; wk end text))
+WP SET ATTRIBUTES($r; wk list style type; wk none; wk margin left; 0; wk protected; wk true; wk keep with next; wk true; wk avoid widows and orphans; wk true)
+$r:=WP Insert break($body; wk paragraph break; wk append)
+var $table : Object:=WP Insert table(WP Text range($body; wk end text; wk end text); wk append; wk include in range)
+$r:=WP Table append row($table; "A"; "B"; "C")
+$r:=WP Table append row($table; "D"; "E"; "F")
+$r:=WP Table append row($table; "G"; "H"; "I")
+WP TABLE MERGE CELLS(WP Table get cells($table; 1; 1; 1; 2))
+WP SET ATTRIBUTES($table; wk page break inside table; wk avoid; wk bottom carry over row; wk true; wk header row count; 1)
+WP SET ATTRIBUTES(WP Table get rows($table; 2); wk page break inside row; wk avoid; wk height; "40pt")
+$r:=WP Insert break($body; wk paragraph break; wk append)
+WP SET TEXT($body; "Paragraph after table, then page break in a new page."; wk append)
+$r:=WP Insert break($body; wk page break; wk append)
+WP SET TEXT($body; "Second page"; wk append)
+$r:=WP Insert break($body; wk page break; wk append)
+WP SET TEXT($body; "Third page"; wk append)
+wp_save($doc; "more")

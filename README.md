@@ -19,6 +19,7 @@ file to see what is inside instead of a generic icon.
 | `.4st` saved set | selected-record count, address-span coverage and distribution, contiguous record-number ranges, and saved current record; empty/full-page compression decoded |
 | `.4qr` Quick Report | list/cross-table design template with saved widths, titles, fonts, colors, borders, header/footer text, sorts, subtotals and grand totals; no database or 4D runtime required |
 | `.4lbp` label | native XML label artwork and sheet layout, saved text, shapes, raster pictures, print order, margins, gaps and project table-form references |
+| `.4wp` 4D Write Pro document | paged rendering with page size, margins, sections, columns, page/section breaks, headers and footers (first/left/right), paragraph and character styles, lists, tab stops, tables (including data-source templates), inline and anchored pictures, text boxes, and formulas shown as references; formula list, style sheets, bookmarks and metadata |
 | `.4dm` method / class source | syntax-highlighted UTF-8 source with line numbers, line count and file size |
 | `.4DForm` form | approximate macOS form layout, page 0 plus selectable numbered pages, Classic / Liquid Glass light and dark appearances, local stylesheets, JSON pointers, static inherited/subforms and XLIFF labels |
 
@@ -51,6 +52,15 @@ Saved table forms reuse the `.4DForm` renderer when a label resides within its
 project's `Project/Sources` or `Resources` tree and the form name resolves
 unambiguously. Missing forms and unsupported artwork produce preview notices.
 See [format semantics and limits](docs/LABEL-FORMAT.md).
+
+4D Write Pro previews read the ZIP-packaged XHTML that 4D writes for `.4wp`
+documents (bare XHTML is accepted too) and rebuild it as static page sheets
+without 4D. Every element and CSS property is translated from 4D's dialect and
+validated; links are inert, remote pictures are not downloaded and formulas are
+never evaluated: they appear as references, except page number, page count and
+section name, which are computed. Pages split only at hard page and section
+breaks, so text is not reflowed onto further pages, and text wrapping around
+anchored objects is not simulated. See [format notes](docs/WRITEPRO-FORMAT.md).
 
 ### Shared form rendering
 
@@ -581,6 +591,7 @@ swift build && .build/debug/fourdql file.4DD            # text summary
 FOURD_SAMPLES=/path/to/samples swift test               # runs every sample through the pipeline
 scripts/make-fixtures.sh                                # regenerate test fixtures (needs tool4d)
 bash scripts/make-set-fixtures.sh                       # regenerate controlled saved sets (tool4d 21 R5)
+bash scripts/make-writepro-fixtures.sh                  # regenerate .4wp fixtures (full 4D; tool4d lacks Write Pro)
 ```
 
 The test fixtures in `Tests/FourDFileKitTests/Fixtures` (a data file with
