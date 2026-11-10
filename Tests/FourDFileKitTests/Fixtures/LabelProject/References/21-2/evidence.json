@@ -1,0 +1,178 @@
+{
+  "command": [
+    "/Applications/4D 21.2/4D.app/Contents/MacOS/4D",
+    "--project=/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/project/Project/LabelProbe.4DProject",
+    "--data=/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/LabelProbe.4DD",
+    "--create-data",
+    "--skip-onstartup",
+    "--startup-method=label_probe",
+    "--user-param=print"
+  ],
+  "exitCode": 0,
+  "timedOut": false,
+  "seconds": 3.779,
+  "engineVersion": "21.2 build 21.100653",
+  "mode": "print",
+  "inputs": {
+    "Project/LabelProbe.4DProject": "d8932aa982bf57fcea0fbe3d0c7086bf6995e2abf211d0a2a8ad7cd22d28ee32",
+    "Project/Sources/Methods/label_probe.4dm": "7856bc077f1fe4e5b76684a2e8fede9950c6d46af08261baf63d580a868dea73",
+    "Project/Sources/TableForms/1/ShippingLabel/form.4DForm": "f21170a908813d1ddb33a6970e1c2d7c627f4ae7fe2b5adc468b1496a1519c40",
+    "Project/Sources/catalog.4DCatalog": "63824816c0afaa41f16befb62230f9ba2fddf253cea495182dacb8011206f936",
+    "Project/Sources/dependencies.json": "7f465bedbfe41e5d50268ae7e87e88d8fa74c852cd38bece322bcac4e25b5218",
+    "Resources/Labels/representative.4lbp": "bff5aa656cb0b1f69ddf7cbf2fd6b2ea72e293830ccfa2e776567523c0e43790",
+    "Resources/Labels/saved-form-reference.4lbp": "7aed370f19da1d459e992e5dec03ce60d12d467f90d4585007541feb81bad258"
+  },
+  "verifiedPDF": true,
+  "captures": {
+    "representative": {
+      "command": [
+        "swift",
+        "-e",
+        "\nimport AppKit\nimport PDFKit\nlet url = URL(fileURLWithPath: CommandLine.arguments[1])\nguard let document = PDFDocument(url: url), let page = document.page(at: 0) else {\n    fatalError(\"Native PDF is unreadable\")\n}\nlet text = page.string ?? \"\"\nlet expected = CommandLine.arguments[4] == \"form\" ? [\"HOST FORM REFERENCE\", \"ShippingLabel\"] :\n    [\"Parcel & Co.\", \"Café\", \"東京\", \"Ada Example\", \"Code: 7\", \"Original embedded PNG\"]\nguard document.pageCount == 1, expected.allSatisfy({ text.contains($0) }) else {\n    fatalError(\"Native PDF is blank or missing expected literal/field/formula output\")\n}\nlet image = page.thumbnail(of: NSSize(width: 1190, height: 1684), for: .mediaBox)\nlet bitmap = NSBitmapImageRep(data: image.tiffRepresentation!)!\ntry bitmap.representation(using: .png, properties: [:])!.write(\n    to: URL(fileURLWithPath: CommandLine.arguments[2]))\nlet result: [String: Any] = [\"pages\": document.pageCount, \"text\": text,\n    \"mediaBox\": [page.bounds(for: .mediaBox).width, page.bounds(for: .mediaBox).height],\n    \"capturePixels\": [bitmap.pixelsWide, bitmap.pixelsHigh],\n    \"captureEngine\": \"macOS PDFKit thumbnail, white paper, approximately 144 dpi\"]\nlet data = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])\ntry data.write(to: URL(fileURLWithPath: CommandLine.arguments[3]))\n",
+        "/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/project/Resources/native/representative.pdf",
+        "/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/project/Resources/native/representative.png",
+        "/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/project/Resources/native/representative-content.json",
+        "label"
+      ],
+      "exitCode": 0,
+      "timedOut": false,
+      "seconds": 0.886,
+      "content": {
+        "captureEngine": "macOS PDFKit thumbnail, white paper, approximately 144 dpi",
+        "capturePixels": [
+          1190,
+          1683
+        ],
+        "mediaBox": [
+          595.2755000000001,
+          841.8898
+        ],
+        "pages": 1,
+        "text": "Parcel & Co.\nCafé — 東京\nAda Example\nCode: 7\nOriginal embedded PNG"
+      }
+    },
+    "display-unit-mm": {
+      "command": [
+        "swift",
+        "-e",
+        "\nimport AppKit\nimport PDFKit\nlet url = URL(fileURLWithPath: CommandLine.arguments[1])\nguard let document = PDFDocument(url: url), let page = document.page(at: 0) else {\n    fatalError(\"Native PDF is unreadable\")\n}\nlet text = page.string ?? \"\"\nlet expected = CommandLine.arguments[4] == \"form\" ? [\"HOST FORM REFERENCE\", \"ShippingLabel\"] :\n    [\"Parcel & Co.\", \"Café\", \"東京\", \"Ada Example\", \"Code: 7\", \"Original embedded PNG\"]\nguard document.pageCount == 1, expected.allSatisfy({ text.contains($0) }) else {\n    fatalError(\"Native PDF is blank or missing expected literal/field/formula output\")\n}\nlet image = page.thumbnail(of: NSSize(width: 1190, height: 1684), for: .mediaBox)\nlet bitmap = NSBitmapImageRep(data: image.tiffRepresentation!)!\ntry bitmap.representation(using: .png, properties: [:])!.write(\n    to: URL(fileURLWithPath: CommandLine.arguments[2]))\nlet result: [String: Any] = [\"pages\": document.pageCount, \"text\": text,\n    \"mediaBox\": [page.bounds(for: .mediaBox).width, page.bounds(for: .mediaBox).height],\n    \"capturePixels\": [bitmap.pixelsWide, bitmap.pixelsHigh],\n    \"captureEngine\": \"macOS PDFKit thumbnail, white paper, approximately 144 dpi\"]\nlet data = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])\ntry data.write(to: URL(fileURLWithPath: CommandLine.arguments[3]))\n",
+        "/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/project/Resources/native/display-unit-mm.pdf",
+        "/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/project/Resources/native/display-unit-mm.png",
+        "/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/project/Resources/native/display-unit-mm-content.json",
+        "label"
+      ],
+      "exitCode": 0,
+      "timedOut": false,
+      "seconds": 0.596,
+      "content": {
+        "captureEngine": "macOS PDFKit thumbnail, white paper, approximately 144 dpi",
+        "capturePixels": [
+          1190,
+          1683
+        ],
+        "mediaBox": [
+          595.2755000000001,
+          841.8898
+        ],
+        "pages": 1,
+        "text": "Parcel & Co.\nCafé — 東京\nAda Example\nCode: 7\nOriginal embedded PNG"
+      }
+    },
+    "saved-form": {
+      "command": [
+        "swift",
+        "-e",
+        "\nimport AppKit\nimport PDFKit\nlet url = URL(fileURLWithPath: CommandLine.arguments[1])\nguard let document = PDFDocument(url: url), let page = document.page(at: 0) else {\n    fatalError(\"Native PDF is unreadable\")\n}\nlet text = page.string ?? \"\"\nlet expected = CommandLine.arguments[4] == \"form\" ? [\"HOST FORM REFERENCE\", \"ShippingLabel\"] :\n    [\"Parcel & Co.\", \"Café\", \"東京\", \"Ada Example\", \"Code: 7\", \"Original embedded PNG\"]\nguard document.pageCount == 1, expected.allSatisfy({ text.contains($0) }) else {\n    fatalError(\"Native PDF is blank or missing expected literal/field/formula output\")\n}\nlet image = page.thumbnail(of: NSSize(width: 1190, height: 1684), for: .mediaBox)\nlet bitmap = NSBitmapImageRep(data: image.tiffRepresentation!)!\ntry bitmap.representation(using: .png, properties: [:])!.write(\n    to: URL(fileURLWithPath: CommandLine.arguments[2]))\nlet result: [String: Any] = [\"pages\": document.pageCount, \"text\": text,\n    \"mediaBox\": [page.bounds(for: .mediaBox).width, page.bounds(for: .mediaBox).height],\n    \"capturePixels\": [bitmap.pixelsWide, bitmap.pixelsHigh],\n    \"captureEngine\": \"macOS PDFKit thumbnail, white paper, approximately 144 dpi\"]\nlet data = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])\ntry data.write(to: URL(fileURLWithPath: CommandLine.arguments[3]))\n",
+        "/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/project/Resources/native/saved-form.pdf",
+        "/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/project/Resources/native/saved-form.png",
+        "/Users/miyako/.copilot/repos/copilot-worktrees/4d-ql/miyako-effective-potato/build/label-reference-21-2-forms/project/Resources/native/saved-form-content.json",
+        "form"
+      ],
+      "exitCode": 0,
+      "timedOut": false,
+      "seconds": 0.541,
+      "content": {
+        "captureEngine": "macOS PDFKit thumbnail, white paper, approximately 144 dpi",
+        "capturePixels": [
+          1190,
+          1683
+        ],
+        "mediaBox": [
+          595.2755000000001,
+          841.8898
+        ],
+        "pages": 1,
+        "text": "HOST FORM REFERENCE\nShippingLabel — table 1"
+      }
+    }
+  },
+  "pdfContent": {
+    "captureEngine": "macOS PDFKit thumbnail, white paper, approximately 144 dpi",
+    "capturePixels": [
+      1190,
+      1683
+    ],
+    "mediaBox": [
+      595.2755000000001,
+      841.8898
+    ],
+    "pages": 1,
+    "text": "Parcel & Co.\nCafé — 東京\nAda Example\nCode: 7\nOriginal embedded PNG"
+  },
+  "displayUnitSameRaster": true,
+  "verifiedXMLRoundtrip": true,
+  "outputs": {
+    "context.json": {
+      "bytes": 211,
+      "sha256": "6885158ee12ae9ea4425f6c6ed45eb5749284a175014a7fd10f8a8ee7fd02b8c"
+    },
+    "display-unit-mm-content.json": {
+      "bytes": 304,
+      "sha256": "8d4c6e70d5c4deb9e1f1ea18634ee296c2fd0a1ab42c64f8ab9e4aa38f683da5"
+    },
+    "display-unit-mm.4lbp": {
+      "bytes": 4454,
+      "sha256": "1226a4a8ed59b2d6f434abae51fcf29c57a2246bb8c38180ed5ea0d5dd1f20e0"
+    },
+    "display-unit-mm.pdf": {
+      "bytes": 18941,
+      "sha256": "8f29b3e712219aef11f8763e4f54d862bbcd6a7f882f065a12e85b1218813f81"
+    },
+    "display-unit-mm.png": {
+      "bytes": 62925,
+      "sha256": "69dce9a194d7ab43c82d4e26c43739f16d0e9b3615810390169a3971757903bf"
+    },
+    "host-form.png": {
+      "bytes": 5394,
+      "sha256": "615b7460c727e580b756c925e858abab31ce462e5eb2a1c7ecc64645f6e57699"
+    },
+    "representative-content.json": {
+      "bytes": 304,
+      "sha256": "8d4c6e70d5c4deb9e1f1ea18634ee296c2fd0a1ab42c64f8ab9e4aa38f683da5"
+    },
+    "representative-roundtrip.4lbp": {
+      "bytes": 4454,
+      "sha256": "179fe0a7a42b08a90115e1ae730b28750d06736bdba849eae4ec1c76426d7582"
+    },
+    "representative.pdf": {
+      "bytes": 18941,
+      "sha256": "86d5baae7ba0321d97aa737d88c34c7d9620b49d8d5cbd17ce9f6703b7948715"
+    },
+    "representative.png": {
+      "bytes": 62925,
+      "sha256": "69dce9a194d7ab43c82d4e26c43739f16d0e9b3615810390169a3971757903bf"
+    },
+    "saved-form-content.json": {
+      "bytes": 275,
+      "sha256": "3c6c7d0e3888306a6740a9938caf7ac9940cf6ce0786e102bbd1aa32f67bc7f0"
+    },
+    "saved-form.pdf": {
+      "bytes": 12038,
+      "sha256": "aef8229ec922b24d251b6b5508b07ceaa62aced09918c07c9814000f385adc3e"
+    },
+    "saved-form.png": {
+      "bytes": 55661,
+      "sha256": "a2b6559626997f5652042eba41e916014ddefbba5f26181d03f4b0ee3a09a9d4"
+    }
+  }
+}

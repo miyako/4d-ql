@@ -21,6 +21,16 @@
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.labelFile</string>
+			<key>UTTypeDescription</key><string>4D Label File</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key><array><string>4lbp</string><string>4LBP</string></array>
+				<key>com.apple.ostype</key><string>4DET</string>
+			</dict>
+		</dict>
+		<dict>
 			<key>UTTypeIdentifier</key><string>com.4d.4d.form</string>
 			<key>UTTypeDescription</key><string>4D Form</string>
 			<key>UTTypeConformsTo</key><array><string>public.json</string></array>

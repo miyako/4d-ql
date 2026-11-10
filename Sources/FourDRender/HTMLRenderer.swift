@@ -14,7 +14,8 @@ public struct HTMLRenderer {
             if case .formPreview(let preview) = block { return preview }
             return nil
         }
-        if !previews.isEmpty {
+        let hasLabel = report.sections.flatMap(\.blocks).contains { if case .labelPreview = $0 { return true }; return false }
+        if !previews.isEmpty || hasLabel {
             let fonts = previews.contains(where: FormPreviewRenderer.embedsSubstituteFont) ? " font-src data:;" : ""
             h += "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: 'self'; style-src 'unsafe-inline';\(fonts) base-uri 'none'; form-action 'none'\">"
         }
@@ -63,6 +64,8 @@ public struct HTMLRenderer {
 
     private func block(_ b: Block, identifier: String = "block") -> String {
         switch b {
+        case .labelPreview(let preview):
+            return LabelPreviewRenderer.render(preview.label, identifier: identifier)
         case .quickReportPreview(let preview):
             return QuickReportPreviewRenderer.render(preview)
         case .keyValues(let kv):

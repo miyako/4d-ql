@@ -516,6 +516,9 @@ final class ProjectPreviewServiceTests: XCTestCase {
         try ProjectPreviewServiceTransport.validatePreview(
             fileURL: URL(fileURLWithPath: "/project/Project/Sources/catalog.4DCatalog"),
             nonce: id, sourceSHA: sourceHash, rendererBuild: "42", expectedRendererBuild: "42")
+        try ProjectPreviewServiceTransport.validatePreview(
+            fileURL: URL(fileURLWithPath: "/project/Resources/address.4LBP"),
+            nonce: id, sourceSHA: sourceHash, rendererBuild: "42", expectedRendererBuild: "42")
         for nonce in ["../outside", id.lowercased(), ""] {
             XCTAssertThrowsError(try ProjectPreviewServiceTransport.validatePreview(fileURL: url, nonce: nonce,
                 sourceSHA: sourceHash, rendererBuild: "42", expectedRendererBuild: "42"))

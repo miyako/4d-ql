@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<label columns="2" rows="3" labels-per-record="1" start="1" document-name="Authored native label probe" standard-code="" version="2">
+  <setting id="setting" auto-width="false" landscape="false" vertical="false" />
+  <size id="size" unit="pt" height="179" width="252" />
+  <margin id="margin" left="36" top="36" right="36" bottom="36" />
+  <gap id="gap" horizontal="12" vertical="12" />
+  <form id="form" name="" number="-1" />
+  <method id="method" name="" evaluate-per-label="false" />
+  <selects id="selects" />
+  <objects id="objects">
+    <object type="rect" id="probe-frame" left="289" top="65" right="533" bottom="237" field-type="0" font-name="Helvetica" font-size="12" font-color="#163459" style="plain" alignment="left" direction="down" preserve-aspect-ratio="true" fill-color="#F3F7FC" fill-opacity="1" stroke-color="#163459" stroke-opacity="1" stroke-width="1" />
+    <object type="round-rect" id="probe-round" left="297" top="73" right="453" bottom="103" field-type="0" font-name="Helvetica" font-size="12" font-color="#163459" style="plain" alignment="left" direction="down" preserve-aspect-ratio="true" fill-color="#D9E7F5" fill-opacity="1" stroke-color="#163459" stroke-opacity="1" stroke-width="2" rx="8" ry="8" />
+    <object type="text" id="probe-heading" left="305" top="78" right="447" bottom="99" field-type="0" font-name="Helvetica" font-size="16" font-color="#163459" style="bold" alignment="left" direction="down" preserve-aspect-ratio="true" fill-color="none" fill-opacity="1" stroke-color="#163459" stroke-opacity="1" stroke-width="0" value="Parcel &amp; Co." />
+    <object type="oval" id="probe-oval" left="467" top="73" right="503" bottom="103" field-type="0" font-name="Helvetica" font-size="12" font-color="#163459" style="plain" alignment="left" direction="down" preserve-aspect-ratio="true" fill-color="#FFD36A" fill-opacity="1" stroke-color="#163459" stroke-opacity="1" stroke-width="1" />
+    <object type="line" id="probe-rule" left="297" top="113" right="525" bottom="113" field-type="0" font-name="Helvetica" font-size="12" font-color="#163459" style="plain" alignment="left" direction="down" preserve-aspect-ratio="true" fill-color="none" fill-opacity="1" stroke-color="#163459" stroke-opacity="1" stroke-width="2" />
+    <object type="text" id="probe-unicode" left="297" top="120" right="519" bottom="142" field-type="0" font-name="Helvetica" font-size="12" font-color="#163459" style="plain" alignment="left" direction="down" preserve-aspect-ratio="true" fill-color="none" fill-opacity="1" stroke-color="#163459" stroke-opacity="1" stroke-width="0" value="Café — 東京" />
+    <object type="variable" id="probe-field" left="297" top="149" right="517" bottom="169" field-type="0" font-name="Helvetica" font-size="12" font-color="#163459" style="plain" alignment="left" direction="down" preserve-aspect-ratio="true" fill-color="none" fill-opacity="1" stroke-color="#163459" stroke-opacity="1" stroke-width="0" value="[Parcels]Recipient" table="1" field="2" pairs="1" tableList="[1]" fieldList="[2]" />
+    <object type="variable" id="probe-formula" left="297" top="175" right="517" bottom="195" field-type="0" font-name="Helvetica" font-size="12" font-color="#163459" style="plain" alignment="left" direction="down" preserve-aspect-ratio="true" fill-color="none" fill-opacity="1" stroke-color="#163459" stroke-opacity="1" stroke-width="0" value="&quot;Code: &quot;+String(7)" />
+    <object type="image" id="probe-image" left="297" top="203" right="321" bottom="227" field-type="0" font-name="Helvetica" font-size="12" font-color="#163459" style="plain" alignment="left" direction="down" preserve-aspect-ratio="true" fill-color="none" fill-opacity="1" stroke-color="#163459" stroke-opacity="1" stroke-width="0" image-data="iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAIAAABvFaqvAAAANElEQVR4nGP4f1gDDcnFb0FDxKhhGDWIjgaRpw1TzahB9DRo8KWjUYMIGzT40tGoQQTVAABz036OSE1FrAAAAABJRU5ErkJggg==" image-hash="0b653dc5cabde049be1bdd1e73071e069f3dc6bd" image-name="authored-checker.png" image-codec=".png" />
+    <object type="text" id="probe-caption" left="330" top="205" right="519" bottom="227" field-type="0" font-name="Helvetica" font-size="10" font-color="#163459" style="plain" alignment="left" direction="down" preserve-aspect-ratio="true" fill-color="none" fill-opacity="1" stroke-color="#163459" stroke-opacity="1" stroke-width="0" value="Original embedded PNG" />
+  </objects>
+</label>

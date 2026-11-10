@@ -67,6 +67,9 @@ for path in paths {
 
 func printBlock(_ b: Block, indent: String) {
     switch b {
+    case .labelPreview(let preview):
+        let label = preview.label
+        print("\(indent)\(label.objects.count) label objects; \(label.layout.columns) columns × \(label.layout.rows) rows")
     case .keyValues(let kv): kv.forEach { print("\(indent)\($0.key): \($0.value)") }
     case .identity(let label, let value, let caption):
         print("\(indent)\(label): \(value)" + (caption.map { "  (\($0))" } ?? ""))

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<base name="LabelProbe" uuid="CE13EEB807D14A3E837CA9B2B7E6134E" collation_locale="en">
+  <schema name="DEFAULT_SCHEMA"/>
+  <table name="Parcels" uuid="9D57F45B67DE405D819F0286C8360864" id="1">
+    <field name="ID" uuid="748100B08ECA462B99CEDA16B2E4C734" type="4" id="1" unique="true" not_null="true"/>
+    <field name="Recipient" uuid="EBB0186B5E204CE7BC904837429303D7" type="14" limiting_length="80" id="2"/>
+    <primary_key field_name="ID" field_uuid="748100B08ECA462B99CEDA16B2E4C734"/>
+  </table>
+</base>

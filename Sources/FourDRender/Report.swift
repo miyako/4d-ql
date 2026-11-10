@@ -118,6 +118,7 @@ public indirect enum Block {
     case structureDiagram(StructureDiagram)
     case formPreview(FormPreview)
     case quickReportPreview(QuickReportPreview)
+    case labelPreview(LabelPreview)
     /// Collapsible group with a summary line.
     case disclosure(summary: String, detail: String?, blocks: [Block])
     case note(String, Badge.Tone)
