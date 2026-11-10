@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic source-preview example; not a deployment configuration. -->
+<settings>
+  <application>
+    <name>Northwind Observatory</name>
+    <version>1.0</version>
+    <language>en</language>
+  </application>
+  <description>
+    A small customer and equipment-service project.
+    Source text is preserved, including comments and indentation.
+  </description>
+</settings>

@@ -508,6 +508,9 @@ Finder still shows the old preview, run `qlmanage -r`.
 
 ### Command-line tool
 
+See the [CLI reference](docs/CLI.md) for capabilities, installation, options,
+automation behavior and a screenshot of every supported file type.
+
 The separate `fourdql-X.Y.Z-macos-universal.dmg` and `.zip` release assets contain the
 Developer ID-signed, notarized CLI for Apple Silicon and Intel Macs (macOS 12
 or later). Mount the DMG or extract the ZIP and run `./fourdql`, or place the executable in a directory

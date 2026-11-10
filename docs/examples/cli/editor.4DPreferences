@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic CLI example, based on TextFileTests. -->
+<preferences stamp="61">
+  <com.4d>
+    <method_editor>
+      <theme dark="defaultDarkTheme" light="custom"/>
+    </method_editor>
+  </com.4d>
+</preferences>

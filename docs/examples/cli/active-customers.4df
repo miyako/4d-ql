@@ -1,0 +1,11 @@
+{
+  "mainTable": 1,
+  "queryDestination": 1,
+  "version": 3,
+  "ja": false,
+  "lines": [
+    {"tableNumber": "1", "fieldNumber": "2", "criterion": "9", "oneBox": "North"},
+    {"lineOperator": "1", "tableNumber": "1", "fieldNumber": "4", "criterion": "7", "firstBox": "2026-01-01", "secondBox": "2026-12-31"},
+    {"lineOperator": "1", "tableNumber": "1", "fieldNumber": "3", "criterion": "42"}
+  ]
+}

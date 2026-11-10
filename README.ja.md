@@ -477,6 +477,9 @@ Finder に古いプレビューが表示される場合は `qlmanage -r` を実�
 
 ### コマンドラインツール
 
+対応形式、インストール、オプション、自動処理時の動作、各形式のスクリーンショットは
+[CLI リファレンス（英語）](docs/CLI.md)を参照してください。
+
 別途配布される `fourdql-X.Y.Z-macos-universal.dmg` と `.zip` には、Developer ID で署名・公証済みの
 Apple Silicon / Intel 両対応 CLI が含まれます（macOS 12 以降）。
 DMG をマウントまたは ZIP を展開して `./fourdql` を実行するか、実行ファイルを `PATH` 内のディレクトリに配置してください。

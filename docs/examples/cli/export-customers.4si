@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic CLI example, based on ImportExportSettingsTests. -->
+<settings-import-export table_no="1" table_name="Customers" format="4D" encoding="UTF-8" char_display_format="decimal" platform="automatic">
+  <field table_no="1" field_no="2" name="Name" kind="alpha"/>
+  <field table_no="1" field_no="3" name="Email" kind="alpha"/>
+  <field table_no="1" field_no="4" name="Joined" kind="date"/>
+  <field table_no="1" field_no="1" name="ID" kind="int32"/>
+  <text_settings with_column_title="true"/>
+</settings-import-export>
