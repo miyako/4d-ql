@@ -474,7 +474,7 @@ swift run fourdql --html "/path/to/Workbook.4vp" > workbook.html
 Source builds are not the Developer ID-signed, notarized release artifact.
 On Windows, use Swift with the Visual Studio C++ tools and Windows SDK; the
 executable is `fourdql.exe`. See the [Windows handover](WINDOWS-HANDOVER.md).
-Linux hosted builds use Swift 6.2.3 on Ubuntu 24.04; their rendering limitations
+Linux hosted builds use Swift 6.2.1 on Ubuntu 24.04; their rendering limitations
 also apply when building from source.
 
 ## Hosted builds and releases
@@ -490,6 +490,10 @@ The smoke check covers text, typed JSON and HTML for all 16 document families,
 the `.data` alias, options and documented failure statuses.
 Linux repeats the check in a clean Ubuntu container without Swift installed,
 with fixture/package mounts read-only and networking disabled.
+For a single-platform hosted build without rebuilding the macOS app, dispatch
+`gh workflow run ci.yml -f platform=linux` or `-f platform=windows` (add
+`--ref BRANCH` when testing a branch). Pull requests and pushes to `main`
+always cover all platforms.
 
 The [release workflow](../.github/workflows/release.yml) uses the same package
 jobs for `vX.Y.Z` tags. It attaches their archives after the macOS job creates

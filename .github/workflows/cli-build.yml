@@ -11,6 +11,10 @@ on:
         description: Version used in archive names
         type: string
         required: true
+      platform:
+        description: all, windows, or linux
+        type: string
+        default: all
 
 permissions:
   contents: read
@@ -21,18 +25,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: windows-x86_64
-            runner: windows-latest
-            extension: zip
-          - platform: linux-x86_64
-            runner: ubuntu-24.04
-            extension: tar.gz
-    runs-on: ${{ matrix.runner }}
+        platform: >-
+          ${{ fromJSON(inputs.platform == 'windows' && '["windows-x86_64"]' ||
+                       inputs.platform == 'linux' && '["linux-x86_64"]' ||
+                       '["windows-x86_64","linux-x86_64"]') }}
+    runs-on: ${{ matrix.platform == 'windows-x86_64' && 'windows-latest' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     env:
       PACKAGE_VERSION: ${{ inputs.version }}
       PACKAGE_NAME: fourdql-${{ inputs.version }}-${{ matrix.platform }}
+      PACKAGE_EXTENSION: ${{ matrix.platform == 'windows-x86_64' && 'zip' || 'tar.gz' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,7 +51,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: swift-actions/setup-swift@v2
         with:
-          swift-version: '6.2.3'
+          swift-version: '6.2.1'
 
       - name: Toolchain
         run: swift --version
@@ -83,14 +85,14 @@ jobs:
       - name: Test extracted archive without development tools (Windows)
         if: runner.os == 'Windows'
         env:
-          PACKAGE_ARCHIVE: dist/${{ env.PACKAGE_NAME }}.${{ matrix.extension }}
+          PACKAGE_ARCHIVE: dist/${{ env.PACKAGE_NAME }}.${{ env.PACKAGE_EXTENSION }}
         run: python scripts/test-cli-package.py --archive "$env:PACKAGE_ARCHIVE" --scratch "$env:RUNNER_TEMP/cli-smoke"
         shell: pwsh
 
       - name: Test extracted archive without development tools (Linux)
         if: runner.os == 'Linux'
         env:
-          PACKAGE_ARCHIVE: dist/${{ env.PACKAGE_NAME }}.${{ matrix.extension }}
+          PACKAGE_ARCHIVE: dist/${{ env.PACKAGE_NAME }}.${{ env.PACKAGE_EXTENSION }}
         run: python3 scripts/test-cli-package.py --archive "$PACKAGE_ARCHIVE" --scratch "$RUNNER_TEMP/cli-smoke"
 
       - name: Fetch clean Ubuntu runtime image
@@ -100,7 +102,7 @@ jobs:
       - name: Test Linux archive in Swift-free Ubuntu
         if: runner.os == 'Linux'
         env:
-          PACKAGE_ARCHIVE: dist/${{ env.PACKAGE_NAME }}.${{ matrix.extension }}
+          PACKAGE_ARCHIVE: dist/${{ env.PACKAGE_NAME }}.${{ env.PACKAGE_EXTENSION }}
         run: >-
           python3 scripts/test-cli-package.py --archive "$PACKAGE_ARCHIVE"
           --scratch "$RUNNER_TEMP/cli-container-smoke" --container ubuntu:24.04
@@ -109,6 +111,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PACKAGE_NAME }}
-          path: dist/${{ env.PACKAGE_NAME }}.${{ matrix.extension }}
+          path: dist/${{ env.PACKAGE_NAME }}.${{ env.PACKAGE_EXTENSION }}
           if-no-files-found: error
           retention-days: 14
