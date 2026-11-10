@@ -33,6 +33,7 @@ public final class AnalyzerRegistry {
         SetFileAnalyzer(),
         QuickReportFileAnalyzer(),
         LabelFileAnalyzer(),
+        WriteProFileAnalyzer(),
         MethodFileAnalyzer(),
         FormFileAnalyzer(platforms: FormPlatform.previewPlatforms),
     ])

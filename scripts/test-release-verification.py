@@ -38,7 +38,8 @@ class ReleaseVerificationTests(unittest.TestCase):
             for token, value in [
                 ("__BUNDLE_ID__", BUNDLE_ID), ("__VERSION__", "1.2.3"),
                 ("__BUILD__", "123"), ("__PROJECT_GROUP__", GROUP),
-                ("__CONTENT_TYPES__", "<string>com.4d.4d.form</string><string>com.4d.4d.labelFile</string>"),
+                ("__CONTENT_TYPES__", "<string>com.4d.4d.form</string><string>com.4d.4d.labelFile</string>"
+                                      "<string>com.4d.4d.WriteProDocument</string>"),
             ]:
                 text = text.replace(token, value)
             info = plistlib.loads(text.encode())
@@ -258,13 +259,25 @@ class ReleaseVerificationTests(unittest.TestCase):
 
     def test_label_registration_is_required(self):
         attributes = self.info[self.bundles[1]]["NSExtension"]["NSExtensionAttributes"]
-        attributes["QLSupportedContentTypes"] = ["com.4d.4d.form"]
+        attributes["QLSupportedContentTypes"] = ["com.4d.4d.form", "com.4d.4d.WriteProDocument"]
         with self.assertRaisesRegex(ValueError, "4D Label previews"):
             self.verify()
         attributes["QLSupportedContentTypes"].append("com.4d.4d.labelFile")
         label = next(item for item in self.info[self.app]["UTImportedTypeDeclarations"]
                      if item["UTTypeIdentifier"] == "com.4d.4d.labelFile")
         label["UTTypeTagSpecification"]["public.filename-extension"] = ["4lbp"]
+        with self.assertRaisesRegex(ValueError, "both filename cases"):
+            self.verify()
+
+    def test_write_pro_registration_is_required(self):
+        attributes = self.info[self.bundles[1]]["NSExtension"]["NSExtensionAttributes"]
+        attributes["QLSupportedContentTypes"] = ["com.4d.4d.form", "com.4d.4d.labelFile"]
+        with self.assertRaisesRegex(ValueError, "4D Write Pro previews"):
+            self.verify()
+        attributes["QLSupportedContentTypes"].append("com.4d.4d.WriteProDocument")
+        document = next(item for item in self.info[self.app]["UTImportedTypeDeclarations"]
+                        if item["UTTypeIdentifier"] == "com.4d.4d.WriteProDocument")
+        document["UTTypeTagSpecification"]["public.filename-extension"] = ["4wp"]
         with self.assertRaisesRegex(ValueError, "both filename cases"):
             self.verify()
 

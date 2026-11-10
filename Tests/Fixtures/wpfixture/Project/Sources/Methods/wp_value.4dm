@@ -1,0 +1,2 @@
+#DECLARE() : Text
+return "value"

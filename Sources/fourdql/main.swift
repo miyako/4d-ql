@@ -70,6 +70,8 @@ func printBlock(_ b: Block, indent: String) {
     case .labelPreview(let preview):
         let label = preview.label
         print("\(indent)\(label.objects.count) label objects; \(label.layout.columns) columns × \(label.layout.rows) rows")
+    case .writeProPreview(let preview):
+        print("\(indent)\(preview.pageCount) page sheet(s); \(preview.document.body.textContent.count) characters")
     case .keyValues(let kv): kv.forEach { print("\(indent)\($0.key): \($0.value)") }
     case .identity(let label, let value, let caption):
         print("\(indent)\(label): \(value)" + (caption.map { "  (\($0))" } ?? ""))

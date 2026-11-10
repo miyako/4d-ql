@@ -134,6 +134,15 @@ def verify(app, version, build, identity, bundle_id, project_group=None):
                 "public.filename-extension", [])) == {"4lbp", "4LBP"} and
             labels[0].get("UTTypeTagSpecification", {}).get("com.apple.ostype") == "4DET",
             "4D Label UTI must register both filename cases and the native OSType")
+    require("com.4d.4d.WriteProDocument" in attributes.get("QLSupportedContentTypes", []),
+            "Quick Look must register 4D Write Pro previews")
+    documents = [item for item in host_info.get("UTImportedTypeDeclarations", [])
+                 if item.get("UTTypeIdentifier") == "com.4d.4d.WriteProDocument"]
+    require(len(documents) == 1, "Host must import the 4D Write Pro UTI exactly once")
+    require("public.data" in documents[0].get("UTTypeConformsTo", []) and
+            set(documents[0].get("UTTypeTagSpecification", {}).get(
+                "public.filename-extension", [])) == {"4wp", "4WP"},
+            "4D Write Pro UTI must register both filename cases")
     run("codesign", "--verify", "--deep", "--strict", "--all-architectures", str(app))
 
 
