@@ -1,6 +1,6 @@
 # Builds "4D Quick Look.app" (universal), signs it with Developer ID and the
 # hardened runtime, notarizes and staples it, and publishes a GitHub Release
-# with a zip and a dmg.
+# with an app zip/dmg and a signed, notarized universal fourdql CLI zip.
 #
 # Trigger: push a tag vX.Y.Z, or run manually against an existing tag:
 #   gh workflow run release.yml -f tag=vX.Y.Z
@@ -27,6 +27,10 @@ on:
       tag:
         description: Existing tag to build (e.g. v0.2.0)
         required: true
+      cli_only:
+        description: Add or replace only the CLI asset on an existing release
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -65,6 +69,9 @@ jobs:
     name: Build, sign, notarize & release
     needs: [version]
     runs-on: macos-latest
+    env:
+      CLI_ONLY: ${{ inputs.cli_only && 'true' || 'false' }}
+      CLI_IDENTIFIER: com.github.miyako.FourDQuickLook.fourdql
     steps:
       - uses: actions/checkout@v4
         with:
@@ -138,7 +145,16 @@ jobs:
           fi
           echo "Signing with: $(echo "$LINE" | sed -E 's/.*"(.*)".*/\1/')"
           echo "SIGN_IDENTITY=$HASH" >> "$GITHUB_ENV"   # reused to sign the dmg
-          SIGN_IDENTITY="$HASH" scripts/build.sh
+          if [ "$CLI_ONLY" = "true" ]; then
+            swift build -c release --arch arm64 --arch x86_64 --product fourdql
+            BIN=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)
+            mkdir -p build
+            cp "$BIN/fourdql" build/fourdql
+          else
+            SIGN_IDENTITY="$HASH" scripts/build.sh
+          fi
+          codesign --force --sign "$HASH" --identifier "$CLI_IDENTIFIER" \
+            --options runtime --timestamp build/fourdql
 
       - name: verify
         env:
@@ -146,10 +162,29 @@ jobs:
           BUILD: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          APP="build/${APP_NAME}.app"
-          # Check all four bundles and both signature slices before publishing.
-          python3 scripts/verify-release.py --app "$APP"
-          echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+          if [ "$CLI_ONLY" != "true" ]; then
+            APP="build/${APP_NAME}.app"
+            # Check all four bundles and both signature slices before publishing.
+            python3 scripts/verify-release.py --app "$APP"
+            echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+          fi
+          # A standalone CLI is not an app bundle and needs no sandbox or
+          # hardened-runtime exceptions. Pin and inspect both Mach-O signatures.
+          ARCHS=$(lipo -archs build/fourdql)
+          if [ "$ARCHS" != "x86_64 arm64" ] && [ "$ARCHS" != "arm64 x86_64" ]; then
+            echo "::error::Expected a universal arm64/x86_64 CLI, got: $ARCHS"
+            exit 1
+          fi
+          codesign --verify --strict --all-architectures \
+            -R "=anchor apple generic and certificate leaf = H\"$SIGN_IDENTITY\"" build/fourdql
+          for ARCH in arm64 x86_64; do
+            SIGNATURE=$(codesign -d --arch "$ARCH" --verbose=4 build/fourdql 2>&1)
+            printf '%s\n' "$SIGNATURE" | grep -Fx "Identifier=$CLI_IDENTIFIER"
+            printf '%s\n' "$SIGNATURE" | grep -E '^Authority=Developer ID Application:'
+            printf '%s\n' "$SIGNATURE" | grep -E '^CodeDirectory .*flags=.*runtime'
+            printf '%s\n' "$SIGNATURE" | grep -E '^Timestamp=.+'
+          done
+          build/fourdql --help
 
       - name: notarize, staple & package
         env:
@@ -177,32 +212,48 @@ jobs:
             fi
           }
 
-          # 1. Notarize the app and staple the ticket to it, so it verifies offline.
-          ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/notarize.zip"
-          notarize "$RUNNER_TEMP/notarize.zip"
-          xcrun stapler staple "$APP_PATH"
-          xcrun stapler validate "$APP_PATH"
-          spctl --assess --type execute --verbose=2 "$APP_PATH"
+          if [ "$CLI_ONLY" != "true" ]; then
+            # 1. Notarize the app and staple the ticket to it, so it verifies offline.
+            ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/notarize.zip"
+            notarize "$RUNNER_TEMP/notarize.zip"
+            xcrun stapler staple "$APP_PATH"
+            xcrun stapler validate "$APP_PATH"
+            spctl --assess --type execute --verbose=2 "$APP_PATH"
 
-          # 2. zip of the stapled app.
-          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+            # 2. zip of the stapled app.
+            ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 
-          # 3. dmg with the stapled app and an Applications shortcut; notarize and
-          #    staple it too. The dmg container itself is not code-signed: doing so
-          #    on the hosted runner failed with "No such process" (tracked separately).
-          STAGE="$RUNNER_TEMP/dmg"
-          mkdir -p "$STAGE"
-          ditto "$APP_PATH" "$STAGE/${APP_NAME}.app"
-          ln -s /Applications "$STAGE/Applications"
-          hdiutil create -format UDBZ -volname "$APP_NAME" -srcfolder "$STAGE" "$DMG_PATH"
-          notarize "$DMG_PATH"
-          xcrun stapler staple "$DMG_PATH"
+            # 3. The dmg container is not code-signed (see existing release policy).
+            STAGE="$RUNNER_TEMP/dmg"
+            mkdir -p "$STAGE"
+            ditto "$APP_PATH" "$STAGE/${APP_NAME}.app"
+            ln -s /Applications "$STAGE/Applications"
+            hdiutil create -format UDBZ -volname "$APP_NAME" -srcfolder "$STAGE" "$DMG_PATH"
+            notarize "$DMG_PATH"
+            xcrun stapler staple "$DMG_PATH"
 
-          echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
-          echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
-          ls -lh "$ZIP_PATH" "$DMG_PATH"
+            echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
+            echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
+            ls -lh "$ZIP_PATH" "$DMG_PATH"
+          fi
+
+          CLI_NAME="fourdql-${VERSION}-macos-universal"
+          CLI_STAGE="$RUNNER_TEMP/$CLI_NAME"
+          CLI_ZIP_PATH="${CLI_NAME}.zip"
+          mkdir -p "$CLI_STAGE"
+          ditto build/fourdql "$CLI_STAGE/fourdql"
+          cp LICENSE "$CLI_STAGE/LICENSE"
+          cp ThirdParty/Selawik/OFL.txt "$CLI_STAGE/Selawik-OFL.txt"
+          build/fourdql --help > "$CLI_STAGE/USAGE.txt"
+          ditto -c -k --keepParent "$CLI_STAGE" "$CLI_ZIP_PATH"
+          # Raw Mach-O executables and ZIPs cannot be stapled. Apple's accepted
+          # notarization records the signed executable for online Gatekeeper checks.
+          notarize "$CLI_ZIP_PATH"
+          echo "CLI_ZIP_PATH=$CLI_ZIP_PATH" >> "$GITHUB_ENV"
+          ls -lh "$CLI_ZIP_PATH"
 
       - name: create GitHub Release
+        if: env.CLI_ONLY != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version.outputs.tag }}
@@ -211,11 +262,24 @@ jobs:
           # prepended to the generated notes; keep in sync with README "Upgrading"
           body: |
             **Upgrading:** replace the app in `/Applications`, delete any other copies (Downloads, mounted DMG) and open it once. Then run `pkill -f FourDQuickLookExtension; pkill -f FourDProjectPreviewService; qlmanage -r; qlmanage -r cache` (or log out and back in). `pluginkit -mAvvv -i com.github.miyako.FourDQuickLook.Preview` should list a single, current copy. See [Upgrading](https://github.com/miyako/4d-ql#upgrading).
+
+            **Command line:** the separate `fourdql-*-macos-universal.zip` contains the Developer ID-signed, notarized CLI for Apple Silicon and Intel. It does not require the app, 4D or Swift. ZIPs and standalone executables cannot be stapled, so Gatekeeper may need internet access on first use.
           # re-running a tag replaces its assets
           overwrite_files: true
           files: |
             ${{ env.ZIP_PATH }}
             ${{ env.DMG_PATH }}
+            ${{ env.CLI_ZIP_PATH }}
+
+      - name: attach CLI to existing release
+        if: env.CLI_ONLY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" "$CLI_ZIP_PATH" --clobber
 
       - name: delete temporary keychain
         if: always()

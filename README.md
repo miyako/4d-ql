@@ -506,6 +506,23 @@ drag **4D Quick Look** to Applications, and open it once so macOS registers the
 preview extension. The app is signed with a Developer ID and notarized. If
 Finder still shows the old preview, run `qlmanage -r`.
 
+### Command-line tool
+
+The separate `fourdql-X.Y.Z-macos-universal.zip` release asset contains the
+Developer ID-signed, notarized CLI for Apple Silicon and Intel Macs (macOS 12
+or later). Extract it and run `./fourdql`, or place the executable in a directory
+on your `PATH`. It needs neither the Quick Look app, 4D nor a Swift installation.
+
+```sh
+./fourdql document.4vp
+./fourdql --json document.4vp
+./fourdql --html document.4vp > preview.html
+```
+
+The archive includes the project and embedded-font licenses. Standalone
+executables and ZIP archives cannot carry a stapled notarization ticket, so
+Gatekeeper may need internet access on first use.
+
 ### Upgrading
 
 Quick Look uses whichever registered copy of the extension it finds, and an
@@ -574,13 +591,17 @@ Releases are built on GitHub's hosted macOS runners:
   than bumping again.
 * `.github/workflows/release.yml` runs on a `vX.Y.Z` tag. It tests, builds
   with the tag's version, signs with Developer ID, notarizes and staples the
-  app, and publishes `4D-QuickLook-X.Y.Z.dmg` and `.zip`. To release:
+  app, and publishes `4D-QuickLook-X.Y.Z.dmg` and `.zip`, plus a separately
+  signed and notarized `fourdql-X.Y.Z-macos-universal.zip`. To release:
 
   ```bash
   git tag v0.2.0 && git push origin v0.2.0
   ```
 
   To rebuild an existing tag: `gh workflow run release.yml -f tag=v0.2.0`.
+  To add or replace only its CLI asset without rebuilding or replacing the app:
+  `gh workflow run release.yml -f tag=v0.2.0 -f cli_only=true`.
+  The target GitHub Release must already exist for CLI-only publication.
 
 The bump workflow explicitly dispatches the release because tag pushes made
 with GitHub's built-in token do not trigger other workflows. It needs
