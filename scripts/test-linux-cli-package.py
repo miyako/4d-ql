@@ -44,6 +44,19 @@ class LinuxPackageTests(unittest.TestCase):
             with self.subTest(output=output), self.assertRaises(RuntimeError):
                 PACKAGE.parse_ldd(output)
 
+    def test_dependency_free_dynamic_library_is_a_valid_leaf(self):
+        from unittest.mock import patch
+        result = subprocess.CompletedProcess([], 0, "\tstatically linked\n", "")
+        dynamic = "Dynamic section at offset 0x2000 contains 3 entries:\n (SONAME) libempty.so\n"
+        with patch.object(PACKAGE.subprocess, "run", return_value=result):
+            with patch.object(PACKAGE.subprocess, "check_output", return_value=dynamic):
+                self.assertEqual(PACKAGE.dependencies(self.binary, {}), [])
+            for invalid in ("There is no dynamic section in this file.",
+                            dynamic + " (NEEDED) Shared library: [libmissing.so]\n"):
+                with patch.object(PACKAGE.subprocess, "check_output", return_value=invalid):
+                    with self.assertRaises(RuntimeError):
+                        PACKAGE.dependencies(self.binary, {})
+
     def test_system_allowlist_does_not_exclude_icu_or_other_runtime_libraries(self):
         for name in ("libswiftCore.so", "libicui18n.so.74", "libxml2.so.2",
                      "libcurl.so.4", "libz.so.1", "lib_FoundationICU.so"):

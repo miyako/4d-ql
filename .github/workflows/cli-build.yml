@@ -36,6 +36,16 @@ jobs:
       PACKAGE_NAME: fourdql-${{ inputs.version }}-${{ matrix.platform }}
       PACKAGE_EXTENSION: ${{ matrix.platform == 'windows-x86_64' && 'zip' || 'tar.gz' }}
     steps:
+      - name: Validate platform selection
+        shell: bash
+        env:
+          REQUESTED_PLATFORM: ${{ inputs.platform }}
+        run: |
+          case "$REQUESTED_PLATFORM" in
+            all|windows|linux) ;;
+            *) echo "::error::Unsupported portable CLI platform: $REQUESTED_PLATFORM"; exit 1 ;;
+          esac
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}

@@ -78,6 +78,12 @@ def parse_ldd(output):
 def dependencies(path, env):
     result = subprocess.run(["ldd", str(path)], env=env, text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    if result.stdout.strip() == "statically linked":
+        # ldd uses this wording for dynamic shared-library leaves with no NEEDED tags.
+        dynamic = subprocess.check_output(["readelf", "-d", str(path)], env=env, text=True)
+        if "Dynamic section at offset" in dynamic and "(NEEDED)" not in dynamic:
+            return []
+        raise RuntimeError("Expected a dynamic ELF runtime library: " + str(path))
     return parse_ldd(result.stdout)
 
 
