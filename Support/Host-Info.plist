@@ -38,6 +38,13 @@
 			<dict><key>public.filename-extension</key><array><string>4wp</string><string>4WP</string></array></dict>
 		</dict>
 		<dict>
+			<key>UTTypeIdentifier</key><string>com.4d.4d.ViewProDocument</string>
+			<key>UTTypeDescription</key><string>4D View Pro document</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>4vp</string><string>4VP</string></array></dict>
+		</dict>
+		<dict>
 			<key>UTTypeIdentifier</key><string>com.4d.4d.form</string>
 			<key>UTTypeDescription</key><string>4D Form</string>
 			<key>UTTypeConformsTo</key><array><string>public.json</string></array>

@@ -15,7 +15,7 @@ public struct HTMLRenderer {
             return nil
         }
         let hasLabel = report.sections.flatMap(\.blocks).contains {
-            switch $0 { case .labelPreview, .writeProPreview: return true; default: return false }
+            switch $0 { case .labelPreview, .writeProPreview, .viewProPreview: return true; default: return false }
         }
         if !previews.isEmpty || hasLabel {
             let fonts = previews.contains(where: FormPreviewRenderer.embedsSubstituteFont) ? " font-src data:;" : ""
@@ -70,6 +70,8 @@ public struct HTMLRenderer {
             return LabelPreviewRenderer.render(preview.label, identifier: identifier)
         case .writeProPreview(let preview):
             return WriteProPreviewRenderer.render(preview, identifier: identifier)
+        case .viewProPreview(let document):
+            return ViewProPreviewRenderer.render(document, identifier: identifier)
         case .quickReportPreview(let preview):
             return QuickReportPreviewRenderer.render(preview)
         case .keyValues(let kv):

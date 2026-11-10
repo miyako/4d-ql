@@ -143,6 +143,15 @@ def verify(app, version, build, identity, bundle_id, project_group=None):
             set(documents[0].get("UTTypeTagSpecification", {}).get(
                 "public.filename-extension", [])) == {"4wp", "4WP"},
             "4D Write Pro UTI must register both filename cases")
+    require("com.4d.4d.ViewProDocument" in attributes.get("QLSupportedContentTypes", []),
+            "Quick Look must register 4D View Pro previews")
+    spreadsheets = [item for item in host_info.get("UTImportedTypeDeclarations", [])
+                    if item.get("UTTypeIdentifier") == "com.4d.4d.ViewProDocument"]
+    require(len(spreadsheets) == 1, "Host must import the 4D View Pro UTI exactly once")
+    require("public.data" in spreadsheets[0].get("UTTypeConformsTo", []) and
+            set(spreadsheets[0].get("UTTypeTagSpecification", {}).get(
+                "public.filename-extension", [])) == {"4vp", "4VP"},
+            "4D View Pro UTI must register both filename cases")
     run("codesign", "--verify", "--deep", "--strict", "--all-architectures", str(app))
 
 

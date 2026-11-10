@@ -67,6 +67,10 @@ for path in paths {
 
 func printBlock(_ b: Block, indent: String) {
     switch b {
+    case .viewProPreview(let document):
+        for sheet in document.sheets {
+            print("\(indent)\(sheet.name): \(sheet.cells.count) saved cells\(sheet.visible ? "" : " (hidden)")")
+        }
     case .labelPreview(let preview):
         let label = preview.label
         print("\(indent)\(label.objects.count) label objects; \(label.layout.columns) columns × \(label.layout.rows) rows")

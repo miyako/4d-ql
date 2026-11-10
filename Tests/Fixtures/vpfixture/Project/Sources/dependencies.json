@@ -1,0 +1,8 @@
+{
+	"dependencies": {
+		"4D ViewPro": {
+			"github": "4d/4D-ViewPro",
+			"version": "4d"
+		}
+	}
+}

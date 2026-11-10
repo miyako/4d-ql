@@ -39,7 +39,8 @@ class ReleaseVerificationTests(unittest.TestCase):
                 ("__BUNDLE_ID__", BUNDLE_ID), ("__VERSION__", "1.2.3"),
                 ("__BUILD__", "123"), ("__PROJECT_GROUP__", GROUP),
                 ("__CONTENT_TYPES__", "<string>com.4d.4d.form</string><string>com.4d.4d.labelFile</string>"
-                                      "<string>com.4d.4d.WriteProDocument</string>"),
+                                      "<string>com.4d.4d.WriteProDocument</string>"
+                                      "<string>com.4d.4d.ViewProDocument</string>"),
             ]:
                 text = text.replace(token, value)
             info = plistlib.loads(text.encode())
@@ -278,6 +279,18 @@ class ReleaseVerificationTests(unittest.TestCase):
         document = next(item for item in self.info[self.app]["UTImportedTypeDeclarations"]
                         if item["UTTypeIdentifier"] == "com.4d.4d.WriteProDocument")
         document["UTTypeTagSpecification"]["public.filename-extension"] = ["4wp"]
+        with self.assertRaisesRegex(ValueError, "both filename cases"):
+            self.verify()
+
+    def test_view_pro_registration_is_required(self):
+        attributes = self.info[self.bundles[1]]["NSExtension"]["NSExtensionAttributes"]
+        attributes["QLSupportedContentTypes"].remove("com.4d.4d.ViewProDocument")
+        with self.assertRaisesRegex(ValueError, "4D View Pro previews"):
+            self.verify()
+        attributes["QLSupportedContentTypes"].append("com.4d.4d.ViewProDocument")
+        document = next(item for item in self.info[self.app]["UTImportedTypeDeclarations"]
+                        if item["UTTypeIdentifier"] == "com.4d.4d.ViewProDocument")
+        document["UTTypeTagSpecification"]["public.filename-extension"] = ["4vp"]
         with self.assertRaisesRegex(ValueError, "both filename cases"):
             self.verify()
 
