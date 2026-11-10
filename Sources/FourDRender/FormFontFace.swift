@@ -118,8 +118,37 @@ struct FormFontFace {
         let handle = self.handle
         return { offset, width in handle.lineBreak(units, offset: offset, width: width) }
         #else
-        return { offset, _ in source.length - offset }
+        return { offset, width in
+            Self.approximateLineBreak(source, offset: offset, width: width, advance: size * 0.5)
+        }
         #endif
+    }
+
+    /// Matches the fallback's uniform advances without discarding paragraph or grapheme boundaries.
+    static func approximateLineBreak(_ source: NSString, offset: Int, width: Double, advance: Double) -> Int {
+        var cursor = offset
+        var usedWidth = 0.0
+        var wordBoundary = offset
+        while cursor < source.length {
+            let range = source.rangeOfComposedCharacterSequence(at: cursor)
+            let character = source.substring(with: range)
+            if character == "\n" || character == "\r" || character == "\r\n" {
+                if character == "\r", NSMaxRange(range) < source.length,
+                   source.character(at: NSMaxRange(range)) == 0x0A {
+                    return NSMaxRange(range) + 1 - offset
+                }
+                return NSMaxRange(range) - offset
+            }
+            if usedWidth + advance > max(0, width) {
+                return (wordBoundary > offset ? wordBoundary : cursor) - offset
+            }
+            usedWidth += advance
+            cursor = NSMaxRange(range)
+            if character.trimmingCharacters(in: .whitespaces).isEmpty {
+                wordBoundary = cursor
+            }
+        }
+        return cursor - offset
     }
 }
 

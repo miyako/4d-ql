@@ -1,6 +1,7 @@
 # Builds "4D Quick Look.app" (universal), signs it with Developer ID and the
 # hardened runtime, notarizes and staples it, and publishes a GitHub Release
 # with app zip/dmg assets and a signed, notarized universal fourdql CLI zip/dmg.
+# Windows and Linux CLI archives are built separately without Apple credentials.
 #
 # Trigger: push a tag vX.Y.Z, or run manually against an existing tag:
 #   gh workflow run release.yml -f tag=vX.Y.Z
@@ -28,7 +29,11 @@ on:
         description: Existing tag to build (e.g. v0.2.0)
         required: true
       cli_only:
-        description: Add or replace only the CLI asset on an existing release
+        description: Add or replace CLI assets on an existing release (all platforms)
+        type: boolean
+        default: false
+      portable_only:
+        description: Only add Windows/Linux CLI assets to an existing release
         type: boolean
         default: false
 
@@ -50,6 +55,7 @@ jobs:
     outputs:
       tag: ${{ steps.set.outputs.tag }}
       version: ${{ steps.set.outputs.version }}
+      portable: ${{ steps.source.outputs.portable }}
     steps:
       - id: set
         env:
@@ -65,9 +71,42 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.set.outputs.tag }}
+
+      - id: source
+        name: Check tagged source capabilities
+        env:
+          PORTABLE_ONLY: ${{ inputs.portable_only && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          if [[ -f scripts/package-cli-windows.ps1 &&
+                -f scripts/package-cli-linux.sh &&
+                -f scripts/test-cli-package.py ]]; then
+            echo "portable=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$PORTABLE_ONLY" == "true" ]]; then
+            echo "::error::This tag predates portable CLI packaging. Create a new tag containing the workflows and scripts."
+            exit 1
+          else
+            echo "portable=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::This tag predates portable CLI packaging; only macOS assets will be built."
+          fi
+
+  build-portable:
+    needs: [version]
+    if: needs.version.outputs.portable == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cli-build.yml
+    with:
+      ref: ${{ needs.version.outputs.tag }}
+      version: ${{ needs.version.outputs.version }}
+
   build-macos:
     name: Build, sign, notarize & release
     needs: [version]
+    if: ${{ !inputs.portable_only }}
     runs-on: macos-latest
     env:
       CLI_ONLY: ${{ inputs.cli_only && 'true' || 'false' }}
@@ -273,6 +312,8 @@ jobs:
             **Upgrading:** replace the app in `/Applications`, delete any other copies (Downloads, mounted DMG) and open it once. Then run `pkill -f FourDQuickLookExtension; pkill -f FourDProjectPreviewService; qlmanage -r; qlmanage -r cache` (or log out and back in). `pluginkit -mAvvv -i com.github.miyako.FourDQuickLook.Preview` should list a single, current copy. See [Upgrading](https://github.com/miyako/4d-ql#upgrading).
 
             **Command line:** the separate `fourdql-*-macos-universal.dmg` and `.zip` contain the Developer ID-signed, notarized CLI for Apple Silicon and Intel. It does not require the app, 4D or Swift. The DMG has a stapled notarization ticket for offline distribution; the ZIP does not, so Gatekeeper may need internet access on first use.
+
+            **Windows/Linux CLI:** tags with portable CLI packaging also provide x86-64 ZIP (Windows, unsigned) and tar.gz (Ubuntu 24.04-compatible Linux, experimental rendering) downloads with Swift runtime libraries. Extract the entire folder; do not copy just the executable. See the [CLI reference](https://github.com/miyako/4d-ql/blob/main/docs/CLI.md).
           # re-running a tag replaces its assets
           overwrite_files: true
           files: |
@@ -295,3 +336,32 @@ jobs:
         if: always()
         run: |
           if [ -n "${KEYCHAIN_PATH:-}" ]; then security delete-keychain "$KEYCHAIN_PATH" || true; fi
+
+  publish-portable:
+    name: Attach Windows and Linux CLI assets
+    needs: [version, build-portable, build-macos]
+    if: >-
+      ${{ !cancelled() && needs.version.result == 'success' &&
+          needs.build-portable.result == 'success' &&
+          (needs.build-macos.result == 'success' ||
+           (inputs.portable_only && needs.build-macos.result == 'skipped')) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fourdql-${{ needs.version.outputs.version }}-*
+          merge-multiple: true
+          path: dist
+
+      - name: Upload to existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" >/dev/null
+          gh release upload "$RELEASE_TAG" \
+            "dist/fourdql-${VERSION}-windows-x86_64.zip" \
+            "dist/fourdql-${VERSION}-linux-x86_64.tar.gz" --clobber

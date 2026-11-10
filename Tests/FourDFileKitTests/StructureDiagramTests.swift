@@ -392,15 +392,20 @@ final class StructureDiagramTests: XCTestCase {
 
     func testVariableWidthCardsHaveCorrectPortsAndNonoverlappingColumns() {
         let renderer = StructureDiagramRenderer()
+        let name = String(repeating: "W", count: 31)
         let wide = DiagramNode(id: "A", title: "A", fields: [
-            DiagramField(id: "id", name: String(repeating: "W", count: 31), type: "Text")
+            DiagramField(id: "id", name: name, type: "Text")
         ])
         let width = renderer.cardWidth(wide)
         let html = render(StructureDiagram(nodes: [wide, node("B")], edges: [
             DiagramEdge(sourceNode: "A", sourceField: "id", destinationNode: "B", destinationField: "id", label: "Join")
         ]))
         func n(_ value: Double) -> String { String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value) }
+        XCTAssertEqual(width, ceil(max(144, DiagramTypography.width(name) + 40)))
+        XCTAssertGreaterThan(width, renderer.cardWidth(node("B")))
+        #if os(macOS) || os(Windows)
         XCTAssertGreaterThan(width, 300)
+        #endif
         XCTAssertTrue(html.contains("data-node-id=\"B\" transform=\"translate(\(n(24 + width + 64)) 24.0)\""))
         XCTAssertTrue(html.contains("M \(n(24 + width)) 62.5 C \(n(24 + width + 32)) 62.5, \(n(24 + width + 32)) 62.5, \(n(24 + width + 64)) 62.5"))
     }

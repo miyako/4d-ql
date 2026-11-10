@@ -26,7 +26,11 @@ public enum FormPlatform: String, CaseIterable, Codable {
     /// Platforms the default analyzer registry previews: the current platform
     /// first, then Windows as a cross-platform preview on macOS hosts.
     public static var previewPlatforms: [FormPlatform] {
-        current == .macOS ? [.macOS, .windows] : [current]
+        #if os(macOS)
+        return [.macOS, .windows]
+        #else
+        return [current]
+        #endif
     }
 
     /// Project stylesheet loaded after `styleSheets.css` (4D's platform-specific file).
