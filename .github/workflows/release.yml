@@ -1,6 +1,6 @@
 # Builds "4D Quick Look.app" (universal), signs it with Developer ID and the
 # hardened runtime, notarizes and staples it, and publishes a GitHub Release
-# with an app zip/dmg and a signed, notarized universal fourdql CLI zip.
+# with app zip/dmg assets and a signed, notarized universal fourdql CLI zip/dmg.
 #
 # Trigger: push a tag vX.Y.Z, or run manually against an existing tag:
 #   gh workflow run release.yml -f tag=vX.Y.Z
@@ -240,6 +240,7 @@ jobs:
           CLI_NAME="fourdql-${VERSION}-macos-universal"
           CLI_STAGE="$RUNNER_TEMP/$CLI_NAME"
           CLI_ZIP_PATH="${CLI_NAME}.zip"
+          CLI_DMG_PATH="${CLI_NAME}.dmg"
           mkdir -p "$CLI_STAGE"
           ditto build/fourdql "$CLI_STAGE/fourdql"
           cp LICENSE "$CLI_STAGE/LICENSE"
@@ -249,8 +250,16 @@ jobs:
           # Raw Mach-O executables and ZIPs cannot be stapled. Apple's accepted
           # notarization records the signed executable for online Gatekeeper checks.
           notarize "$CLI_ZIP_PATH"
+          # A DMG can carry a stapled ticket even though its contained raw
+          # executable cannot. Use the same container-signing policy as the app DMG.
+          hdiutil create -format UDBZ -volname "fourdql $VERSION" \
+            -srcfolder "$CLI_STAGE" "$CLI_DMG_PATH"
+          notarize "$CLI_DMG_PATH"
+          xcrun stapler staple "$CLI_DMG_PATH"
+          xcrun stapler validate "$CLI_DMG_PATH"
           echo "CLI_ZIP_PATH=$CLI_ZIP_PATH" >> "$GITHUB_ENV"
-          ls -lh "$CLI_ZIP_PATH"
+          echo "CLI_DMG_PATH=$CLI_DMG_PATH" >> "$GITHUB_ENV"
+          ls -lh "$CLI_ZIP_PATH" "$CLI_DMG_PATH"
 
       - name: create GitHub Release
         if: env.CLI_ONLY != 'true'
@@ -263,13 +272,14 @@ jobs:
           body: |
             **Upgrading:** replace the app in `/Applications`, delete any other copies (Downloads, mounted DMG) and open it once. Then run `pkill -f FourDQuickLookExtension; pkill -f FourDProjectPreviewService; qlmanage -r; qlmanage -r cache` (or log out and back in). `pluginkit -mAvvv -i com.github.miyako.FourDQuickLook.Preview` should list a single, current copy. See [Upgrading](https://github.com/miyako/4d-ql#upgrading).
 
-            **Command line:** the separate `fourdql-*-macos-universal.zip` contains the Developer ID-signed, notarized CLI for Apple Silicon and Intel. It does not require the app, 4D or Swift. ZIPs and standalone executables cannot be stapled, so Gatekeeper may need internet access on first use.
+            **Command line:** the separate `fourdql-*-macos-universal.dmg` and `.zip` contain the Developer ID-signed, notarized CLI for Apple Silicon and Intel. It does not require the app, 4D or Swift. The DMG has a stapled notarization ticket for offline distribution; the ZIP does not, so Gatekeeper may need internet access on first use.
           # re-running a tag replaces its assets
           overwrite_files: true
           files: |
             ${{ env.ZIP_PATH }}
             ${{ env.DMG_PATH }}
             ${{ env.CLI_ZIP_PATH }}
+            ${{ env.CLI_DMG_PATH }}
 
       - name: attach CLI to existing release
         if: env.CLI_ONLY == 'true'
@@ -279,7 +289,7 @@ jobs:
           RELEASE_TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -euo pipefail
-          gh release upload "$RELEASE_TAG" "$CLI_ZIP_PATH" --clobber
+          gh release upload "$RELEASE_TAG" "$CLI_ZIP_PATH" "$CLI_DMG_PATH" --clobber
 
       - name: delete temporary keychain
         if: always()

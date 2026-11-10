@@ -508,9 +508,9 @@ Finder still shows the old preview, run `qlmanage -r`.
 
 ### Command-line tool
 
-The separate `fourdql-X.Y.Z-macos-universal.zip` release asset contains the
+The separate `fourdql-X.Y.Z-macos-universal.dmg` and `.zip` release assets contain the
 Developer ID-signed, notarized CLI for Apple Silicon and Intel Macs (macOS 12
-or later). Extract it and run `./fourdql`, or place the executable in a directory
+or later). Mount the DMG or extract the ZIP and run `./fourdql`, or place the executable in a directory
 on your `PATH`. It needs neither the Quick Look app, 4D nor a Swift installation.
 
 ```sh
@@ -519,9 +519,10 @@ on your `PATH`. It needs neither the Quick Look app, 4D nor a Swift installation
 ./fourdql --html document.4vp > preview.html
 ```
 
-The archive includes the project and embedded-font licenses. Standalone
-executables and ZIP archives cannot carry a stapled notarization ticket, so
-Gatekeeper may need internet access on first use.
+Both downloads include the project and embedded-font licenses. The DMG has a
+stapled notarization ticket for offline distribution. Standalone executables
+and ZIP archives cannot carry a stapled ticket, so the ZIP download may require
+internet access for Gatekeeper verification on first use.
 
 ### Upgrading
 
@@ -592,7 +593,8 @@ Releases are built on GitHub's hosted macOS runners:
 * `.github/workflows/release.yml` runs on a `vX.Y.Z` tag. It tests, builds
   with the tag's version, signs with Developer ID, notarizes and staples the
   app, and publishes `4D-QuickLook-X.Y.Z.dmg` and `.zip`, plus a separately
-  signed and notarized `fourdql-X.Y.Z-macos-universal.zip`. To release:
+  signed and notarized `fourdql-X.Y.Z-macos-universal.zip` and a stapled CLI
+  `.dmg`. To release:
 
   ```bash
   git tag v0.2.0 && git push origin v0.2.0

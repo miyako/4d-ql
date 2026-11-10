@@ -477,9 +477,9 @@ Finder に古いプレビューが表示される場合は `qlmanage -r` を実�
 
 ### コマンドラインツール
 
-別途配布される `fourdql-X.Y.Z-macos-universal.zip` には、Developer ID で署名・公証済みの
+別途配布される `fourdql-X.Y.Z-macos-universal.dmg` と `.zip` には、Developer ID で署名・公証済みの
 Apple Silicon / Intel 両対応 CLI が含まれます（macOS 12 以降）。
-展開して `./fourdql` を実行するか、実行ファイルを `PATH` 内のディレクトリに配置してください。
+DMG をマウントまたは ZIP を展開して `./fourdql` を実行するか、実行ファイルを `PATH` 内のディレクトリに配置してください。
 Quick Look アプリ、4D、Swift のインストールは不要です。
 
 ```sh
@@ -488,8 +488,9 @@ Quick Look アプリ、4D、Swift のインストールは不要です。
 ./fourdql --html document.4vp > preview.html
 ```
 
-アーカイブにはプロジェクトと埋め込みフォントのライセンスも含まれます。
-単体の実行ファイルと ZIP には公証チケットをステープルできないため、
+どちらにもプロジェクトと埋め込みフォントのライセンスが含まれます。
+DMG には公証チケットをステープルするため、オフラインで配布できます。
+単体の実行ファイルと ZIP にはステープルできないため、ZIP 版では
 初回起動時に Gatekeeper がインターネット接続を必要とする場合があります。
 
 ### アップグレード
@@ -560,7 +561,7 @@ SIGN_IDENTITY="Developer ID Application: …" scripts/build.sh
 * `.github/workflows/release.yml` は `vX.Y.Z` タグで実行されます。テストを行い、
   タグのバージョンでビルドし、Developer ID で署名、アプリを公証してステープルし、
   `4D-QuickLook-X.Y.Z.dmg` と `.zip`、および別途署名・公証した
-  `fourdql-X.Y.Z-macos-universal.zip` を公開します。リリースするには:
+  `fourdql-X.Y.Z-macos-universal.zip` とステープル済みの CLI 用 `.dmg` を公開します。リリースするには:
 
   ```bash
   git tag v0.2.0 && git push origin v0.2.0
