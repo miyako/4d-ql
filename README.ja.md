@@ -475,6 +475,27 @@ scripts/build.sh         builds and signs "4D Quick Look.app"
 登録するように一度起動してください。アプリは Developer ID で署名され、公証済みです。
 Finder に古いプレビューが表示される場合は `qlmanage -r` を実行してください。
 
+### コマンドラインツール
+
+対応形式、インストール、オプション、自動処理時の動作、各形式のスクリーンショットは
+[CLI リファレンス（英語）](docs/CLI.md)を参照してください。
+
+別途配布される `fourdql-X.Y.Z-macos-universal.dmg` と `.zip` には、Developer ID で署名・公証済みの
+Apple Silicon / Intel 両対応 CLI が含まれます（macOS 12 以降）。
+DMG をマウントまたは ZIP を展開して `./fourdql` を実行するか、実行ファイルを `PATH` 内のディレクトリに配置してください。
+Quick Look アプリ、4D、Swift のインストールは不要です。
+
+```sh
+./fourdql document.4vp
+./fourdql --json document.4vp
+./fourdql --html document.4vp > preview.html
+```
+
+どちらにもプロジェクトと埋め込みフォントのライセンスが含まれます。
+DMG には公証チケットをステープルするため、オフラインで配布できます。
+単体の実行ファイルと ZIP にはステープルできないため、ZIP 版では
+初回起動時に Gatekeeper がインターネット接続を必要とする場合があります。
+
 ### アップグレード
 
 Quick Look は登録されている拡張機能のうち見つかったものを使うため、新しいものをインストールした後も
@@ -542,13 +563,17 @@ SIGN_IDENTITY="Developer ID Application: …" scripts/build.sh
   リリースの開始に失敗した場合は、再度バンプせずにそのタグに対して `release.yml` を再実行してください。
 * `.github/workflows/release.yml` は `vX.Y.Z` タグで実行されます。テストを行い、
   タグのバージョンでビルドし、Developer ID で署名、アプリを公証してステープルし、
-  `4D-QuickLook-X.Y.Z.dmg` と `.zip` を公開します。リリースするには:
+  `4D-QuickLook-X.Y.Z.dmg` と `.zip`、および別途署名・公証した
+  `fourdql-X.Y.Z-macos-universal.zip` とステープル済みの CLI 用 `.dmg` を公開します。リリースするには:
 
   ```bash
   git tag v0.2.0 && git push origin v0.2.0
   ```
 
   既存のタグを再ビルドするには: `gh workflow run release.yml -f tag=v0.2.0`
+  アプリを再ビルド・置き換えせずに CLI アセットだけを追加・更新するには:
+  `gh workflow run release.yml -f tag=v0.2.0 -f cli_only=true`
+  CLI のみの公開では、対象の GitHub Release がすでに存在している必要があります。
 
 GitHub の組み込みトークンでプッシュしたタグは他のワークフローを起動しないため、バンプのワークフローは
 リリースを明示的にディスパッチします。必要な権限は `contents: write` と `actions: write` で、

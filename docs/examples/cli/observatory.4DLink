@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic shortcut; the target is illustrative and need not exist. -->
+<database_shortcut
+  structure_opening_mode="1"
+  structure_file="file:///Example/Observatory/Project/Observatory.4DProject"
+  data_file="file:///Example/Observatory/Data/Observatory.4DD"/>
