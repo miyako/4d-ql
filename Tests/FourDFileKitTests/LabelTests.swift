@@ -102,10 +102,17 @@ final class LabelTests: XCTestCase {
         <object type="image" left="311" top="100.5" right="321" bottom="110.5" image-codec=".png" image-data="\(png)" preserve-aspect-ratio="false"/>
         <object type="image" image-data="not base64!"/>
         """))
+        #if canImport(ImageIO) || os(Windows)
         XCTAssertTrue(try XCTUnwrap(info.objects.first?.image).dataURI.hasPrefix("data:image/png;base64,"))
+        #else
+        XCTAssertNil(info.objects.first?.image)
+        XCTAssertTrue(info.warnings.contains { $0.contains("Raster pictures are not supported on this platform") })
+        #endif
         XCTAssertTrue(info.warnings.contains { $0.contains("invalid base64") })
         let html = HTMLRenderer().render(try XCTUnwrap(LabelPresenter().report(for: info)))
+        #if canImport(ImageIO) || os(Windows)
         XCTAssertTrue(html.contains("preserveAspectRatio=\"none\""))
+        #endif
         XCTAssertTrue(html.contains("Image unavailable"))
     }
 
@@ -237,7 +244,12 @@ final class LabelTests: XCTestCase {
         XCTAssertEqual(authored.objects[5].attributes["value"], "Café — 東京")
         XCTAssertEqual(authored.objects[6].attributes["value"], "[Parcels]Recipient")
         XCTAssertEqual(authored.objects[7].attributes["value"], "\"Code: \"+String(7)")
+        #if canImport(ImageIO) || os(Windows)
         XCTAssertEqual(authored.objects[8].image?.width, 24)
+        #else
+        XCTAssertNil(authored.objects[8].image)
+        XCTAssertTrue(authored.warnings.contains { $0.contains("Raster pictures are not supported on this platform") })
+        #endif
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         let objects = try encoder.encode(authored.objects)

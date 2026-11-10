@@ -17,6 +17,7 @@ executed, and the original files are not edited.
 - [Limits and project resources](#limits-and-project-resources)
 - [Errors and automation](#errors-and-automation)
 - [Building from source](#building-from-source)
+- [Hosted builds and releases](#hosted-builds-and-releases)
 - [Reproducing the screenshots](#reproducing-the-screenshots)
 
 ## Installation
@@ -81,6 +82,68 @@ codesign -dv --verbose=4 "$HOME/.local/bin/fourdql"
 
 Keep the included project and Selawik font licenses when redistributing the
 download. The CLI's embedded font is used for Windows-style form previews.
+
+### Windows and Linux downloads
+
+The hosted workflows also produce these standalone x86-64 CLI packages:
+
+| Asset | Platform and contents |
+|---|---|
+| `fourdql-X.Y.Z-windows-x86_64.zip` | Windows executable, required runtime DLLs, usage information and licenses; unsigned |
+| `fourdql-X.Y.Z-linux-x86_64.tar.gz` | Ubuntu 24.04-compatible Linux executable, launcher, runtime libraries, usage information and licenses; experimental rendering |
+
+These are CLI distributions, not Windows Explorer or Linux desktop preview
+extensions. They do not require 4D or a Swift development installation.
+Windows ARM64 and Linux ARM64 native packages are not built. Windows validation
+uses the GitHub-hosted `windows-latest` runner; Linux validation uses
+`ubuntu-24.04`. The Linux package is not a universal Linux binary: it requires
+an x86-64, glibc-based environment compatible with Ubuntu 24.04, not Alpine/musl.
+Its system baseline includes glibc 2.39 or later, `libgcc-s1`, `libstdc++6`,
+`/bin/sh` and coreutils; those OS components are not bundled.
+
+Extract the **entire folder** and keep its executable, libraries and licenses
+together. On Windows, use PowerShell in the download directory, replacing
+`X.Y.Z` with the downloaded version:
+
+```powershell
+$Version = "X.Y.Z"
+Expand-Archive ".\fourdql-$Version-windows-x86_64.zip" -DestinationPath .
+& ".\fourdql-$Version-windows-x86_64\fourdql.exe" --help
+& ".\fourdql-$Version-windows-x86_64\fourdql.exe" --html "C:\Documents\Workbook.4vp" > preview.html
+```
+
+Add the extracted folder to your user `PATH` if desired; do not copy just
+`fourdql.exe` into another directory. There is no Authenticode signature, so
+Windows may display a downloaded-application warning.
+
+On compatible Linux:
+
+```sh
+VERSION=X.Y.Z
+mkdir -p "$HOME/.local/opt"
+tar -xzf "./fourdql-${VERSION}-linux-x86_64.tar.gz" -C "$HOME/.local/opt"
+"$HOME/.local/opt/fourdql-${VERSION}-linux-x86_64/fourdql" --help
+export PATH="$HOME/.local/opt/fourdql-${VERSION}-linux-x86_64:$PATH"
+fourdql --html "/path/to/Workbook.4vp" > preview.html
+```
+
+Run the top-level `fourdql` launcher, not `libexec/fourdql` directly. The
+launcher locates its own runtime libraries without modifying your shell's
+environment. To update or uninstall either platform, replace or remove the
+whole extracted directory and adjust `PATH`.
+
+**Linux rendering limitations:** parsing and text/JSON/HTML output are
+available, but font measurements use approximate fallback metrics and raster
+picture conversion is unavailable. Form/diagram geometry and artwork can
+differ from macOS and Windows. Successful CLI smoke tests do not establish
+pixel-identical rendering; the gallery below was captured on macOS.
+
+Packages appear on releases made from tags containing the portable workflows.
+Older releases, including the original v0.13.0 assets, are not automatically
+backfilled. Before a tagged release, download the `fourdql-0.0.0-ci.*-*`
+artifacts from a successful [CI run](https://github.com/miyako/4d-ql/actions/workflows/ci.yml).
+GitHub wraps each Actions artifact in an additional ZIP; extract that first
+to obtain the actual distribution archive.
 
 ## Command syntax
 
@@ -409,8 +472,65 @@ swift run fourdql --html "/path/to/Workbook.4vp" > workbook.html
 ```
 
 Source builds are not the Developer ID-signed, notarized release artifact.
-The shared libraries also support Windows, but the downloads described above
-are macOS builds.
+On Windows, use Swift with the Visual Studio C++ tools and Windows SDK; the
+executable is `fourdql.exe`. See the [Windows handover](WINDOWS-HANDOVER.md).
+Linux hosted builds use Swift 6.2.3 on Ubuntu 24.04; their rendering limitations
+also apply when building from source.
+
+## Hosted builds and releases
+
+[CI](../.github/workflows/ci.yml) calls the reusable
+[portable CLI workflow](../.github/workflows/cli-build.yml) on pull requests,
+pushes to `main`, and manual dispatch. Independent hosted Windows and Linux
+jobs run the Swift tests, build release executables, collect redistributable
+runtime dependencies and upload distribution archives with 14-day retention.
+Each archive is extracted into a directory containing spaces and exercised
+from outside the checkout with Swift/toolchain environment paths removed.
+The smoke check covers text, typed JSON and HTML for all 16 document families,
+the `.data` alias, options and documented failure statuses.
+Linux repeats the check in a clean Ubuntu container without Swift installed,
+with fixture/package mounts read-only and networking disabled.
+
+The [release workflow](../.github/workflows/release.yml) uses the same package
+jobs for `vX.Y.Z` tags. It attaches their archives after the macOS job creates
+the release, avoiding competing release-creation requests. A failed portable
+job does not publish an untested archive. Windows/Linux builds do not need
+Apple signing or notarization secrets.
+
+For an existing release whose tag includes the workflows and packaging
+scripts:
+
+```sh
+# All CLI packages, without replacing the Quick Look app:
+gh workflow run release.yml -f tag=vX.Y.Z -f cli_only=true
+
+# Windows/Linux packages only, without invoking macOS signing:
+gh workflow run release.yml -f tag=vX.Y.Z -f portable_only=true
+```
+
+Both modes require the GitHub Release to exist. They replace only the requested
+CLI assets, not the app downloads or release notes. The workflow builds the
+specified tag, not the latest branch: it cannot retrofit new packaging scripts
+or portability fixes into a tag predating them. Make a new patch release for
+such source changes. Older tags retain their macOS-only full/`cli_only` rebuild
+behavior; `portable_only` rejects them explicitly.
+
+To reproduce a package locally after a release build:
+
+```powershell
+swift build -c release --product fourdql
+./scripts/package-cli-windows.ps1 -Version X.Y.Z
+```
+
+```sh
+swift build -c release --product fourdql
+bash scripts/package-cli-linux.sh X.Y.Z
+```
+
+Both write to `dist/`. Run `python3 scripts/test-cli-package.py --archive
+dist/ARCHIVE_NAME --scratch /path/to/scratch` (`python` on Windows) to exercise
+the resulting archive. Keep the included runtime dependency lists and license
+notices when redistributing it.
 
 ## Reproducing the screenshots
 

@@ -496,6 +496,13 @@ DMG には公証チケットをステープルするため、オフラインで�
 単体の実行ファイルと ZIP にはステープルできないため、ZIP 版では
 初回起動時に Gatekeeper がインターネット接続を必要とする場合があります。
 
+ホスト型 CI では、ランタイムライブラリを同梱した x86-64 Windows 用 ZIP と Linux 用 tar.gz も
+ビルドし、タグからのリリースでは macOS 版と一緒に公開します。Windows 版は未署名です。
+Linux 版は Ubuntu 24.04 互換環境向けで、フォームや図の描画は実験的な対応です。
+展開したフォルダ全体を保持してください。
+[インストール](docs/CLI.md#windows-and-linux-downloads)と
+[ホスト型ビルド・リリース](docs/CLI.md#hosted-builds-and-releases)の説明も参照してください。
+
 ### アップグレード
 
 Quick Look は登録されている拡張機能のうち見つかったものを使うため、新しいものをインストールした後も
@@ -564,7 +571,9 @@ SIGN_IDENTITY="Developer ID Application: …" scripts/build.sh
 * `.github/workflows/release.yml` は `vX.Y.Z` タグで実行されます。テストを行い、
   タグのバージョンでビルドし、Developer ID で署名、アプリを公証してステープルし、
   `4D-QuickLook-X.Y.Z.dmg` と `.zip`、および別途署名・公証した
-  `fourdql-X.Y.Z-macos-universal.zip` とステープル済みの CLI 用 `.dmg` を公開します。リリースするには:
+  `fourdql-X.Y.Z-macos-universal.zip` とステープル済みの CLI 用 `.dmg` を公開します。
+  ホスト型ランナーで `fourdql-X.Y.Z-windows-x86_64.zip` と
+  `fourdql-X.Y.Z-linux-x86_64.tar.gz` もビルドして添付します。リリースするには:
 
   ```bash
   git tag v0.2.0 && git push origin v0.2.0
@@ -574,12 +583,16 @@ SIGN_IDENTITY="Developer ID Application: …" scripts/build.sh
   アプリを再ビルド・置き換えせずに CLI アセットだけを追加・更新するには:
   `gh workflow run release.yml -f tag=v0.2.0 -f cli_only=true`
   CLI のみの公開では、対象の GitHub Release がすでに存在している必要があります。
+  macOS の署名資格情報を使わずに Windows/Linux 版だけを公開するには:
+  `gh workflow run release.yml -f tag=vX.Y.Z -f portable_only=true`
+  対象のタグには移植版のワークフローとパッケージスクリプトが必要です。
+  古いソースタグに移植対応を追加するものではありません。
 
 GitHub の組み込みトークンでプッシュしたタグは他のワークフローを起動しないため、バンプのワークフローは
 リリースを明示的にディスパッチします。必要な権限は `contents: write` と `actions: write` で、
 追加のトークンシークレットは不要です。
 
-リリースのワークフローにはリポジトリシークレットが 6 つ必要です: `APPLE_DEVELOPER_ID_CERTIFICATE`
+macOS のリリースジョブにはリポジトリシークレットが 6 つ必要です: `APPLE_DEVELOPER_ID_CERTIFICATE`
 （base64 化した .p12）、`APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`、`KEYCHAIN_PASSWORD`、
 `NOTARYTOOL_APPLE_ID`、`NOTARYTOOL_TEAM_ID`、`NOTARYTOOL_PASSWORD`。
 

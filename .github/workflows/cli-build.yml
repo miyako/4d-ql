@@ -1,0 +1,114 @@
+name: Portable CLI packages
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Source commit or tag to build
+        type: string
+        required: true
+      version:
+        description: Version used in archive names
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.platform }} CLI
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x86_64
+            runner: windows-latest
+            extension: zip
+          - platform: linux-x86_64
+            runner: ubuntu-24.04
+            extension: tar.gz
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      PACKAGE_VERSION: ${{ inputs.version }}
+      PACKAGE_NAME: fourdql-${{ inputs.version }}-${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Swift (Windows)
+        if: runner.os == 'Windows'
+        uses: compnerd/gha-setup-swift@main
+        with:
+          swift-version: swift-6.4.2-release
+          swift-build: 6.4.2-RELEASE
+
+      - name: Set up Swift (Linux)
+        if: runner.os == 'Linux'
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.2.3'
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Test package smoke harness
+        run: python scripts/test-cli-package-smoke.py
+
+      - name: Test Windows packager
+        if: runner.os == 'Windows'
+        run: ./scripts/test-package-cli-windows.ps1
+
+      - name: Test Linux packager
+        if: runner.os == 'Linux'
+        run: python3 scripts/test-linux-cli-package.py
+
+      - name: Test
+        run: swift test
+
+      - name: Build release CLI
+        run: swift build -c release --product fourdql
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/package-cli-windows.ps1 -Version $env:PACKAGE_VERSION
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: bash scripts/package-cli-linux.sh "$PACKAGE_VERSION"
+
+      - name: Test extracted archive without development tools (Windows)
+        if: runner.os == 'Windows'
+        env:
+          PACKAGE_ARCHIVE: dist/${{ env.PACKAGE_NAME }}.${{ matrix.extension }}
+        run: python scripts/test-cli-package.py --archive "$env:PACKAGE_ARCHIVE" --scratch "$env:RUNNER_TEMP/cli-smoke"
+        shell: pwsh
+
+      - name: Test extracted archive without development tools (Linux)
+        if: runner.os == 'Linux'
+        env:
+          PACKAGE_ARCHIVE: dist/${{ env.PACKAGE_NAME }}.${{ matrix.extension }}
+        run: python3 scripts/test-cli-package.py --archive "$PACKAGE_ARCHIVE" --scratch "$RUNNER_TEMP/cli-smoke"
+
+      - name: Fetch clean Ubuntu runtime image
+        if: runner.os == 'Linux'
+        run: docker pull ubuntu:24.04
+
+      - name: Test Linux archive in Swift-free Ubuntu
+        if: runner.os == 'Linux'
+        env:
+          PACKAGE_ARCHIVE: dist/${{ env.PACKAGE_NAME }}.${{ matrix.extension }}
+        run: >-
+          python3 scripts/test-cli-package.py --archive "$PACKAGE_ARCHIVE"
+          --scratch "$RUNNER_TEMP/cli-container-smoke" --container ubuntu:24.04
+
+      - name: Upload downloadable CLI archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: dist/${{ env.PACKAGE_NAME }}.${{ matrix.extension }}
+          if-no-files-found: error
+          retention-days: 14

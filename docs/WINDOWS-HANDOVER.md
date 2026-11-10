@@ -11,8 +11,11 @@ is documented in [FORM-RENDERER.md](FORM-RENDERER.md).
 
 The image CLI and its rasterizer live in
 [4d-form](https://github.com/miyako/4d-form); on Windows it rasterizes this
-HTML with WebView2 (Chromium). This repository still has **no Explorer preview
-handler or Windows packaging**; the Quick Look app, extension and
+HTML with WebView2 (Chromium). This repository provides a standalone, unsigned
+Windows x86-64 `fourdql` ZIP through hosted CI and tagged releases, including its
+runtime DLLs. See [CLI installation](CLI.md#windows-and-linux-downloads) and
+[hosted builds](CLI.md#hosted-builds-and-releases).
+There is still **no Explorer preview handler**; the Quick Look app, extension and
 project-access/XPC targets are declared only on macOS.
 
 ## Platform model

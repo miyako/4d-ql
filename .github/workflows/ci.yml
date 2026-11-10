@@ -1,6 +1,6 @@
 # Runs the tests and builds the universal app (ad-hoc signed) on every push
 # and pull request, so a broken build shows up before a release is attempted.
-# The windows job builds and tests the shared FourDFileKit/FourDRender libraries.
+# Windows and Linux also test, build and package standalone CLI downloads.
 
 name: CI
 
@@ -8,6 +8,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -49,21 +50,8 @@ jobs:
             "$APP/Contents/PlugIns/4D Preview.appex/Contents/Info.plist"
           codesign --verify --deep --strict --verbose=2 "$APP"
 
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: compnerd/gha-setup-swift@main
-        with:
-          swift-version: swift-6.4.2-release
-          swift-build: 6.4.2-RELEASE
-
-      - uses: actions/checkout@v4
-
-      - name: toolchain
-        run: swift --version
-
-      - name: build libraries
-        run: swift build --product FourDRender
-
-      - name: test
-        run: swift test
+  portable-cli:
+    uses: ./.github/workflows/cli-build.yml
+    with:
+      ref: ${{ github.sha }}
+      version: 0.0.0-ci.${{ github.run_number }}

@@ -527,6 +527,13 @@ stapled notarization ticket for offline distribution. Standalone executables
 and ZIP archives cannot carry a stapled ticket, so the ZIP download may require
 internet access for Gatekeeper verification on first use.
 
+Hosted CI also builds standalone x86-64 Windows ZIP and Linux tar.gz packages
+with their runtime libraries. Tagged releases attach these alongside the
+macOS assets. Windows builds are unsigned; Linux targets Ubuntu 24.04-compatible
+systems and has experimental form/diagram rendering. Keep the whole extracted
+folder together. See [Windows and Linux installation](docs/CLI.md#windows-and-linux-downloads)
+and [hosted build/release instructions](docs/CLI.md#hosted-builds-and-releases).
+
 ### Upgrading
 
 Quick Look uses whichever registered copy of the extension it finds, and an
@@ -597,22 +604,27 @@ Releases are built on GitHub's hosted macOS runners:
   with the tag's version, signs with Developer ID, notarizes and staples the
   app, and publishes `4D-QuickLook-X.Y.Z.dmg` and `.zip`, plus a separately
   signed and notarized `fourdql-X.Y.Z-macos-universal.zip` and a stapled CLI
-  `.dmg`. To release:
+  `.dmg`. It also builds and attaches `fourdql-X.Y.Z-windows-x86_64.zip`
+  and `fourdql-X.Y.Z-linux-x86_64.tar.gz` using hosted runners. To release:
 
   ```bash
   git tag v0.2.0 && git push origin v0.2.0
   ```
 
   To rebuild an existing tag: `gh workflow run release.yml -f tag=v0.2.0`.
-  To add or replace only its CLI asset without rebuilding or replacing the app:
+  To add or replace only its CLI assets without rebuilding or replacing the app:
   `gh workflow run release.yml -f tag=v0.2.0 -f cli_only=true`.
   The target GitHub Release must already exist for CLI-only publication.
+  To publish only Windows/Linux CLI packages, without macOS signing credentials:
+  `gh workflow run release.yml -f tag=vX.Y.Z -f portable_only=true`.
+  The target tag must contain the portable workflows and packaging scripts;
+  this does not add portable support to older source tags.
 
 The bump workflow explicitly dispatches the release because tag pushes made
 with GitHub's built-in token do not trigger other workflows. It needs
 `contents: write` and `actions: write`; no additional token secret is required.
 
-The release workflow needs six repository secrets: `APPLE_DEVELOPER_ID_CERTIFICATE` (base64
+The macOS release job needs six repository secrets: `APPLE_DEVELOPER_ID_CERTIFICATE` (base64
 .p12), `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`,
 `NOTARYTOOL_APPLE_ID`, `NOTARYTOOL_TEAM_ID` and `NOTARYTOOL_PASSWORD`.
 
