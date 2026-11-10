@@ -149,6 +149,47 @@ final class PreviewWebViewTests: XCTestCase {
         XCTAssertGreaterThan(color.redComponent - color.blueComponent, 0.7)
     }
 
+    func testViewProSheetSelectionFormattingAndZoomWorkInOwnedViewer() throws {
+        let fixture = try XCTUnwrap(Bundle.module.url(forResource: "enriched", withExtension: "4vp", subdirectory: "Fixtures/ViewPro"))
+        let webView = load(PreviewPipeline().html(for: fixture))
+        let values = try XCTUnwrap(evaluate("""
+        const panels = [...document.querySelectorAll('.vp-panel')];
+        const panel = panels.find(p => p.getClientRects().length);
+        const table = panel.querySelector('.vp-grid');
+        const number = table.querySelector('td[title="B1"]');
+        const merged = table.querySelector('td[title="A5"]');
+        const rowHeight = table.querySelector('td[title="A11"]').closest('tr').getBoundingClientRect().height;
+        const width = table.getBoundingClientRect().width;
+        const slider = panel.querySelector('input[type=range]');
+        slider.value = Math.log(2);
+        slider.dispatchEvent(new Event('input',{bubbles:true}));
+        const scaledWidth = table.getBoundingClientRect().width;
+        const scrollWidth = panel.querySelector('.vp-scroll').scrollWidth;
+        const color = getComputedStyle(number).color;
+        const background = getComputedStyle(number).backgroundColor;
+        const columnWidth = table.querySelector('thead th:nth-child(2)').getBoundingClientRect().width;
+        const labels = [...document.querySelectorAll('.vp-tabs label')];
+        labels.find(l => l.textContent === 'First').click();
+        const first = panels.find(p => p.getClientRects().length);
+        return {panelCount:panels.length, number:number.textContent, color, background,
+            rowSpan:merged.rowSpan, colSpan:merged.colSpan, columnWidth, rowHeight,
+            width, scaledWidth, scrollWidth, first:first.textContent.includes('Bold plain'),
+            visible:panels.filter(p => p.getClientRects().length).length};
+        """, in: webView) as? [String: Any])
+        XCTAssertEqual(values["panelCount"] as? Int, 2)
+        XCTAssertEqual(values["visible"] as? Int, 1)
+        XCTAssertEqual(values["number"] as? String, "1,234.50")
+        XCTAssertEqual(values["color"] as? String, "rgb(18, 52, 86)")
+        XCTAssertEqual(values["background"] as? String, "rgb(232, 240, 254)")
+        XCTAssertEqual(values["rowSpan"] as? Int, 2)
+        XCTAssertEqual(values["colSpan"] as? Int, 3)
+        XCTAssertEqual(try XCTUnwrap(values["rowHeight"] as? Double), 20, accuracy: 1)
+        XCTAssertEqual(try XCTUnwrap(values["columnWidth"] as? Double), 360, accuracy: 1)
+        XCTAssertEqual(try XCTUnwrap(values["scaledWidth"] as? Double), try XCTUnwrap(values["width"] as? Double) * 2, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(values["scrollWidth"] as? Double), try XCTUnwrap(values["scaledWidth"] as? Double) - 1)
+        XCTAssertEqual(values["first"] as? Bool, true)
+    }
+
     func testFormZoomControlsBoundsAndScrollExtents() throws {
         let webView = load(try formHTML())
         let values = try XCTUnwrap(evaluate("""

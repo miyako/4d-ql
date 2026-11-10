@@ -34,6 +34,7 @@ public final class AnalyzerRegistry {
         QuickReportFileAnalyzer(),
         LabelFileAnalyzer(),
         WriteProFileAnalyzer(),
+        ViewProFileAnalyzer(),
         MethodFileAnalyzer(),
         FormFileAnalyzer(platforms: FormPlatform.previewPlatforms),
     ])

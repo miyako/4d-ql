@@ -20,6 +20,7 @@ file to see what is inside instead of a generic icon.
 | `.4qr` Quick Report | list/cross-table design template with saved widths, titles, fonts, colors, borders, header/footer text, sorts, subtotals and grand totals; no database or 4D runtime required |
 | `.4lbp` label | native XML label artwork and sheet layout, saved text, shapes, raster pictures, print order, margins, gaps and project table-form references |
 | `.4wp` 4D Write Pro document | paged rendering with page size, margins, sections, columns, page/section breaks, headers and footers (first/left/right), paragraph and character styles, lists, tab stops, tables (including data-source templates), inline and anchored pictures, text boxes, and formulas shown as references; formula list, style sheets, bookmarks and metadata |
+| `.4vp` 4D View Pro spreadsheet | selectable worksheets, saved cell values, formula results, fonts, colors, alignment, number formats, borders, merged cells and row/column dimensions; hidden sheets, rows and columns respected |
 | `.4dm` method / class source | syntax-highlighted UTF-8 source with line numbers, line count and file size |
 | `.4DForm` form | approximate macOS form layout, page 0 plus selectable numbered pages, Classic / Liquid Glass light and dark appearances, local stylesheets, JSON pointers, static inherited/subforms and XLIFF labels |
 
@@ -61,6 +62,14 @@ never evaluated: they appear as references, except page number, page count and
 section name, which are computed. Pages split only at hard page and section
 breaks, so text is not reflowed onto further pages, and text wrapping around
 anchored objects is not simulated. See [format notes](docs/WRITEPRO-FORMAT.md).
+
+4D View Pro previews are static spreadsheet grids and require neither 4D nor
+SpreadJS at preview time. Saved formula results are displayed without executing
+formulas, custom 4D functions or links; formulas without a saved result appear
+as references instead. The preview is bounded to 16 visible sheets, 200 visible
+rows and 40 visible columns per sheet, with explicit notices for omitted cells.
+Charts, pictures, conditional formatting and print layout are not reproduced.
+See the [native format experiments and fixture workflow](docs/VIEWPRO-FORMAT.md).
 
 ### Shared form rendering
 
@@ -592,6 +601,7 @@ FOURD_SAMPLES=/path/to/samples swift test               # runs every sample thro
 scripts/make-fixtures.sh                                # regenerate test fixtures (needs tool4d)
 bash scripts/make-set-fixtures.sh                       # regenerate controlled saved sets (tool4d 21 R5)
 bash scripts/make-writepro-fixtures.sh                  # regenerate .4wp fixtures (full 4D; tool4d lacks Write Pro)
+bash scripts/make-viewpro-fixtures.sh                   # regenerate .4vp fixtures and XLSX references (full 4D + View Pro)
 ```
 
 The test fixtures in `Tests/FourDFileKitTests/Fixtures` (a data file with
