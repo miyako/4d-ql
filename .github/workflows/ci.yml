@@ -38,6 +38,8 @@ jobs:
       - name: test
         run: |
           swift test
+          swift build --product fourdql
+          python3 scripts/test-quick-report-cli.py
           python3 scripts/test-release-verification.py
 
       - name: build app (universal, ad-hoc signed)

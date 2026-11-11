@@ -80,6 +80,11 @@ jobs:
       - name: Test
         run: swift test
 
+      - name: Test Quick Report converter
+        run: |
+          swift build --product fourdql
+          python scripts/test-quick-report-cli.py
+
       - name: Build release CLI
         run: swift build -c release --product fourdql
 

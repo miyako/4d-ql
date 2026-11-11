@@ -1,17 +1,21 @@
 # fourdql CLI reference
 
 `fourdql` inspects 4D files and produces a readable text report, a typed JSON
-analysis, or a self-contained HTML preview. It uses the same analyzers and
+analysis, or a self-contained HTML preview. Its `qr-convert` subcommand also
+converts Quick Report definitions between binary and editable JSON.
+It uses the same analyzers and
 presenters as the Finder Quick Look extension, without requiring the hosting
 app, a running database, 4D, or SpreadJS.
 
 The HTML previews are static documents, not a way to run 4D applications.
 Database records are not exported or decrypted, methods and formulas are not
-executed, and the original files are not edited.
+executed. Inspection does not edit the original files; conversion writes only
+to the explicitly selected output path or stdout.
 
 - [Installation](#installation)
 - [Command syntax](#command-syntax)
 - [Examples](#examples)
+- [Convert Quick Report definitions](#convert-quick-report-definitions)
 - [Supported file types](#supported-file-types)
 - [Preview gallery](#preview-gallery)
 - [Limits and project resources](#limits-and-project-resources)
@@ -149,6 +153,8 @@ to obtain the actual distribution archive.
 
 ```text
 fourdql [--json | --html] [--thorough] <file>...
+fourdql qr-convert (--to-json | --to-4qr) [input [output]]
+fourdql qr-convert (--to-json | --to-4qr) [-i input] [-o output]
 ```
 
 | Option | Effect |
@@ -163,12 +169,65 @@ fourdql [--json | --html] [--thorough] <file>...
 Use one output option at a time. If both `--json` and `--html` are given, the
 last one wins. Options apply to the entire invocation, not to individual files.
 
-Input is by file path, not standard input. Quote paths containing spaces.
+For inspection, input is by file path, not standard input. Quote paths containing spaces.
 There is no `--output`, `--version`, image/PDF export, or `--` option separator;
 use shell redirection for output and prefix a special-looking filename with
 `./` when needed. The CLI selects its analyzer by the case-insensitive filename
 extension. Renaming arbitrary XML, JSON or Excel files does not convert them
 into supported 4D documents.
+
+## Convert Quick Report definitions
+
+```sh
+# File input and output
+fourdql qr-convert --to-json "Sales.4QR" sales.json
+fourdql qr-convert --to-4qr sales.json "Updated Sales.4qr"
+
+# Equivalent named options
+fourdql qr-convert --to-json -i "Sales.4QR" -o sales.json
+
+# Stream input and output; omitted paths and '-' mean stdin/stdout
+cat "Sales.4QR" | fourdql qr-convert --to-json > sales.json
+cat sales.json | fourdql qr-convert --to-4qr > "Updated Sales.4qr"
+fourdql qr-convert --to-json "Sales.4QR" | fourdql qr-convert --to-4qr - copy.4qr
+
+# Change a saved column title with jq
+fourdql qr-convert --to-json "Sales.4QR" |
+  jq '(.. | objects | select(has("columnInfo")) | .columnInfo |
+       select(.title == "Amount") | .title) = "Revenue"' |
+  fourdql qr-convert --to-4qr - "Revenue.4qr"
+```
+
+`--input`/`--output` are aliases for `-i`/`-o`. Do not mix named and positional
+paths. `--` ends option parsing for positional paths beginning with `-`.
+One report is converted per invocation; extensions are not used to infer
+direction. `--json` remains the **preview analysis**, which omits opaque data
+and cannot be used as input to `--to-4qr`.
+
+The versioned JSON definition exposes named properties for report/column/cell
+settings, text, fonts, colors, borders, sources and sorts. It preserves chunk
+order, unknown fields, tokenized formulas, pictures, printer settings and
+unknown chunks; uninterpreted binary payloads are base64 strings.
+Unchanged exported JSON rebuilds the original bytes. See the
+[JSON schema and editing rules](QUICK-REPORT-FORMAT.md#editable-json-conversion)
+before building or restructuring a report.
+
+**This is an external interchange format, not a change to 4D's native format.**
+Convert JSON back to `.4qr` before loading it in 4D. No 4D runtime is required
+for conversion. Formula text compilation, pre-Unicode formats and unknown stream
+versions are not supported. Preserved printer settings may include
+machine-specific information: unlike preview JSON, conversion JSON contains
+their full payloads.
+
+Conversion buffers one bounded document, not an incremental stream of records.
+Limits are 32 MiB for binary and 128 MiB for JSON, plus the parser's structural
+limits. Invalid definitions, unsupported versions, unknown JSON properties and
+I/O errors are reported on stderr with exit status **1**; usage errors return
+**2**, success **0**. Conversion finishes and validates before writing anything.
+File output is replaced atomically (including when input and output are the
+same path); stdout contains only the requested JSON or binary bytes. Shell
+redirection itself can truncate an existing destination before the CLI runs,
+so use an output path argument for safe replacement.
 
 ## Examples
 
