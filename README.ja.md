@@ -43,6 +43,9 @@ CLI の `--thorough` は時間制限を外しますが、出力の上限は外�
 フィールド番号で表示され、トークン化されたフォーミュラ、レコード、合計マクロ、ピクチャー、
 ページ分割、ネイティブのプリンター設定は評価されません。
 [バイナリ形式の根拠とフィクスチャの作成手順](docs/QUICK-REPORT-FORMAT.md)を参照してください。
+CLI の [`fourdql qr-convert`](docs/CLI.md#convert-quick-report-definitions) は、
+ファイルパスまたは標準入出力を使って `.4qr` と編集可能な JSON を相互変換します。
+未解釈のフォーミュラ、ピクチャー、プリンター設定も保持します。
 
 ラベルのプレビューは、[4D Labels コンポーネント](https://github.com/4d/4D-Labels)で使われる
 ネイティブ XML の `.4lbp` 形式を読みます。JSON や旧形式のバイナリ `.4lb` ファイルは対象外です。

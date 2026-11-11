@@ -1,6 +1,6 @@
 # Quick Report binary format
 
-This is an experimental, read-only description of the chunk-based `.4qr`
+This is an experimental description of the chunk-based `.4qr`
 format, derived from self-authored reports, not a published 4D specification.
 The preview needs no 4D runtime. Fixture generation and native readback use
 **full 4D**, not tool4d.
@@ -201,6 +201,114 @@ Unknown versions produce an explicit error rather than a guessed preview.
 Bounds: 32 MiB/file, 512 columns, 513 rows/column, 20,000 total chunks,
 eight nested-form levels, 128 KiB/string. Invalid lengths, padding, required
 chunks, UTF-16, sort references and inconsistent row counts fail explicitly.
+
+## Editable JSON conversion
+
+`fourdql qr-convert` provides a reversible JSON definition, separate from the
+preview-only model returned by `fourdql --json`. The existing parser already
+understands most design properties, so an external JSON format is feasible.
+Simply serializing its preview model would **not** be sufficient: it discards
+uninterpreted fields and stores only sizes/presence for formulas, pictures and
+printer settings. The converter shares the binary parser, retains those bytes,
+and verifies that export can reproduce the input exactly.
+
+The public library entry points are `QuickReportConverter.json(from:)` and
+`binary(from:)` for `Data`, or `decode(_:)` / `encode(_:)` for the mutable,
+Codable `QuickReportDefinition`. CLI examples are in the
+[CLI reference](CLI.md#convert-quick-report-definitions).
+
+### Schema version 1
+
+The top-level object has `schemaVersion: 1`, `littleEndian` and `root`.
+The root is a chunk with `tag: "FORM"` and
+`payload: { "form": { "type": "REPT", "chunks": [...] } }`.
+Each chunk has a four-character `tag` and exactly one named `payload` variant.
+FORM nodes use `form.type` for the native form type and `form.chunks` for
+ordered children. Spaces in FourCCs are significant: a column is `"Col "`.
+Tags and form types must be four printable ASCII bytes.
+
+For example, the `Info` child of a column is:
+
+```json
+{
+  "tag": "Info",
+  "payload": {
+    "columnInfo": {
+      "width": 173,
+      "automaticWidth": 0,
+      "repeatedValues": 1,
+      "hidden": 0,
+      "title": "Amount",
+      "displayFormat": "###,##0.00",
+      "titleHidden": 0,
+      "detailHidden": 0
+    }
+  }
+}
+```
+
+Payload variants reflect the binary fields described above:
+
+| Chunk / parent | Payload variant and fields |
+|---|---|
+| `FORM` | `form`: `type`, `chunks` |
+| `Vers`, `StVr` / `REPT` | `version`: `value` |
+| `Info` / `REPT` | `reportInfo`: `kind`, `tableNumber`, `rowCount`, `flag` |
+| `Info` / `Col ` | `columnInfo`: as in the example |
+| `Info` / `Brek` | `cellInfo`: `text`, `operators`, `hidden`, `flag` |
+| `Heit` / `Head`, `Futr` | `height`: `value` |
+| `Strs` / `Head`, `Futr` | `bandStrings`: `left`, `center`, `right` |
+| Font chunks in the documented contexts | `style`: `foreground`, `metadata`, `fontSize`, `justification`, `face`, `fontName`, `background`, `alternateBackground` |
+| Border chunks in the documented contexts | `borders`: `values`, an array of six `{ "thickness": ..., "color": ... }` objects |
+| `Fild` / `Col ` | `field`: `tableNumber`, `fieldNumber`, `reserved` |
+| `Sort` / `REPT` | `sorts`: `columns`, an array of signed one-based column numbers |
+| All other leaves, including `Frml`, `PICT`, printer data, `Mrgn`, `Outp` | `opaque`: `bytes`, a base64 string |
+
+Numeric flag fields are intentionally integers, not booleans, so noncanonical
+native flag values are retained. The bit widths/ranges are those in the binary
+format tables. Colors are unsigned native COLORREF **integers**, not HTML
+colors; for example, `#123456` is `5649426` (`0x00563412`). The unset background
+sentinel is `4294967295`. This preserves otherwise uninterpreted color bits.
+`metadata`, `reserved` and `flag` preserve their original integer values.
+
+Optional chunk-level `trailingBytes` retains any bytes after decoded fields as
+base64. Opaque leaves already contain their whole payload and cannot also have
+`trailingBytes`; FORM nodes cannot have it either. Optional `padding` preserves
+the original odd-length padding byte (0–255). Lengths are always regenerated;
+padding is used only when the new payload is odd, defaulting to zero if absent.
+An edit that changes payload parity therefore adds or removes padding as needed.
+
+### Editing and compatibility
+
+Start from an exported report when possible. Text, column widths, styles,
+field numbers, sort references and cell totals can be edited directly.
+Creating a report from scratch requires the full native container structure,
+including required chunks. Adding/removing columns, sorts or break rows must
+keep row counts, sort references and the 3-by-3 cross-table invariant consistent.
+Imported definitions are re-parsed using the same semantic checks as previews;
+unknown JSON properties and mismatched payload variants fail explicitly.
+Numeric types, UTF-16 lengths, borders, versions, nesting, chunk counts and
+output size are checked before output is written.
+
+Keep the original `littleEndian`, stream version and opaque bytes unless their
+native meaning is independently known. In particular, changing byte order does
+not transcode opaque formulas or platform print structures. Formula source text
+cannot be compiled into tokens by this converter. Preserving an unknown payload
+does not establish its meaning or make arbitrary edits to it safe. Likewise,
+changing a table/field number does not update references inside tokenized formulas.
+
+All 43 checked-in reports (stream versions 25–28, constructed BE, list and
+cross-table, Unicode, formula and picture probes) are exercised for byte-exact
+binary → JSON → binary round trips. Additional tests cover edits to decoded
+properties, unknown forms/chunks, opaque printer chunks, uninterpreted tails,
+nonzero padding, invalid definitions, and CLI file/pipe combinations.
+This is not a native JSON loader for 4D, nor evidence that all arbitrary
+structural edits are accepted by every 4D version.
+
+The converter uses the preview parser's format and structural limits, a 32 MiB
+binary limit and a 128 MiB JSON limit. Conversion JSON includes complete opaque
+printer settings and potentially other private report data; treat it like the
+original binary, not the deliberately reduced preview analysis.
 
 ## Command references
 

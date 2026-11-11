@@ -44,6 +44,9 @@ These are design previews, not live/printed reports: field references use table
 and field numbers; tokenized formulas, records, total macros, pictures,
 pagination and native printer settings are not evaluated. See the
 [binary-format evidence and fixture workflow](docs/QUICK-REPORT-FORMAT.md).
+The CLI also converts `.4qr` files to editable, lossless JSON and back with
+[`fourdql qr-convert`](docs/CLI.md#convert-quick-report-definitions), using
+file paths or stdin/stdout. Opaque formulas, pictures and printer data are retained.
 
 Label previews read the native XML `.4lbp` format used by the
 [4D Labels component](https://github.com/4d/4D-Labels), not JSON or legacy

@@ -94,10 +94,12 @@ public struct QuickReportFileAnalyzer: FileAnalyzer {
     }
 }
 
-private struct QRChunk {
+struct QRChunk {
     let tag: String
     let data: Data
     let children: [QRChunk]
+    let padding: UInt8?
+    let isForm: Bool
 
     func one(_ tag: String) throws -> QRChunk {
         let matches = children.filter { $0.tag == tag }
@@ -108,11 +110,12 @@ private struct QRChunk {
     }
 }
 
-private final class QuickReportDecoder {
+final class QuickReportDecoder {
     let data: Data
     var littleEndian = true
     var chunkCount = 0
     var unknown = Set<String>()
+    private(set) var root: QRChunk?
 
     init(data: Data) { self.data = data }
 
@@ -129,6 +132,7 @@ private final class QuickReportDecoder {
         guard root.tag == "REPT", reader.remaining == 0 else {
             throw QuickReportError.invalid("invalid REPT container length.")
         }
+        self.root = root
         var versionReader = cursor(try root.one("Vers").data)
         let version = try versionReader.u32()
         guard version == 0x10000 else {
@@ -193,7 +197,7 @@ private final class QuickReportDecoder {
         let tag = String(decoding: littleEndian ? Data(rawTag.reversed()) : rawTag, as: UTF8.self)
         let count = Int(try reader.u32())
         let payload = try reader.bytes(count)
-        if count % 2 != 0 { try reader.skip(1) }
+        let padding = count % 2 != 0 ? try reader.u8() : nil
         if tag == "FORM" {
             var nested = cursor(payload)
             let rawType = try nested.bytes(4)
@@ -201,13 +205,13 @@ private final class QuickReportDecoder {
             var children: [QRChunk] = []
             while nested.remaining > 0 { children.append(try chunk(&nested, depth: depth + 1)) }
             if !["REPT", "Head", "Futr", "Col ", "Brek"].contains(type) { unknown.insert("FORM:\(type)") }
-            return QRChunk(tag: type, data: payload, children: children)
+            return QRChunk(tag: type, data: payload, children: children, padding: padding, isForm: true)
         }
         if !["Vers", "StVr", "Mrgn", "Heit", "Strs", "Font", "Info", "Sort", "Tfon", "Lfon",
              "Brdr", "TBrd", "Fild", "Frml", "Outp", "PRPS", "PRPF", "PRNT", "PICT"].contains(tag) {
             unknown.insert(tag)
         }
-        return QRChunk(tag: tag, data: payload, children: [])
+        return QRChunk(tag: tag, data: payload, children: [], padding: padding, isForm: false)
     }
 
     func string(_ r: inout BinaryReader) throws -> String {

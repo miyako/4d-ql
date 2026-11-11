@@ -11,6 +11,10 @@ import FourDRender
 //   --html      the exact page Quick Look shows (useful when working on presentation)
 //   --thorough  no record/time limits
 
+if CommandLine.arguments.dropFirst().first == "qr-convert" {
+    exit(runQuickReportCommand(Array(CommandLine.arguments.dropFirst(2))))
+}
+
 var mode = "text"
 var options = AnalysisOptions.preview
 var paths: [String] = []
@@ -25,6 +29,7 @@ for arg in CommandLine.arguments.dropFirst() {
         exit(0)
     case "-h", "--help":
         print("usage: fourdql [--json | --html] [--thorough] <file>...")
+        print("       fourdql qr-convert (--to-json | --to-4qr) [input [output]]")
         exit(0)
     default: paths.append(arg)
     }
