@@ -3,6 +3,8 @@ import { WriteProDocument } from './document.js';
 import { createExampleDocument } from './example.js';
 import { DocumentError, MAX_ARCHIVE } from './archive.js';
 import { languages, messages, detectLanguage } from './i18n.js';
+import { LocalHistory } from './history.js';
+import { readImage } from './image.js';
 
 let locale = detectLanguage();
 let theme = 'system';
@@ -21,6 +23,18 @@ let selection = null;
 let errorCode = null;
 let downloadReady = false;
 let opening = false;
+let selectedImage = null;
+let versions = [];
+let persistTimer;
+let pendingRecord = null;
+let writing = false;
+let storageReady = false;
+let revision = 0;
+let findIndex = -1;
+let composition = null;
+let draggedImage = null;
+let draftStatus = null;
+const history = new LocalHistory();
 const t = key => messages[locale][key];
 
 document.querySelector('#app').innerHTML = `
@@ -31,6 +45,7 @@ document.querySelector('#app').innerHTML = `
     <div class="file-actions">
       <button id="new" data-i18n="new"></button><button id="open" data-i18n="open"></button>
       <button id="download" class="primary" data-i18n="download"></button>
+      <button id="history-toggle" data-i18n="history" aria-expanded="false" aria-controls="history-panel"></button>
       <button id="settings-toggle" class="icon-button" data-label="settings" aria-expanded="false" aria-controls="settings">⚙</button>
     </div>
   </header>
@@ -46,6 +61,7 @@ document.querySelector('#app').innerHTML = `
       <div class="toolbar" role="toolbar" aria-label="Text formatting">
         <button id="undo" data-label="undo">↶</button><button id="redo" data-label="redo">↷</button>
         <span class="separator"></span>
+        <select id="paragraph-style" data-label="paragraphStyle"></select>
         <select id="font" data-label="font"><option>Arial</option><option>Helvetica</option><option>Times New Roman</option><option>Georgia</option><option>Courier New</option></select>
         <select id="size" data-label="size"><option>9</option><option>10</option><option selected>12</option><option>14</option><option>18</option><option>24</option><option>36</option></select>
         <button id="bold" data-label="bold"><b>B</b></button><button id="italic" data-label="italic"><i>I</i></button><button id="underline" data-label="underline"><u>U</u></button>
@@ -53,11 +69,41 @@ document.querySelector('#app').innerHTML = `
         <span class="separator"></span>
         <button id="left" data-label="left">≡</button><button id="center" data-label="center">☰</button><button id="right" data-label="right">≡</button>
         <button id="paragraph" class="add-paragraph" data-i18n="paragraph"></button>
+        <button id="bullets" data-label="bullets">•</button><button id="numbering" data-label="numbering">1.</button>
+        <button id="outdent" data-label="outdent">⇤</button><button id="indent" data-label="indent">⇥</button>
+        <button id="find-toggle" data-i18n="find" aria-expanded="false" aria-controls="find-panel"></button>
       </div>
+      <details class="editing-tools"><summary data-i18n="moreTools"></summary><div class="tool-groups">
+        <label><span data-i18n="spacing"></span><select id="spacing"><option value="0">0 pt</option><option value="6">6 pt</option><option value="12">12 pt</option><option value="18">18 pt</option><option value="24">24 pt</option></select></label>
+        <label><span data-i18n="lineHeight"></span><select id="line-height"><option value="100%">1</option><option value="150%">1.5</option><option value="200%">2</option></select></label>
+        <label><span data-i18n="rows"></span><input id="table-rows" type="number" min="1" max="20" value="2"></label>
+        <label><span data-i18n="columns"></span><input id="table-columns" type="number" min="1" max="10" value="2"></label>
+        <button id="insert-table" data-i18n="insertTable"></button>
+        <button id="add-row" data-i18n="addRow"></button><button id="remove-row" data-i18n="removeRow"></button>
+        <button id="add-column" data-i18n="addColumn"></button><button id="remove-column" data-i18n="removeColumn"></button>
+        <button id="insert-image" data-i18n="insertImage"></button>
+      </div></details>
+      <section id="image-panel" class="tool-panel" hidden>
+        <label><span data-i18n="imageWidth"></span><input id="image-width" type="number" min="12" max="1200" step="1"></label>
+        <button id="resize-image" data-i18n="resizeImage"></button><button id="remove-image" data-i18n="removeImage"></button>
+      </section>
+      <section id="find-panel" class="tool-panel" hidden>
+        <label><span data-i18n="find"></span><input id="find-query" type="search"></label>
+        <label><span data-i18n="replacement"></span><input id="replacement" type="text"></label>
+        <label><input id="match-case" type="checkbox"><span data-i18n="matchCase"></span></label>
+        <button id="find-next" data-i18n="findNext"></button><span id="find-count" role="status"></span>
+        <button id="replace-one" data-i18n="replace"></button><button id="replace-all" data-i18n="replaceAll"></button>
+      </section>
+      <section id="history-panel" class="tool-panel history-panel" hidden>
+        <p data-i18n="historyHelp"></p><label><span data-i18n="versionName"></span><input id="version-name" type="text" maxlength="100"></label>
+        <button id="save-version" data-i18n="saveVersion"></button><ol id="version-list"></ol>
+      </section>
+      <p id="recovery-notice" class="notice" data-i18n="recovered" hidden></p>
       <div id="error" class="notice error" role="alert" hidden><strong data-i18n="errorTitle"></strong><p id="error-message"></p><button id="dismiss-error" data-i18n="close"></button></div>
       <div id="readonly-notice" class="notice" data-i18n="bookmarkNotice" hidden></div>
       <div class="paper-surround"><article id="paper" class="paper" data-label="editor"></article></div>
-      <footer class="document-footer"><span id="statistics"></span><span data-i18n="local"></span></footer>
+      <footer class="document-footer"><span id="statistics"></span><span id="draft-state" role="status"></span>
+        <label><span data-i18n="zoom"></span><select id="zoom"><option value=".75">75%</option><option value="1" selected>100%</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label><span data-i18n="local"></span></footer>
     </section>
     <aside class="guide">
       <div class="guide-symbol" aria-hidden="true">¶</div><h2 data-i18n="details"></h2><p data-i18n="intro"></p>
@@ -65,6 +111,7 @@ document.querySelector('#app').innerHTML = `
     </aside>
   </main>
   <input id="file" type="file" accept=".4wp" hidden>
+  <input id="image-file" type="file" accept="image/png,image/jpeg" multiple hidden>
 `;
 const $ = id => document.getElementById(id);
 for (const [value, label] of Object.entries(languages)) $('language').add(new Option(label, value));
@@ -85,21 +132,73 @@ function updateStatus() {
   $('save-state').classList.toggle('unsaved', unsaved());
   $('undo').disabled = model.undoStack.length === 0;
   $('redo').disabled = model.redoStack.length === 0;
+  for (const [id, labels] of [['undo', model.undoLabels], ['redo', model.redoLabels]]) {
+    const label = labels.at(-1);
+    $(id).title = label ? `${t(id)} · ${t(label === 'image' ? 'historyImage' : label)}` : t(id);
+  }
   const editable = active !== null && model.runs[active] && !model.protected(model.runs[active].parentElement);
-  for (const id of ['bold', 'italic', 'underline', 'font', 'size', 'color', 'left', 'center', 'right']) $(id).disabled = !editable;
+  for (const id of ['bold', 'italic', 'underline', 'font', 'size', 'color', 'left', 'center', 'right', 'paragraph-style', 'bullets', 'numbering', 'outdent', 'indent', 'spacing', 'line-height']) $(id).disabled = !editable;
   const block = active !== null ? $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-block]') : null;
   const sourceBlock = block ? model.blocks[Number(block.dataset.block)] : null;
-  $('paragraph').disabled = model.readOnly || Boolean(sourceBlock &&
-    (sourceBlock.parentElement.localName !== 'body' || model.protected(sourceBlock)));
-  $('statistics').textContent = `${model.runs.length} ${t('runs')} · ${Object.keys(model.files).length || 1} ${t('resources')}`;
+  $('paragraph').disabled = model.readOnly;
+  $('insert-table').disabled = model.readOnly || Boolean(sourceBlock && sourceBlock.parentElement.localName !== 'body');
+  $('insert-image').disabled = model.readOnly;
+  const cell = active !== null && $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-cell]');
+  for (const id of ['add-row', 'remove-row', 'add-column', 'remove-column']) $(id).disabled = !cell || !editable;
+  for (const id of ['replace-one', 'replace-all']) $(id).disabled = model.readOnly;
+  const blockText = new Map();
+  for (const node of model.runs) {
+    const block = node.parentElement.closest('p,li');
+    blockText.set(block, (blockText.get(block) || '') + node.data);
+  }
+  const text = model.blocks.map(block => blockText.get(block) || '').join('\n').replace(/\u200b/g, '');
+  const words = [...new Intl.Segmenter(locale, { granularity: 'word' }).segment(text)].filter(item => item.isWordLike).length;
+  $('statistics').textContent = `${words.toLocaleString(locale)} ${t('words')} · ${[...text].length.toLocaleString(locale)} ${t('characters')}`;
+  const element = active !== null && $('paper').querySelector(`[data-run="${active}"]`);
+  if (element && editable) {
+    const computed = getComputedStyle(element);
+    const option = (id, value) => {
+      if (![...$(id).options].some(item => item.value === value)) $(id).add(new Option(value, value));
+      $(id).value = value;
+    };
+    option('font', computed.fontFamily.split(',')[0].replace(/^["']|["']$/g, ''));
+    option('size', String(Math.round(parseFloat(computed.fontSize) * .75 * 10) / 10));
+    const rgb = computed.color.match(/\d+/g);
+    if (rgb?.length >= 3) $('color').value = '#' + rgb.slice(0, 3).map(value => Number(value).toString(16).padStart(2, '0')).join('');
+    for (const [id, pressed] of [['bold', computed.fontWeight === 'bold' || Number(computed.fontWeight) >= 600], ['italic', computed.fontStyle === 'italic'], ['underline', computed.textDecorationLine.includes('underline')]]) {
+      $(id).setAttribute('aria-pressed', String(pressed));
+    }
+    if (sourceBlock) {
+      const paragraph = getComputedStyle(element.closest('[data-block]'));
+      $('paragraph-style').value = model.styleNames().find(name => sourceBlock.classList.contains(name)) || '';
+      option('spacing', String(Math.round(parseFloat(paragraph.marginBottom) * .75)));
+      const lineHeight = parseFloat(paragraph.lineHeight) / parseFloat(paragraph.fontSize);
+      if (Number.isFinite(lineHeight)) {
+        const value = `${Math.round(lineHeight * 100)}%`;
+        if (![...$('line-height').options].some(item => item.value === value)) $('line-height').add(new Option(String(Math.round(lineHeight * 100) / 100), value));
+        $('line-height').value = value;
+      } else $('line-height').value = '';
+      for (const alignment of ['left', 'center', 'right']) $(alignment).setAttribute('aria-pressed', String(paragraph.textAlign === alignment));
+      for (const [id, kind] of [['bullets', 'ul'], ['numbering', 'ol']]) {
+        $(id).setAttribute('aria-pressed', String(sourceBlock.closest('ul,ol')?.localName === kind));
+      }
+    }
+  }
 }
 
-function render() {
+function render(caret = null) {
   active = null;
   selection = null;
+  selectedImage = null;
+  $('image-panel').hidden = true;
   model.render($('paper'), messages[locale]);
+  const styleLabels = { Normal: 'normalStyle', Heading_1: 'heading1Style', Heading_2: 'heading2Style', Quote: 'quoteStyle' };
+  $('paragraph-style').replaceChildren(...model.styleNames().map(name => new Option(styleLabels[name] ? t(styleLabels[name]) : name.replaceAll('_', ' '), name)));
   $('readonly-notice').hidden = !model.readOnly;
   updateStatus();
+  if (caret?.node) focusRun(model.runs.indexOf(caret.node), caret.offset);
+  renderHistory();
+  refreshFindCount();
 }
 
 function localize() {
@@ -114,6 +213,7 @@ function localize() {
   $('language').value = locale;
   $('theme').value = theme;
   if (errorCode) $('error-message').textContent = t(errorCode);
+  if (draftStatus) $('draft-state').textContent = t(draftStatus);
   render();
 }
 
@@ -127,12 +227,16 @@ function remember() {
 }
 
 function replaceDocument(next) {
+  clearTimeout(persistTimer);
   model = next;
   saved = model.serialize();
   errorCode = null;
   downloadReady = false;
+  versions = [];
+  $('recovery-notice').hidden = true;
   $('error').hidden = true;
   render();
+  schedulePersist('initial');
 }
 
 async function openFile(file) {
@@ -164,6 +268,7 @@ function download() {
     saved = model.serialize();
     downloadReady = true;
     updateStatus();
+    schedulePersist('download');
   } catch (error) {
     showError(error);
   }
@@ -185,26 +290,19 @@ function focusRun(index, offset = null) {
 }
 
 function addParagraph() {
-  try {
-    const block = active !== null ? $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-block]') : null;
-    model.addParagraph(block ? Number(block.dataset.block) : null);
-    const paragraph = block ? model.blocks[Number(block.dataset.block)].nextElementSibling : model.document.querySelector('body').lastElementChild;
-    render();
-    const index = model.runs.findIndex(node => node.parentElement === paragraph);
-    focusRun(index);
-  } catch (error) {
-    showError(error);
-  }
+  perform('paragraph', () => {
+    if (selection) return model.splitParagraph(selection);
+    return model.addParagraph();
+  });
 }
 
 function applyFormat(property, value) {
   try {
     if (active === null) throw new DocumentError('selection');
-    if (selection?.crossRun) throw new DocumentError('selectionRange');
-    const hasRange = selection && selection.end > selection.start;
-    const text = model.formatRun(active, property, value, hasRange ? selection.start : 0, hasRange ? selection.end : null);
-    render();
-    focusRun(model.runs.indexOf(text));
+    const range = formattingSelection();
+    const caret = model.formatSelection(range, property, value);
+    render(caret);
+    schedulePersist('format');
   } catch (error) {
     showError(error);
   }
@@ -225,41 +323,66 @@ function toggleFormat(property, on, off) {
   applyFormat(property, enabled ? off : on);
 }
 
-document.addEventListener('selectionchange', () => {
+function captureSelection() {
   const selected = window.getSelection();
   if (!selected?.rangeCount || !selected.anchorNode) return;
   const parent = node => node.nodeType === 1 ? node : node.parentElement;
-  const first = parent(selected.anchorNode)?.closest('[data-run][contenteditable]');
-  const last = parent(selected.focusNode)?.closest('[data-run][contenteditable]');
-  if (!first) return;
+  const browserRange = selected.getRangeAt(0);
+  if (!$('paper').contains(browserRange.startContainer) || !$('paper').contains(browserRange.endContainer)) return;
+  const startRun = parent(browserRange.startContainer)?.closest('[data-run]');
+  const endRun = parent(browserRange.endContainer)?.closest('[data-run]');
+  const intersected = startRun && endRun ? [] : [...$('paper').querySelectorAll('[data-run]')].filter(run => browserRange.intersectsNode(run));
+  const first = startRun || intersected[0];
+  const last = endRun || intersected.at(-1);
+  if (!first || !$('paper').contains(first)) return;
   active = Number(first.dataset.run);
-  const offset = (node, position) => {
+  if (!last || !$('paper').contains(last)) return;
+  const offset = (element, node, position, fallback) => {
+    if (!element.contains(node)) return fallback;
     const range = document.createRange();
-    range.selectNodeContents(first);
+    range.selectNodeContents(element);
     range.setEnd(node, position);
     return range.toString().length;
   };
-  selection = first !== last ? { crossRun: true } : {
-    start: Math.min(offset(selected.anchorNode, selected.anchorOffset), offset(selected.focusNode, selected.focusOffset)),
-    end: Math.max(offset(selected.anchorNode, selected.anchorOffset), offset(selected.focusNode, selected.focusOffset)),
+  selection = {
+    startRun: Number(first.dataset.run), endRun: Number(last.dataset.run),
+    start: offset(first, browserRange.startContainer, browserRange.startOffset, 0),
+    end: offset(last, browserRange.endContainer, browserRange.endOffset, last.textContent.length),
   };
-  updateStatus();
-});
+}
+document.addEventListener('selectionchange', () => { captureSelection(); updateStatus(); });
 
 $('paper').addEventListener('focusin', event => {
   if (event.target.dataset.run !== undefined) {
+    selectedImage = null;
+    $('image-panel').hidden = true;
     active = Number(event.target.dataset.run);
     selection = null;
     updateStatus();
   }
 });
 $('paper').addEventListener('click', event => {
+  model.endGroup();
+  const image = event.target.closest('[data-image]');
+  if (image && image.getAttribute('role') === 'button') {
+    selectedImage = Number(image.dataset.image);
+    active = null;
+    selection = null;
+    $('image-panel').hidden = false;
+    const picture = image.querySelector('img');
+    $('image-width').value = String(Math.round(picture.getBoundingClientRect().width * .75));
+    updateStatus();
+    return;
+  }
+  selectedImage = null;
+  $('image-panel').hidden = true;
   if (event.target.closest('[data-run],.preserved-object,.locked-content')) return;
   const scope = event.target.closest('[data-block]') || $('paper');
   const runs = scope.querySelectorAll('[data-run][contenteditable]');
   if (runs.length) focusRun(Number(runs[runs.length - 1].dataset.run));
 });
 $('paper').addEventListener('input', event => {
+  if (composition || event.inputType === 'insertCompositionText') return;
   if (event.target.dataset.run === undefined) return;
   try {
     if (!event.target.textContent || event.target.textContent === '\u200b') event.target.dataset.empty = '';
@@ -271,35 +394,93 @@ $('paper').addEventListener('input', event => {
     }
     downloadReady = false;
     updateStatus();
+    refreshFindCount();
+    schedulePersist('typing');
   } catch (error) {
     showError(error);
     render();
   }
 });
 $('paper').addEventListener('keydown', event => {
+  if (event.isComposing) return;
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'a') {
+    event.preventDefault();
+    const runs = [...$('paper').querySelectorAll('[data-run]')];
+    if (runs.length) {
+      const range = document.createRange();
+      range.setStart(runs[0].firstChild || runs[0], 0);
+      range.setEnd(runs.at(-1).firstChild || runs.at(-1), runs.at(-1).textContent.length);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      captureSelection();
+    }
+    return;
+  }
+  if (selectedImage !== null && ['Backspace', 'Delete'].includes(event.key)) {
+    event.preventDefault();
+    perform('image', () => model.changeImage(selectedImage));
+    return;
+  }
+  if (event.target.closest('[data-image]') && ['Enter', ' '].includes(event.key)) {
+    event.preventDefault();
+    event.target.closest('[data-image]').click();
+    return;
+  }
+  captureSelection();
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) model.endGroup();
   if (event.key === 'Enter' && !event.isComposing) {
     event.preventDefault();
-    if (!event.shiftKey) addParagraph();
-    else {
-      try {
-        if (active === null) throw new DocumentError('selection');
-        if (selection?.crossRun) throw new DocumentError('selectionRange');
-        const node = model.runs[active];
-        const start = selection?.start ?? node.length;
-        const end = selection?.end ?? start;
-        const last = model.editRun(active, `${node.data.slice(0, start)}\n${node.data.slice(end)}`);
-        render();
-        focusRun(model.runs.indexOf(last), 0);
-      } catch (error) { showError(error); }
+    perform('paragraph', () => model.splitParagraph(currentSelection(), event.shiftKey));
+  }
+  if (['Backspace', 'Delete'].includes(event.key) && deleteAtBoundary(event.key === 'Backspace')) event.preventDefault();
+  if (selection && selection.startRun === selection.endRun && selection.start === selection.end &&
+    !event.shiftKey && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+    const backward = event.key === 'ArrowLeft';
+    const node = model.runs[active];
+    if (backward ? selection.start === 0 : selection.end === node.length) {
+      const index = active + (backward ? -1 : 1);
+      if (model.runs[index] && !model.protected(model.runs[index].parentElement)) {
+        event.preventDefault();
+        focusRun(index, backward ? model.runs[index].length : 0);
+      }
     }
   }
 });
 $('paper').addEventListener('beforeinput', event => {
+  if (event.isComposing || composition) return;
+  captureSelection();
   if (['historyUndo', 'historyRedo'].includes(event.inputType)) {
     event.preventDefault();
-    model.undo(event.inputType === 'historyRedo');
-    render();
+    perform(event.inputType === 'historyRedo' ? 'redo' : 'undo', () => model.undo(event.inputType === 'historyRedo'));
+  } else if (['insertParagraph', 'insertLineBreak'].includes(event.inputType)) {
+    event.preventDefault();
+    perform('paragraph', () => model.splitParagraph(currentSelection(), event.inputType === 'insertLineBreak'));
+  } else if (event.inputType === 'insertText' && selection && selection.startRun !== selection.endRun) {
+    event.preventDefault();
+    perform('typing', () => model.replaceText(selection, event.data || ''));
+  } else if (['deleteContentBackward', 'deleteContentForward'].includes(event.inputType) && deleteAtBoundary(event.inputType === 'deleteContentBackward')) {
+    event.preventDefault();
   }
+});
+$('paper').addEventListener('compositionstart', () => { composition = currentSelection(); });
+$('paper').addEventListener('compositionend', event => {
+  const range = composition;
+  composition = null;
+  if (range) perform('typing', () => model.replaceText(range, event.data));
+});
+$('paper').addEventListener('paste', event => {
+  event.preventDefault();
+  const files = [...event.clipboardData.files];
+  if (files.length) {
+    try { insertImages(files, currentSelection()); }
+    catch (error) { showError(error); }
+  }
+  else perform('paste', () => model.paste(currentSelection(), event.clipboardData.getData('text/html'), event.clipboardData.getData('text/plain')));
+});
+$('paper').addEventListener('cut', event => {
+  event.preventDefault();
+  event.clipboardData.setData('text/plain', window.getSelection().toString());
+  perform('cut', () => model.replaceText(currentSelection(), '', 'cut'));
 });
 document.querySelector('.toolbar').addEventListener('mousedown', event => {
   if (event.target.closest('button')) event.preventDefault();
@@ -313,16 +494,13 @@ $('color').onchange = event => applyFormat('color', event.target.value);
 for (const alignment of ['left', 'center', 'right']) {
   $(alignment).onclick = () => {
     try {
-      const block = $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-block]');
-      if (!block) throw new DocumentError('selection');
-      model.alignBlock(Number(block.dataset.block), alignment);
-      render();
+      perform('paragraph', () => model.paragraphProperty(currentSelection(), 'text-align', alignment));
     } catch (error) { showError(error); }
   };
 }
 $('paragraph').onclick = addParagraph;
-$('undo').onclick = () => { model.undo(); render(); };
-$('redo').onclick = () => { model.undo(true); render(); };
+$('undo').onclick = () => perform('undo', () => model.undo());
+$('redo').onclick = () => perform('redo', () => model.undo(true));
 $('new').onclick = () => {
   if (!unsaved() || confirm(t('discard'))) replaceDocument(WriteProDocument.create(t('untitled')));
 };
@@ -342,20 +520,297 @@ window.addEventListener('beforeunload', event => {
 window.addEventListener('keydown', event => {
   if (!(event.metaKey || event.ctrlKey) || event.altKey || event.isComposing) return;
   const key = event.key.toLowerCase();
-  if (['o', 's', 'z', 'b', 'i', 'u'].includes(key)) event.preventDefault();
+  if (event.target.closest('input,textarea,select') && !['o', 's'].includes(key)) return;
+  if (['o', 's', 'z', 'b', 'i', 'u', 'f'].includes(key)) event.preventDefault();
   if (key === 'o') $('file').click();
   if (key === 's') download();
-  if (key === 'z') { model.undo(event.shiftKey); render(); }
+  if (key === 'z') perform(event.shiftKey ? 'redo' : 'undo', () => model.undo(event.shiftKey));
   if (key === 'b') $('bold').click();
   if (key === 'i') $('italic').click();
   if (key === 'u') $('underline').click();
+  if (key === 'f') { $('find-panel').hidden = false; $('find-toggle').setAttribute('aria-expanded', 'true'); $('find-query').focus(); }
 });
 window.addEventListener('dragover', event => {
-  if (event.dataTransfer.types.includes('Files')) event.preventDefault();
+  if (event.dataTransfer.types.includes('Files') || draggedImage) event.preventDefault();
 });
+$('paper').addEventListener('dragstart', event => {
+  const frame = event.target.closest('[data-image]');
+  if (!frame || frame.getAttribute('role') !== 'button') { event.preventDefault(); return; }
+  draggedImage = model.images[Number(frame.dataset.image)];
+  event.dataTransfer.setData('application/x-4wp-image', 'move');
+  event.dataTransfer.effectAllowed = 'move';
+});
+$('paper').addEventListener('dragend', () => { draggedImage = null; });
 window.addEventListener('drop', event => {
-  if (!event.dataTransfer.files.length) return;
+  if (!event.dataTransfer.files.length && !draggedImage) return;
   event.preventDefault();
-  openFile(event.dataTransfer.files[0]);
+  const files = [...event.dataTransfer.files];
+  if (files.length === 1 && /\.4wp$/i.test(files[0].name)) openFile(files[0]);
+  else {
+    const position = document.caretPositionFromPoint?.(event.clientX, event.clientY);
+    let range = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+    if (!range && position) {
+      range = document.createRange();
+      range.setStart(position.offsetNode, position.offset);
+      range.collapse(true);
+    }
+    if (range && $('paper').contains(range.startContainer)) {
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      captureDropSelection(range);
+    }
+    if (draggedImage) {
+      const index = model.images.indexOf(draggedImage);
+      draggedImage = null;
+      perform('image', () => model.moveImage(index, currentSelection()));
+    } else {
+      try { insertImages(files, currentSelection()); }
+      catch (error) { showError(error); }
+    }
+  }
 });
-localize();
+
+function currentSelection() {
+  captureSelection();
+  if (selection) return selection;
+  const index = active ?? model.runs.findLastIndex(node => !model.protected(node.parentElement));
+  const node = model.runs[index];
+  if (!node) throw new DocumentError('selection');
+  return { startRun: index, endRun: index, start: node.length, end: node.length };
+}
+
+function formattingSelection() {
+  const range = currentSelection();
+  if (range.startRun === range.endRun && range.start === range.end) return { ...range, start: 0, end: model.runs[range.startRun].length };
+  return range;
+}
+
+function perform(label, operation) {
+  try {
+    const before = model.serialize();
+    const fallback = active !== null && model.runs[active] ? {
+      node: model.runs[active], offset: selection?.start ?? model.runs[active].length,
+    } : null;
+    const image = selectedImage !== null ? model.images[selectedImage] : null;
+    const caret = operation();
+    render(caret || (fallback?.node.isConnected ? fallback : null));
+    if (image?.isConnected && model.images.includes(image)) {
+      $('paper').querySelector(`[data-image="${model.images.indexOf(image)}"]`)?.click();
+    }
+    if (model.serialize() !== before) { downloadReady = false; schedulePersist(label); }
+  } catch (error) {
+    render();
+    showError(error);
+  }
+}
+
+function deleteAtBoundary(backward) {
+  if (!selection || active === null) return false;
+  if (selection.startRun !== selection.endRun || selection.start !== selection.end) {
+    perform('typing', () => model.replaceText(selection, ''));
+    return true;
+  }
+  const node = model.runs[active];
+  if (backward ? selection.start !== 0 : selection.end !== node.length) return false;
+  const otherIndex = active + (backward ? -1 : 1);
+  const other = model.runs[otherIndex];
+  const block = node.parentElement.closest('p,li');
+  if (other?.parentElement.closest('p,li') === block) {
+    const segments = [...new Intl.Segmenter(locale, { granularity: 'grapheme' }).segment(other.data)];
+    const range = backward ? {
+      startRun: otherIndex, start: segments.at(-1)?.index ?? 0, endRun: active, end: 0,
+    } : { startRun: active, start: node.length, endRun: otherIndex, end: segments[0]?.segment.length ?? 0 };
+    perform('typing', () => model.deleteInlineBoundary(active, backward) || model.replaceText(range, ''));
+  } else perform('paragraph', () => model.deleteInlineBoundary(active, backward) || model.mergeBoundary(active, backward));
+  return true;
+}
+
+function captureDropSelection(range) {
+  const node = range.startContainer;
+  const run = (node.nodeType === 1 ? node : node.parentElement).closest('[data-run]');
+  if (!run) return;
+  const prefix = document.createRange();
+  prefix.selectNodeContents(run);
+  prefix.setEnd(node, range.startOffset);
+  active = Number(run.dataset.run);
+  selection = { startRun: active, endRun: active, start: prefix.toString().length, end: prefix.toString().length };
+}
+
+async function insertImages(files, target) {
+  try {
+    let range = target;
+    for (const file of files) {
+      const originalModel = model;
+      const originalXML = model.serialize();
+      const image = await readImage(file);
+      if (originalModel !== model || originalXML !== model.serialize()) throw new DocumentError('staleInsertion');
+      const caret = model.insertImage(range, image.src, image.width, image.height, file.name);
+      render(caret);
+      range = { startRun: model.runs.indexOf(caret.node), endRun: model.runs.indexOf(caret.node), start: caret.offset, end: caret.offset };
+      schedulePersist('image');
+    }
+  } catch (error) { showError(error); }
+}
+
+$('paragraph-style').onchange = event => perform('style', () => model.styleBlocks(currentSelection(), event.target.value));
+for (const [id, kind] of [['bullets', 'ul'], ['numbering', 'ol']]) {
+  $(id).onclick = () => perform('list', () => {
+    const block = model.runs[active]?.parentElement.closest('p,li');
+    model.toggleList(model.blocks.indexOf(block), kind);
+  });
+}
+for (const [id, delta] of [['indent', 18], ['outdent', -18]]) $(id).onclick = () => perform('paragraph', () => {
+  const element = $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-block]');
+  const value = Math.max(0, (parseFloat(getComputedStyle(element).marginLeft) || 0) * .75 + delta);
+  model.paragraphProperty(currentSelection(), 'margin-left', `${value}pt`);
+});
+$('spacing').onchange = event => perform('paragraph', () => model.paragraphProperty(currentSelection(), 'margin-bottom', `${event.target.value}pt`));
+$('line-height').onchange = event => perform('paragraph', () => model.paragraphProperty(currentSelection(), 'line-height', event.target.value));
+$('insert-table').onclick = () => perform('table', () => {
+  const block = active !== null ? model.runs[active].parentElement.closest('p,li') : null;
+  model.insertTable(model.blocks.indexOf(block), Number($('table-rows').value), Number($('table-columns').value));
+});
+for (const [id, action] of [['add-row', 'addRow'], ['remove-row', 'removeRow'], ['add-column', 'addColumn'], ['remove-column', 'removeColumn']]) {
+  $(id).onclick = () => perform('table', () => {
+    const cell = $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-cell]');
+    model.tableEdit(Number(cell.dataset.cell), action);
+  });
+}
+$('insert-image').onclick = () => $('image-file').click();
+$('image-file').onchange = event => {
+  try { insertImages([...event.target.files], currentSelection()); }
+  catch (error) { showError(error); }
+  event.target.value = '';
+};
+$('resize-image').onclick = () => perform('image', () => {
+  const image = $('paper').querySelector(`[data-image="${selectedImage}"] img`);
+  model.changeImage(selectedImage, Number($('image-width').value), image.naturalHeight / image.naturalWidth);
+});
+$('remove-image').onclick = () => perform('image', () => model.changeImage(selectedImage));
+$('zoom').onchange = event => { $('paper').style.zoom = event.target.value; };
+
+function togglePanel(button, panel) {
+  $(panel).hidden = !$(panel).hidden;
+  $(button).setAttribute('aria-expanded', String(!$(panel).hidden));
+}
+$('find-toggle').onclick = () => { togglePanel('find-toggle', 'find-panel'); if (!$('find-panel').hidden) $('find-query').focus(); };
+$('history-toggle').onclick = () => { togglePanel('history-toggle', 'history-panel'); renderHistory(); };
+
+function selectMatch(match) {
+  const first = $('paper').querySelector(`[data-run="${match.startRun}"]`);
+  const last = $('paper').querySelector(`[data-run="${match.endRun}"]`);
+  const range = document.createRange();
+  range.setStart(first.firstChild || first, match.start);
+  range.setEnd(last.firstChild || last, match.end);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+  first.scrollIntoView({ block: 'nearest' });
+}
+function findNext() {
+  try {
+    const matches = model.find($('find-query').value, $('match-case').checked);
+    findIndex = matches.length ? (findIndex + 1) % matches.length : -1;
+    $('find-count').textContent = `${findIndex + 1} / ${matches.length}`;
+    if (findIndex >= 0) selectMatch(matches[findIndex]);
+  } catch (error) { showError(error); }
+}
+function refreshFindCount() {
+  if (!$('find-query').value) { $('find-count').textContent = ''; return; }
+  try {
+    const matches = model.find($('find-query').value, $('match-case').checked);
+    findIndex = matches.length ? Math.max(0, Math.min(findIndex, matches.length - 1)) : -1;
+    $('find-count').textContent = `${findIndex + 1} / ${matches.length}`;
+  } catch (error) { showError(error); }
+}
+$('find-next').onclick = findNext;
+$('find-query').oninput = () => { findIndex = -1; findNext(); };
+$('match-case').onchange = () => { findIndex = -1; findNext(); };
+$('replace-one').onclick = () => perform('replace', () => model.replaceMatches($('find-query').value, $('replacement').value, false, Math.max(0, findIndex), $('match-case').checked));
+$('replace-all').onclick = () => perform('replace', () => model.replaceMatches($('find-query').value, $('replacement').value, true, 0, $('match-case').checked));
+
+function renderHistory() {
+  $('version-list').replaceChildren(...versions.toReversed().map(version => {
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = `${version.name || t(version.label === 'image' ? 'historyImage' : version.label)} · ${new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'medium' }).format(version.at)}`;
+    const button = document.createElement('button');
+    button.textContent = t('restore');
+    button.onclick = () => perform('restore', () => model.restoreVersion(version.xml));
+    item.append(label, button);
+    return item;
+  }));
+}
+
+function setDraftStatus(code) {
+  draftStatus = code;
+  $('draft-state').textContent = t(code);
+}
+
+function schedulePersist(label) {
+  if (!storageReady) return;
+  // An older in-flight write must not mark newer, still-debounced edits as saved.
+  revision++;
+  clearTimeout(persistTimer);
+  setDraftStatus('draftSaving');
+  persistTimer = setTimeout(() => persist(label), 450);
+}
+
+async function persist(label, name = '') {
+  clearTimeout(persistTimer);
+  const xml = model.serialize();
+  const now = Date.now();
+  if (!versions.length) versions.push({ xml: model.initial, label: 'initial', at: now - 1 });
+  if (versions.at(-1).xml !== xml || name) {
+    if (label === 'typing' && versions.at(-1).label === 'typing' && now - versions.at(-1).at < 1500) versions.pop();
+    versions.push({ xml, label, name, at: now });
+  }
+  while (versions.length > 1 && (versions.length > 20 || versions.reduce((sum, item) => sum + item.xml.length, 0) > 4 * 1024 * 1024)) versions.shift();
+  pendingRecord = { document: model.pack(), saved, versions: [...versions], revision: ++revision };
+  renderHistory();
+  if (writing) return;
+  writing = true;
+  try {
+    while (pendingRecord) {
+      const record = pendingRecord;
+      pendingRecord = null;
+      await history.write(record);
+      if (record.revision === revision) setDraftStatus('draftSaved');
+    }
+  } catch (error) {
+    setDraftStatus('storageError');
+    showError(error);
+  } finally { writing = false; }
+}
+$('save-version').onclick = () => { persist('manual', $('version-name').value.trim()); $('version-name').value = ''; };
+
+async function start() {
+  localize();
+  document.querySelector('#app').inert = true;
+  $('new').disabled = true;
+  $('open').disabled = true;
+  try {
+    const record = await history.read();
+    if (record) {
+      const restored = WriteProDocument.unpack(record.document);
+      if (!Array.isArray(record.versions) || record.versions.length > 20 ||
+        record.versions.some(version => !version || typeof version.xml !== 'string' || version.xml.length > 32 * 1024 * 1024 ||
+          typeof version.label !== 'string' || !(version.label in messages.en) ||
+          version.name !== undefined && (typeof version.name !== 'string' || version.name.length > 100) ||
+          !Number.isFinite(version.at)) ||
+        record.versions.reduce((sum, version) => sum + version.xml.length, 0) > 36 * 1024 * 1024) throw new DocumentError('storageError');
+      model = restored;
+      saved = typeof record.saved === 'string' ? record.saved : model.initial;
+      versions = record.versions;
+      render();
+      $('recovery-notice').hidden = false;
+      setDraftStatus('draftSaved');
+    }
+  } catch (error) { showError(error); }
+  finally {
+    storageReady = true;
+    document.querySelector('#app').inert = false;
+    $('new').disabled = false;
+    $('open').disabled = false;
+  }
+}
+start();

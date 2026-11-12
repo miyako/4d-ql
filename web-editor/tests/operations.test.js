@@ -1,0 +1,200 @@
+import { describe, expect, it } from 'vitest';
+import { WriteProDocument } from '../src/document.js';
+import { messages } from '../src/i18n.js';
+import { MAX_EXPANDED, writeArchive } from '../src/archive.js';
+
+function model(body, head = '') {
+  const result = new WriteProDocument(`<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title>${head}</head><body>${body}</body></html>`);
+  render(result);
+  return result;
+}
+function render(result) { const host = document.createElement('div'); result.render(host, messages.en); return host; }
+const selection = (startRun, start, endRun = startRun, end = start) => ({ startRun, start, endRun, end });
+
+describe('continuous native-XML operations', () => {
+  it('formats and replaces across character styles, retaining native declarations', () => {
+    const doc = model('<p><span style="-d4-custom:keep">Hello </span><span style="font-style:italic">world</span></p>');
+    doc.formatSelection(selection(0, 3, 1, 3), 'font-weight', 'bold');
+    expect(doc.document.querySelector('p').textContent).toBe('Hello world');
+    expect(doc.serialize()).toContain('-d4-custom:keep');
+    render(doc);
+    doc.undo();
+    render(doc);
+    doc.replaceText(selection(0, 3, 1, 3), 'p');
+    expect(doc.document.querySelector('p').textContent).toBe('Helpld');
+    doc.undo();
+    expect(doc.document.querySelector('p').textContent).toBe('Hello world');
+  });
+
+  it('splits at the caret and merges without flattening inline formatting', () => {
+    const doc = model('<p class="Normal"><span style="color:red">Hello world</span></p>');
+    doc.splitParagraph(selection(0, 6));
+    expect([...doc.document.querySelectorAll('p')].map(p => p.textContent)).toEqual(['Hello ', 'world']);
+    expect(doc.document.querySelectorAll('p span[style="color:red"]').length).toBe(2);
+    render(doc);
+    doc.mergeBoundary(1, true);
+    expect(doc.document.querySelectorAll('p').length).toBe(1);
+    expect(doc.document.querySelector('p').textContent).toBe('Hello world');
+  });
+
+  it('rejects ranges touching protected formulas and structural deletion across cells', () => {
+    const doc = model('<p>A<span style="-d4-ref:formula">X</span>B</p>');
+    expect(() => doc.replaceText(selection(0, 0, 1, 1), 'no')).toThrow('protected');
+    const table = model('<table><tr><td><p>A</p></td><td><p>B</p></td></tr></table>');
+    const before = table.serialize();
+    expect(() => table.replaceText(selection(0, 0, 1, 1), 'no')).toThrow('structuralSelection');
+    expect(table.serialize()).toBe(before);
+  });
+
+  it('groups contiguous typing and separates explicit formatting transactions', () => {
+    const doc = model('<p>A</p>');
+    doc.editRun(0, 'Ab');
+    doc.editRun(0, 'Abc');
+    expect(doc.undoStack.length).toBe(1);
+    doc.formatSelection(selection(0, 0, 0, 3), 'font-weight', 'bold');
+    expect(doc.undoStack.length).toBe(2);
+    doc.undo();
+    expect(doc.document.querySelector('p').textContent).toBe('Abc');
+    doc.undo();
+    expect(doc.document.querySelector('p').textContent).toBe('A');
+  });
+
+  it('sanitizes rich paste and preserves separate paragraphs', () => {
+    const doc = model('<p>Before after</p>');
+    doc.paste(selection(0, 7), '<p><b>One</b><img src="https://invalid.test/x"/><script>bad()</script></p><p><i>Two</i></p>', '');
+    expect([...doc.document.querySelectorAll('p')].map(p => p.textContent)).toEqual(['Before One', 'Twoafter']);
+    expect(doc.document.querySelector('script,img')).toBeNull();
+    expect(doc.serialize()).toContain('font-weight:bold');
+    expect(doc.serialize()).toContain('font-style:italic');
+  });
+
+  it('pastes real lists and exits an empty list item with Enter', () => {
+    const doc = model('<p>\u200b</p>');
+    doc.paste(selection(0, 0), '<div><ul><li><p>One</p></li><li>Two</li></ul></div>', '');
+    expect(doc.document.querySelectorAll('ul > li').length).toBe(2);
+    expect(doc.document.querySelector('p ul,p p')).toBeNull();
+    const list = model('<ul><li>\u200b</li></ul>');
+    list.splitParagraph(selection(0, 0));
+    expect(list.document.querySelector('ul')).toBeNull();
+    expect(list.document.querySelector('body > p')).not.toBeNull();
+  });
+
+  it('rolls back edits that exceed the combined archive budget without adding undo steps', () => {
+    const doc = model('<p>Before</p>');
+    const before = doc.serialize();
+    doc.files['large.bin'] = new Uint8Array(MAX_EXPANDED - new TextEncoder().encode(before).length - 300);
+    expect(() => doc.editRun(0, 'x'.repeat(1000))).toThrow('tooLarge');
+    expect(doc.serialize()).toBe(before);
+    expect(doc.undoStack).toEqual([]);
+    render(doc);
+    doc.editRun(0, 'After');
+    expect(doc.document.querySelector('p').textContent).toBe('After');
+    expect(() => writeArchive({}, 'Document.html', 'x'.repeat(MAX_EXPANDED + 1))).toThrow('tooLarge');
+  });
+
+  it('rejects destructive paragraph operations at native section breaks', () => {
+    const doc = model('<p style="-d4-section-break-after:always">A</p><p>B</p>');
+    const before = doc.serialize();
+    expect(() => doc.splitParagraph(selection(0, 1))).toThrow('protected');
+    expect(() => doc.mergeBoundary(1, true)).toThrow('protected');
+    expect(doc.serialize()).toBe(before);
+  });
+});
+
+describe('styles, tables and search', () => {
+  it('applies named styles while retaining generated classes and supports lists', () => {
+    const doc = model('<p class="Normal _p1" style="-d4-custom:keep">Hello</p>');
+    doc.styleBlocks(selection(0, 0), 'Heading_1');
+    expect(doc.document.querySelector('p').getAttribute('class')).toBe('_p1 Heading_1');
+    expect(doc.serialize()).toContain('-d4-custom:keep');
+    doc.toggleList(0, 'ul');
+    expect(doc.document.querySelector('ul li').textContent).toBe('Hello');
+    render(doc);
+    doc.toggleList(0, 'ul');
+    expect(doc.document.querySelector('body > p').textContent).toBe('Hello');
+  });
+
+  it('edits simple table structure and refuses merged-cell mutations', () => {
+    const doc = model('<p>Start</p>');
+    doc.insertTable(0, 2, 2);
+    render(doc);
+    doc.tableEdit(0, 'addRow');
+    render(doc);
+    doc.tableEdit(0, 'addColumn');
+    expect(doc.document.querySelectorAll('tr').length).toBe(3);
+    expect(doc.document.querySelectorAll('td').length).toBe(9);
+    render(doc);
+    doc.tableEdit(0, 'removeColumn');
+    render(doc);
+    doc.tableEdit(0, 'removeRow');
+    expect(doc.document.querySelectorAll('td').length).toBe(4);
+    const merged = model('<table><tr><td colspan="2"><p>Merged</p></td></tr></table>');
+    expect(() => merged.tableEdit(0, 'addRow')).toThrow('mergedTable');
+  });
+
+  it('finds and replaces text spanning adjacent formatting runs', () => {
+    const doc = model('<p>Hello <span>world</span></p><p>Hello world</p>');
+    expect(doc.find('HELLO WORLD').length).toBe(2);
+    doc.replaceMatches('Hello world', 'Goodbye', true);
+    expect([...doc.document.querySelectorAll('p')].map(p => p.textContent)).toEqual(['Goodbye', 'Goodbye']);
+    doc.undo();
+    expect(doc.document.querySelector('p').textContent).toBe('Hello world');
+  });
+
+  it('keeps archive resources in recoverable snapshots and version restores', () => {
+    const doc = model('<p>Original</p>');
+    doc.files['image.bin'] = new Uint8Array([1, 2, 3]);
+    const initial = doc.serialize();
+    doc.editRun(0, 'Changed');
+    const recovered = WriteProDocument.unpack(doc.pack());
+    recovered.undo();
+    expect(recovered.document.querySelector('p').textContent).toBe('Original');
+    recovered.undo(true);
+    expect(recovered.document.querySelector('p').textContent).toBe('Changed');
+    expect(recovered.files['image.bin']).toEqual(new Uint8Array([1, 2, 3]));
+    recovered.restoreVersion(initial);
+    expect(recovered.document.querySelector('p').textContent).toBe('Original');
+    recovered.undo();
+    expect(recovered.document.querySelector('p').textContent).toBe('Changed');
+  });
+
+  it('resolves raster assets relative to the HTML entry and round-trips inserted pictures', () => {
+    const doc = model('<p>Picture <img src="assets/photo.png"/></p>');
+    doc.entry = 'Book/Doc.html';
+    doc.files['Book/assets/photo.png'] = new Uint8Array([137, 80, 78, 71]);
+    const host = render(doc);
+    expect(host.querySelector('img').src).toBe('data:image/png;base64,iVBORw==');
+    const fresh = model('<p>\u200b</p>');
+    fresh.insertImage(selection(0, 0), 'data:image/png;base64,iVBORw==', 100, 50, 'Example');
+    render(fresh);
+    fresh.changeImage(0, 150);
+    const exported = WriteProDocument.open(fresh.export());
+    expect(exported.document.querySelector('img').getAttribute('style')).toContain('height:75pt');
+    expect(exported.document.querySelector('img').getAttribute('alt')).toBe('Example');
+    fresh.undo();
+    render(fresh);
+    fresh.changeImage(0);
+    expect(fresh.document.querySelector('img')).toBeNull();
+  });
+
+  it('keeps image-only paragraphs editable after restore and moves/removes images without deleting adjacent text', () => {
+    const doc = model('<p><img src="data:image/png;base64,iVBORw=="/></p><p>After</p>');
+    const before = doc.serialize();
+    expect(doc.runs[0].length).toBe(0);
+    expect(doc.dirty).toBe(false);
+    doc.moveImage(0, selection(1, 2));
+    render(doc);
+    expect(doc.document.querySelectorAll('p')[1].querySelector('img')).not.toBeNull();
+    doc.undo();
+    render(doc);
+    expect(doc.serialize()).toBe(before);
+    const caret = doc.deleteInlineBoundary(0, true);
+    expect(caret).not.toBeNull();
+    expect(doc.document.querySelector('img')).toBeNull();
+    expect(doc.document.querySelectorAll('p')[1].textContent).toBe('After');
+    doc.undo();
+    render(doc);
+    doc.editRun(0, 'Caption');
+    expect(doc.document.querySelector('p').textContent).toBe('Caption');
+  });
+});

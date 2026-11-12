@@ -1,13 +1,81 @@
 import * as css from 'css-tree';
-import { DocumentError, readArchive, writeArchive } from './archive.js';
+import { DocumentError, MAX_ARCHIVE, MAX_EXPANDED, readArchive, writeArchive } from './archive.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
-const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
+const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
 const SAFE_PROPERTIES = /^(color|background-color|font-(family|size|weight|style|variant)|text-(align|decoration|indent|transform|shadow)|line-height|letter-spacing|word-spacing|white-space|direction|vertical-align|list-style-type|border(-(color|style|width|radius|collapse|spacing))?|padding(-(top|right|bottom|left))?|margin(-(top|right|bottom|left))?|width|height|min-height)$/;
 const SAFE_VALUE = /^[#(),.%\w\s'"+/-]+$/u;
 const FORMAT = new Set(['font-weight', 'font-style', 'text-decoration', 'font-size', 'font-family', 'color']);
+const BUILTIN_STYLES = {
+  Normal: 'font-family:Arial;font-size:12pt;font-weight:normal;font-style:normal',
+  Heading_1: 'font-family:Arial;font-size:24pt;font-weight:bold;margin:16pt 0pt 10pt',
+  Heading_2: 'font-family:Arial;font-size:16pt;font-weight:bold;margin:12pt 0pt 8pt',
+  Quote: 'font-style:italic;margin:12pt 0pt 12pt 18pt',
+};
+
+function base64(bytes) {
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  return btoa(binary);
+}
+
+function rasterType(bytes) {
+  if (bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71) return 'png';
+  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'jpeg';
+  if (bytes[0] === 71 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 56) return 'gif';
+  if (String.fromCharCode(...bytes.subarray(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP') return 'webp';
+  return null;
+}
+
+function cleanPaste(html, plain, owner) {
+  if (html.length + plain.length > 2 * 1024 * 1024) throw new DocumentError('tooLarge');
+  const fragment = owner.createDocumentFragment();
+  if (!html) {
+    plain.replace(/\r\n?/g, '\n').split('\n').forEach(line => {
+      const paragraph = owner.createElementNS(XHTML, 'p');
+      paragraph.textContent = line;
+      fragment.append(paragraph);
+    });
+    return fragment;
+  }
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  let count = 0;
+  function copy(source, target, level = 0) {
+    if (++count > 5000 || level > 32) throw new DocumentError('tooLarge');
+    for (const child of source.childNodes) {
+      if (child.nodeType === 3) target.append(owner.createTextNode(child.data));
+      else if (child.nodeType === 1) {
+        const tag = child.localName.toLowerCase();
+        if (['script', 'style', 'iframe', 'object', 'svg', 'math', 'img', 'link', 'meta'].includes(tag)) continue;
+        if (tag === 'div' && child.querySelector('p,div,ul,ol,h1,h2,h3')) { copy(child, target, level + 1); continue; }
+        let mapped = { div: 'p', h1: 'p', h2: 'p', h3: 'p', b: 'span', strong: 'span', i: 'span', em: 'span', u: 'span', s: 'span', a: 'span' }[tag] || tag;
+        if (mapped === 'p' && target.localName === 'li') {
+          if (target.childNodes.length) target.append(owner.createElementNS(XHTML, 'br'));
+          mapped = 'span';
+        }
+        if (!['p', 'span', 'br', 'ul', 'ol', 'li', 'sub', 'sup'].includes(mapped)) { copy(child, target, level + 1); continue; }
+        const element = owner.createElementNS(XHTML, mapped);
+        const styles = declarations(child.getAttribute('style') || '');
+        if (['b', 'strong', 'h1', 'h2', 'h3'].includes(tag)) styles['font-weight'] = 'bold';
+        if (['i', 'em'].includes(tag)) styles['font-style'] = 'italic';
+        if (tag === 'u') styles['text-decoration'] = 'underline';
+        if (tag === 's') styles['text-decoration'] = 'line-through';
+        for (const [key, value] of Object.entries(styles)) {
+          if ((FORMAT.has(key) || key === 'text-align') && SAFE_VALUE.test(value) && value.length < 200 &&
+            !/url|expression|var\(/i.test(value)) setProperty(element, key, value);
+        }
+        copy(child, element, level + 1);
+        target.append(element);
+      }
+    }
+  }
+  copy(template.content, fragment);
+  return fragment;
+}
 
 function parse(source) {
+  if (source.length > MAX_EXPANDED || new TextEncoder().encode(source).length > MAX_EXPANDED) throw new DocumentError('tooLarge');
   if (/<!DOCTYPE|<!ENTITY/i.test(source)) throw new DocumentError('invalidDocument');
   const document = new DOMParser().parseFromString(source, 'application/xhtml+xml');
   if (document.querySelector('parsererror') || document.documentElement.localName !== 'html' ||
@@ -75,6 +143,9 @@ export class WriteProDocument {
     this.initial = this.serialize();
     this.undoStack = [];
     this.redoStack = [];
+    this.undoLabels = [];
+    this.redoLabels = [];
+    this.resourceCache = new Map();
     this.refresh();
   }
 
@@ -105,6 +176,8 @@ export class WriteProDocument {
       !['', '{}', '[]'].includes((meta.getAttribute('content') || '').trim()));
     this.runs = [];
     this.blocks = [];
+    this.images = [];
+    this.cells = [];
   }
 
   get title() { return this.document.querySelector('title')?.textContent || 'Document'; }
@@ -129,19 +202,55 @@ export class WriteProDocument {
     return this.readOnly;
   }
 
-  checkpoint() {
-    this.undoStack.push(this.serialize());
+  checkpoint(label = 'edit', group = null, snapshot = this.serialize()) {
+    const now = Date.now();
+    if (group && this.group === group && now - this.groupTime < 1200) {
+      this.groupTime = now;
+      this.redoStack = [];
+      this.redoLabels = [];
+      return;
+    }
+    this.group = group;
+    this.groupTime = now;
+    this.undoStack.push(snapshot);
+    this.undoLabels.push(label);
     let length = this.undoStack.reduce((sum, item) => sum + item.length, 0);
     while (this.undoStack.length > 1 && (this.undoStack.length > 100 || length > 4 * 1024 * 1024)) {
       length -= this.undoStack.shift().length;
+      this.undoLabels.shift();
     }
     this.redoStack = [];
+    this.redoLabels = [];
+  }
+
+  endGroup() { this.group = null; }
+
+  mutate(label, change, group = null) {
+    const before = this.serialize();
+    try {
+      const result = change();
+      const after = this.serialize();
+      if (after !== before) {
+        parse(after);
+        const resources = Object.entries(this.files).reduce((sum, [name, bytes]) => sum + (name === this.entry ? 0 : bytes.length), 0);
+        if (new TextEncoder().encode(after).length + resources + 256 > MAX_EXPANDED) throw new DocumentError('tooLarge');
+        this.checkpoint(label, group, before);
+      }
+      return result;
+    } catch (error) {
+      this.document = parse(before);
+      this.refresh();
+      throw error;
+    }
   }
 
   undo(redo = false) {
     const from = redo ? this.redoStack : this.undoStack;
     const to = redo ? this.undoStack : this.redoStack;
     if (!from.length) return;
+    this.endGroup();
+    const labels = redo ? this.redoLabels : this.undoLabels;
+    (redo ? this.undoLabels : this.redoLabels).push(labels.pop() || 'edit');
     to.push(this.serialize());
     this.document = parse(from.pop());
     this.refresh();
@@ -151,19 +260,22 @@ export class WriteProDocument {
     const node = this.runs[index];
     if (!node || this.protected(node.parentElement)) throw new DocumentError('protected');
     if (node.data === value) return;
-    this.checkpoint();
-    node.data = value;
-    if (/[\r\n]/.test(value)) {
-      const fragment = this.document.createDocumentFragment();
-      let last;
-      value.replace(/\r\n?/g, '\n').split('\n').forEach((piece, index) => {
-        if (index) fragment.append(this.document.createElementNS(XHTML, 'br'));
-        last = this.document.createTextNode(piece);
-        fragment.append(last);
-      });
-      node.replaceWith(fragment);
-      return last;
-    }
+    return this.mutate('typing', () => {
+      const block = node.parentElement.closest('p,li');
+      const emptyParagraph = !value && block && block.textContent === node.data && !block.querySelector('img,br');
+      node.data = emptyParagraph ? '\u200b' : value;
+      if (/[\r\n]/.test(value)) {
+        const fragment = this.document.createDocumentFragment();
+        let last;
+        value.replace(/\r\n?/g, '\n').split('\n').forEach((piece, index) => {
+          if (index) fragment.append(this.document.createElementNS(XHTML, 'br'));
+          last = this.document.createTextNode(piece);
+          fragment.append(last);
+        });
+        node.replaceWith(fragment);
+        return last;
+      }
+    }, node);
   }
 
   formatRun(index, property, value, start = 0, end = null) {
@@ -172,35 +284,551 @@ export class WriteProDocument {
     if (!FORMAT.has(property) || !SAFE_VALUE.test(value) || /url|expression|var\(/i.test(value)) throw new DocumentError('invalidDocument');
     end ??= node.length;
     if (start < 0 || end > node.length || start >= end) return;
-    this.checkpoint();
-    const selected = node.splitText(start);
-    const tail = selected.splitText(end - start);
-    const span = this.document.createElementNS(XHTML, 'span');
-    setProperty(span, property, value);
-    selected.replaceWith(span);
-    span.append(selected);
-    if (!node.data) node.remove();
-    if (!tail.data) tail.remove();
-    return selected;
+    return this.formatSelection({ startRun: index, endRun: index, start, end }, property, value)?.node;
   }
 
   alignBlock(index, alignment) {
     const block = this.blocks[index];
     if (!block || this.protected(block) || !['left', 'center', 'right', 'justify'].includes(alignment)) throw new DocumentError('protected');
-    this.checkpoint();
-    setProperty(block, 'text-align', alignment);
+    this.mutate('paragraph', () => setProperty(block, 'text-align', alignment));
   }
 
   addParagraph(index = null) {
     if (this.readOnly) throw new DocumentError('protected');
     const after = this.blocks[index];
     if (after && (after.parentElement.localName !== 'body' || this.protected(after))) throw new DocumentError('protected');
-    this.checkpoint();
-    const paragraph = this.document.createElementNS(XHTML, 'p');
-    paragraph.setAttribute('class', 'Normal');
-    paragraph.textContent = '\u200b';
-    if (after) after.after(paragraph);
-    else this.document.querySelector('body').append(paragraph);
+    return this.mutate('paragraph', () => {
+      const paragraph = this.document.createElementNS(XHTML, 'p');
+      paragraph.setAttribute('class', 'Normal');
+      paragraph.textContent = '\u200b';
+      if (after) after.after(paragraph);
+      else this.document.querySelector('body').append(paragraph);
+      return { node: paragraph.firstChild, offset: 0 };
+    });
+  }
+
+  range(selection) {
+    if (!selection) throw new DocumentError('selection');
+    const first = this.runs[selection.startRun];
+    const last = this.runs[selection.endRun];
+    if (!first || !last || selection.start < 0 || selection.end < 0 ||
+      selection.start > first.length || selection.end > last.length ||
+      selection.startRun > selection.endRun || first === last && selection.start > selection.end) throw new DocumentError('selection');
+    const range = this.document.createRange();
+    range.setStart(first, selection.start);
+    range.setEnd(last, selection.end);
+    this.guardRange(range);
+    return range;
+  }
+
+  guardRange(range) {
+    if (this.readOnly) throw new DocumentError('protected');
+    for (const element of this.document.querySelectorAll('body *')) {
+      if (range.intersectsNode(element) && this.protected(element)) throw new DocumentError('protected');
+      if (range.intersectsNode(element) && element.localName === 'img' && !this.imageSource(element)) throw new DocumentError('protected');
+    }
+  }
+
+  selectedBlocks(selection) {
+    const range = this.range(selection);
+    return this.blocks.filter(block => range.intersectsNode(block));
+  }
+
+  formatSelection(selection, property, value) {
+    if (!FORMAT.has(property) || !SAFE_VALUE.test(value) || /url|expression|var\(/i.test(value)) throw new DocumentError('invalidDocument');
+    const range = this.range(selection);
+    const pieces = this.runs.filter(node => range.intersectsNode(node)).map(node => ({
+      node, start: node === range.startContainer ? range.startOffset : 0,
+      end: node === range.endContainer ? range.endOffset : node.length,
+    })).filter(piece => piece.end > piece.start);
+    if (!pieces.length && range.collapsed && range.startContainer.nodeType === 3 && !range.startContainer.length) {
+      pieces.push({ node: range.startContainer, start: 0, end: 0 });
+    }
+    return this.mutate('format', () => {
+      let caret;
+      for (const { node, start, end } of pieces.reverse()) {
+        const selected = end > start ? node.splitText(start) : node;
+        const tail = end > start ? selected.splitText(end - start) : null;
+        if (end === start) selected.data = '\u200b';
+        const span = this.document.createElementNS(XHTML, 'span');
+        setProperty(span, property, value);
+        selected.replaceWith(span);
+        span.append(selected);
+        if (node !== selected && !node.data) node.remove();
+        if (tail && !tail.data) tail.remove();
+        caret ??= { node: selected, offset: selected.length };
+      }
+      return caret;
+    });
+  }
+
+  structureSafe(block) {
+    if (!block || this.protected(block)) throw new DocumentError('protected');
+    const values = this.values(block);
+    if (values['-d4-section-break-after'] || values['page-break-after'] === 'always' || values['break-after'] === 'column') {
+      throw new DocumentError('protected');
+    }
+    const range = this.document.createRange();
+    range.selectNodeContents(block);
+    this.guardRange(range);
+  }
+
+  replaceRange(range, content) {
+    const blockOf = node => (node.nodeType === 1 ? node : node.parentElement).closest('p,li');
+    const first = blockOf(range.startContainer);
+    const last = blockOf(range.endContainer);
+    if (!first || !last) throw new DocumentError('selection');
+    if (first !== last) {
+      if (first.parentElement !== last.parentElement || first.localName !== last.localName) throw new DocumentError('structuralSelection');
+      const siblings = [...first.parentElement.children];
+      for (const block of siblings.slice(siblings.indexOf(first), siblings.indexOf(last) + 1)) {
+        if (block.localName !== first.localName) throw new DocumentError('structuralSelection');
+        this.structureSafe(block);
+      }
+    }
+    if (range.collapsed && range.startContainer.nodeType === 3 && range.startContainer.data === '\u200b') {
+      range.setStart(range.startContainer, 0);
+      range.setEnd(range.endContainer, 1);
+    }
+    range.deleteContents();
+    const marker = this.document.createComment('insertion');
+    range.insertNode(marker);
+    if (first !== last && last.isConnected) {
+      first.append(marker);
+      first.append(...last.childNodes);
+      last.remove();
+    }
+    marker.before(content);
+    marker.remove();
+  }
+
+  replaceText(selection, text, label = 'typing') {
+    const range = this.range(selection);
+    return this.mutate(label, () => {
+      const fragment = this.document.createDocumentFragment();
+      let node;
+      text.replace(/\r\n?/g, '\n').split('\n').forEach((line, index) => {
+        if (index) fragment.append(this.document.createElementNS(XHTML, 'br'));
+        node = this.document.createTextNode(line);
+        fragment.append(node);
+      });
+      this.replaceRange(range, fragment);
+      return { node, offset: node.length };
+    }, label === 'typing' ? range.startContainer : null);
+  }
+
+  splitParagraph(selection, lineBreak = false) {
+    const range = this.range(selection);
+    const block = this.runs[selection.startRun].parentElement.closest('p,li');
+    this.structureSafe(block);
+    if (lineBreak) return this.replaceText(selection, '\n', 'paragraph');
+    if (block.localName === 'li' && !block.textContent.replace(/\u200b/g, '').trim() && !block.querySelector('img,br,ul,ol')) {
+      const node = this.runs[selection.startRun];
+      this.toggleList(this.blocks.indexOf(block), block.parentElement.localName);
+      return { node, offset: 0 };
+    }
+    return this.mutate('paragraph', () => {
+      const empty = this.document.createTextNode('');
+      this.replaceRange(range, empty);
+      const tail = this.document.createRange();
+      tail.setStartAfter(empty);
+      tail.setEnd(block, block.childNodes.length);
+      const next = block.cloneNode(false);
+      next.removeAttribute('id');
+      const fragment = tail.extractContents();
+      for (const element of fragment.querySelectorAll('[id]')) {
+        if ([...this.document.querySelectorAll('[id]')].some(other => other.id === element.id)) element.removeAttribute('id');
+      }
+      next.append(fragment);
+      empty.remove();
+      if (!block.textContent && !block.querySelector('img,br')) block.textContent = '\u200b';
+      if (!next.textContent && !next.querySelector('img,br')) next.textContent = '\u200b';
+      block.after(next);
+      const walker = this.document.createTreeWalker(next, 4);
+      const node = walker.nextNode();
+      if (!node) { next.append(this.document.createTextNode('\u200b')); return { node: next.lastChild, offset: 0 }; }
+      return { node, offset: 0 };
+    });
+  }
+
+  mergeBoundary(index, backward) {
+    const node = this.runs[index];
+    const block = node?.parentElement.closest('p,li');
+    const other = backward ? block?.previousElementSibling : block?.nextElementSibling;
+    if (!other || other.localName !== block.localName) return null;
+    this.structureSafe(block);
+    this.structureSafe(other);
+    return this.mutate('paragraph', () => {
+      const first = backward ? other : block;
+      const last = backward ? block : other;
+      const marker = this.document.createTextNode('');
+      if (first.textContent === '\u200b' && !first.querySelector('img,br')) first.textContent = '';
+      first.append(marker, ...last.childNodes);
+      last.remove();
+      return { node: marker, offset: 0 };
+    });
+  }
+
+  deleteInlineBoundary(index, backward) {
+    const node = this.runs[index];
+    const block = node.parentElement.closest('p,li');
+    const other = this.runs[index + (backward ? -1 : 1)];
+    const sameBlock = other?.parentElement.closest('p,li') === block;
+    const gap = this.document.createRange();
+    if (backward) {
+      gap.setStart(sameBlock ? other : block, sameBlock ? other.length : 0);
+      gap.setEnd(node, 0);
+    } else {
+      gap.setStart(node, node.length);
+      gap.setEnd(sameBlock ? other : block, sameBlock ? 0 : block.childNodes.length);
+    }
+    const objects = [...block.querySelectorAll('img,br')].filter(element => gap.intersectsNode(element));
+    const object = backward ? objects.at(-1) : objects[0];
+    if (!object) return null;
+    this.guardRange(gap);
+    return this.mutate('typing', () => {
+      const caret = this.document.createTextNode('');
+      object.replaceWith(caret);
+      return { node: caret, offset: 0 };
+    });
+  }
+
+  paste(selection, html, plain) {
+    const fragment = cleanPaste(html, plain, this.document);
+    const range = this.range(selection);
+    const block = this.runs[selection.startRun].parentElement.closest('p,li');
+    this.structureSafe(block);
+    return this.mutate('paste', () => {
+      const marker = this.document.createTextNode('');
+      this.replaceRange(range, marker);
+      const hasBlocks = [...fragment.children].some(child => ['p', 'ul', 'ol', 'li'].includes(child.localName));
+      if (!hasBlocks) {
+        marker.before(fragment);
+        return { node: marker, offset: 0 };
+      }
+      const tailRange = this.document.createRange();
+      tailRange.setStartAfter(marker);
+      tailRange.setEnd(block, block.childNodes.length);
+      const tail = tailRange.extractContents();
+      const paragraphs = [];
+      let inline = null;
+      for (const child of [...fragment.childNodes]) {
+        if (child.nodeType === 1 && ['p', 'ul', 'ol'].includes(child.localName)) {
+          paragraphs.push(child);
+          inline = null;
+        } else if (child.nodeType !== 3 || child.data.trim() || inline) {
+          if (!inline) { inline = this.document.createElementNS(XHTML, 'p'); paragraphs.push(inline); }
+          inline.append(child);
+        }
+      }
+      let current = block;
+      let container = block;
+      paragraphs.forEach((paragraph, index) => {
+        if (['ul', 'ol'].includes(paragraph.localName)) {
+          if (block.localName === 'li') current.append(paragraph);
+          else { current.after(paragraph); current = paragraph; }
+          container = paragraph.querySelector('li:last-child') || paragraph;
+        } else if (index === 0) {
+          if (!block.textContent.replace(/\u200b/g, '').trim()) {
+            for (const [property, value] of Object.entries(declarations(paragraph.getAttribute('style') || ''))) setProperty(block, property, value);
+          }
+          marker.before(...paragraph.childNodes);
+          container = block;
+        }
+        else {
+          const next = block.cloneNode(false);
+          next.removeAttribute('id');
+          for (const attr of paragraph.attributes) next.setAttribute(attr.name, attr.value);
+          next.append(...paragraph.childNodes);
+          current.after(next);
+          current = next;
+          container = next;
+        }
+      });
+      marker.remove();
+      const caret = this.document.createTextNode('');
+      container.append(caret, tail);
+      if (paragraphs[0] && ['ul', 'ol'].includes(paragraphs[0].localName) && !block.textContent && !block.querySelector('img,br,ul,ol')) block.remove();
+      for (const paragraph of [block, container]) {
+        if (!paragraph.textContent && !paragraph.querySelector('img,br')) paragraph.prepend(this.document.createTextNode('\u200b'));
+      }
+      return { node: caret, offset: 0 };
+    });
+  }
+
+  styleNames() {
+    return [...new Set([...Object.keys(BUILTIN_STYLES), ...this.styles.map(rule => /^p\.([A-Za-z][\w-]*)$/.exec(rule.selector)?.[1]).filter(Boolean)])];
+  }
+
+  styleBlocks(selection, style) {
+    const blocks = this.selectedBlocks(selection);
+    if (!this.styleNames().includes(style)) throw new DocumentError('invalidDocument');
+    return this.mutate('style', () => {
+      const names = this.styleNames();
+      if (!this.styles.some(rule => rule.selector === `p.${style}`) && BUILTIN_STYLES[style]) {
+        const sheet = this.document.createElementNS(XHTML, 'style');
+        sheet.setAttribute('type', 'text/css');
+        sheet.textContent = `p.${style},li.${style}{${BUILTIN_STYLES[style]}}`;
+        this.document.querySelector('head').append(sheet);
+      }
+      for (const block of blocks) {
+        const classes = (block.getAttribute('class') || '').split(/\s+/).filter(name => name && !names.includes(name));
+        block.setAttribute('class', [...classes, style].join(' '));
+      }
+      this.styles = rules(this.document);
+    });
+  }
+
+  paragraphProperty(selection, property, value) {
+    if (!['text-align', 'margin-left', 'margin-bottom', 'line-height'].includes(property) ||
+      !SAFE_VALUE.test(value)) throw new DocumentError('invalidDocument');
+    const blocks = this.selectedBlocks(selection);
+    this.mutate('paragraph', () => { for (const block of blocks) setProperty(block, property, value); });
+  }
+
+  toggleList(index, kind) {
+    const block = this.blocks[index];
+    this.structureSafe(block);
+    if (!['ul', 'ol'].includes(kind)) throw new DocumentError('invalidDocument');
+    this.mutate('list', () => {
+      if (block.localName === 'li') {
+        const list = block.parentElement;
+        if (list.localName !== kind) {
+          for (const item of list.children) this.structureSafe(item);
+          const replacement = this.document.createElementNS(XHTML, kind);
+          for (const attr of list.attributes) replacement.setAttribute(attr.name, attr.value);
+          replacement.append(...list.childNodes);
+          list.replaceWith(replacement);
+        } else {
+          const after = list.cloneNode(false);
+          after.removeAttribute('id');
+          while (block.nextSibling) after.append(block.nextSibling);
+          const paragraph = this.document.createElementNS(XHTML, 'p');
+          for (const attr of block.attributes) paragraph.setAttribute(attr.name, attr.value);
+          paragraph.append(...block.childNodes);
+          block.remove();
+          list.after(paragraph);
+          if (after.childNodes.length) paragraph.after(after);
+          if (!list.childNodes.length) list.remove();
+        }
+      } else {
+        const list = this.document.createElementNS(XHTML, kind);
+        const item = this.document.createElementNS(XHTML, 'li');
+        for (const attr of block.attributes) item.setAttribute(attr.name, attr.value);
+        item.append(...block.childNodes);
+        block.replaceWith(list);
+        list.append(item);
+      }
+    });
+  }
+
+  tableEdit(cellIndex, action) {
+    const cell = this.cells[cellIndex];
+    const table = cell?.closest('table');
+    if (!table || this.protected(table)) throw new DocumentError('protected');
+    const range = this.document.createRange();
+    range.selectNodeContents(table);
+    this.guardRange(range);
+    const rows = [...table.querySelectorAll('tr')].filter(row => row.closest('table') === table);
+    if (rows.some(row => [...row.children].some(item => Number(item.getAttribute('rowspan') || 1) !== 1 ||
+      Number(item.getAttribute('colspan') || 1) !== 1)) || rows.some(row => row.children.length !== rows[0].children.length)) {
+      throw new DocumentError('mergedTable');
+    }
+    const row = cell.parentElement;
+    const column = [...row.children].indexOf(cell);
+    if (action === 'removeRow' && rows.length === 1 || action === 'removeColumn' && row.children.length === 1) throw new DocumentError('tableMinimum');
+    if (!['addRow', 'removeRow', 'addColumn', 'removeColumn'].includes(action)) throw new DocumentError('invalidDocument');
+    this.mutate('table', () => {
+      const emptyCell = template => {
+        const fresh = template.cloneNode(false);
+        fresh.removeAttribute('id');
+        const paragraph = this.document.createElementNS(XHTML, 'p');
+        paragraph.setAttribute('class', 'Normal');
+        paragraph.textContent = '\u200b';
+        fresh.append(paragraph);
+        return fresh;
+      };
+      if (action === 'addRow') {
+        const fresh = this.document.createElementNS(XHTML, 'tr');
+        for (const old of row.children) fresh.append(emptyCell(old));
+        row.after(fresh);
+      }
+      if (action === 'removeRow') row.remove();
+      if (action === 'addColumn') for (const item of rows) item.children[column].after(emptyCell(item.children[column]));
+      if (action === 'removeColumn') for (const item of rows) item.children[column].remove();
+    });
+  }
+
+  insertTable(index, rowCount = 2, columnCount = 2) {
+    const after = this.blocks[index];
+    if (this.readOnly || after && (after.parentElement.localName !== 'body' || this.protected(after))) throw new DocumentError('protected');
+    if (!Number.isInteger(rowCount) || !Number.isInteger(columnCount) || rowCount < 1 || rowCount > 20 || columnCount < 1 || columnCount > 10) throw new DocumentError('tableSize');
+    this.mutate('table', () => {
+      const table = this.document.createElementNS(XHTML, 'table');
+      table.setAttribute('style', 'border-collapse:collapse;width:100%');
+      for (let r = 0; r < rowCount; r++) {
+        const row = this.document.createElementNS(XHTML, 'tr');
+        for (let c = 0; c < columnCount; c++) {
+          const cell = this.document.createElementNS(XHTML, 'td');
+          cell.setAttribute('style', 'border:1pt solid #A8B9CD;padding:4pt');
+          const paragraph = this.document.createElementNS(XHTML, 'p');
+          paragraph.setAttribute('class', 'Normal');
+          paragraph.textContent = '\u200b';
+          cell.append(paragraph);
+          row.append(cell);
+        }
+        table.append(row);
+      }
+      if (after) after.after(table);
+      else this.document.querySelector('body').append(table);
+      const paragraph = this.document.createElementNS(XHTML, 'p');
+      paragraph.setAttribute('class', 'Normal');
+      paragraph.textContent = '\u200b';
+      table.after(paragraph);
+    });
+  }
+
+  imageSource(image) {
+    const src = image.getAttribute('src') || '';
+    if (/^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) return src;
+    if (!src || /^(?:[a-z][\w+.-]*:|\/\/|\/)/i.test(src)) return null;
+    if (this.resourceCache.has(src)) return this.resourceCache.get(src);
+    let path;
+    try { path = decodeURIComponent(new URL(src, `https://archive.invalid/${this.entry}`).pathname.slice(1)); }
+    catch { return null; }
+    const bytes = this.files[path];
+    const type = bytes && rasterType(bytes);
+    const result = type ? `data:image/${type};base64,${base64(bytes)}` : null;
+    if (result) this.resourceCache.set(src, result);
+    return result;
+  }
+
+  insertImage(selection, src, width, height, alt) {
+    const range = this.range(selection);
+    if (!/^data:image\/(?:png|jpeg);base64,[a-z0-9+/=]+$/i.test(src) ||
+      src.length > 12 * 1024 * 1024 || !Number.isFinite(width) || !Number.isFinite(height) ||
+      width <= 0 || height <= 0) throw new DocumentError('imageType');
+    return this.mutate('image', () => {
+      const image = this.document.createElementNS(XHTML, 'img');
+      image.setAttribute('src', src);
+      image.setAttribute('alt', alt);
+      const fitted = Math.min(450, width * .75);
+      image.setAttribute('style', `width:${fitted}pt;height:${fitted * height / width}pt;-d4-img-display-mode:proportionalCentered`);
+      const fragment = this.document.createDocumentFragment();
+      const node = this.document.createTextNode('');
+      fragment.append(image, node);
+      this.replaceRange(range, fragment);
+      return { node, offset: 0 };
+    });
+  }
+
+  changeImage(index, width = null, naturalRatio = null) {
+    const image = this.images[index];
+    if (!image || this.protected(image) || !this.imageSource(image)) throw new DocumentError('protected');
+    const values = this.values(image);
+    const number = value => {
+      const match = /^([\d.]+)(pt|px)?$/.exec(value || '');
+      return match ? Number(match[1]) * (match[2] === 'px' ? .75 : 1) : null;
+    };
+    const oldWidth = number(values.width);
+    const oldHeight = number(values.height);
+    const ratio = oldWidth && oldHeight ? oldHeight / oldWidth : naturalRatio;
+    if (width !== null && (!Number.isFinite(width) || width < 12 || width > 1200 || !Number.isFinite(ratio) || ratio <= 0)) throw new DocumentError('imageSize');
+    this.mutate('image', () => {
+      if (width === null) image.remove();
+      else {
+        setProperty(image, 'width', `${width}pt`);
+        setProperty(image, 'height', `${width * ratio}pt`);
+      }
+    });
+  }
+
+  moveImage(index, selection) {
+    const image = this.images[index];
+    if (!image || this.protected(image) || !this.imageSource(image)) throw new DocumentError('protected');
+    const range = this.range(selection);
+    if (!range.collapsed) throw new DocumentError('selection');
+    return this.mutate('image', () => {
+      image.remove();
+      const fragment = this.document.createDocumentFragment();
+      const node = this.document.createTextNode('');
+      fragment.append(image, node);
+      this.replaceRange(range, fragment);
+      return { node, offset: 0 };
+    });
+  }
+
+  find(query, caseSensitive = false) {
+    if (!query) return [];
+    const matches = [];
+    const grouped = new Map();
+    this.runs.forEach((node, index) => {
+      const block = node.parentElement.closest('p,li');
+      if (!grouped.has(block)) grouped.set(block, []);
+      grouped.get(block).push({ node, index });
+    });
+    for (const block of this.blocks) {
+      const runs = grouped.get(block) || [];
+      const text = runs.map(item => item.node.data).join('');
+      const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), caseSensitive ? 'gu' : 'giu');
+      for (const match of text.matchAll(pattern)) {
+        const offset = match.index;
+        let start = 0;
+        let first;
+        let last;
+        for (const item of runs) {
+          if (!first && offset < start + item.node.length) first = { index: item.index, offset: offset - start };
+          if (offset + match[0].length <= start + item.node.length) { last = { index: item.index, offset: offset + match[0].length - start }; break; }
+          start += item.node.length;
+        }
+        if (first && last) matches.push({ startRun: first.index, start: first.offset, endRun: last.index, end: last.offset });
+        if (matches.length > 1000) throw new DocumentError('tooManyMatches');
+      }
+    }
+    return matches;
+  }
+
+  replaceMatches(query, replacement, all = false, index = 0, caseSensitive = false) {
+    const matches = this.find(query, caseSensitive);
+    const selected = all ? matches : matches.slice(index, index + 1);
+    const ranges = selected.map(match => this.range(match));
+    return this.mutate('replace', () => {
+      let caret;
+      for (const range of ranges.reverse()) {
+        const node = this.document.createTextNode(replacement);
+        this.replaceRange(range, node);
+        caret = { node, offset: node.length };
+      }
+      return caret;
+    });
+  }
+
+  restoreVersion(xml) {
+    const restored = parse(xml);
+    this.mutate('restore', () => { this.document = restored; this.refresh(); });
+  }
+
+  pack() {
+    return {
+      xml: this.serialize(), files: this.files, entry: this.entry, original: this.original, initial: this.initial,
+      undo: [...this.undoStack], redo: [...this.redoStack], undoLabels: [...this.undoLabels], redoLabels: [...this.redoLabels],
+    };
+  }
+
+  static unpack(data) {
+    if (!data || typeof data.xml !== 'string' || typeof data.entry !== 'string' || !data.files ||
+      data.original != null && (!(data.original instanceof Uint8Array) || data.original.length > MAX_ARCHIVE) ||
+      Object.keys(data.files).length > 512 || Object.values(data.files).some(value => !(value instanceof Uint8Array)) ||
+      Object.values(data.files).reduce((sum, value) => sum + value.length, 0) > 32 * 1024 * 1024) throw new DocumentError('invalidDocument');
+    const model = new WriteProDocument(data.xml, data.files, data.entry, data.original);
+    if (typeof data.initial === 'string') { parse(data.initial); model.initial = data.initial; }
+    for (const [field, key] of [['undoStack', 'undo'], ['redoStack', 'redo'], ['undoLabels', 'undoLabels'], ['redoLabels', 'redoLabels']]) {
+      const values = data[key] || [];
+      if (!Array.isArray(values) || values.length > 100 || values.some(value => typeof value !== 'string' || value.length > MAX_EXPANDED)) throw new DocumentError('invalidDocument');
+      model[field] = values;
+    }
+    if ([...model.undoStack, ...model.redoStack].reduce((sum, value) => sum + value.length, 0) > 2 * MAX_EXPANDED) throw new DocumentError('tooLarge');
+    return model;
   }
 
   export() {
@@ -220,6 +848,8 @@ export class WriteProDocument {
     host.replaceChildren();
     this.runs = [];
     this.blocks = [];
+    this.images = [];
+    this.cells = [];
     const body = this.document.querySelector('body');
     const project = (source, target, locked = false, inBlock = false, decoration = '') => {
       for (const child of source.childNodes) {
@@ -263,12 +893,21 @@ export class WriteProDocument {
           badge.className = 'preserved-object';
           badge.textContent = tag === 'img' ? labels.image : labels.preserved;
           if (tag === 'img' && !native) {
-            const src = child.getAttribute('src') || '';
-            if (/^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) {
+            const src = this.imageSource(child);
+            if (src) {
               const image = document.createElement('img');
               image.src = src;
               image.alt = child.getAttribute('alt') || labels.image;
               image.loading = 'lazy';
+              for (const [property, value] of Object.entries(values)) {
+                if (['width', 'height'].includes(property) && /^[\d.]+(?:pt|px|%)$/.test(value)) image.style.setProperty(property, value);
+              }
+              badge.dataset.image = this.images.push(child) - 1;
+              if (!this.protected(child)) {
+                badge.tabIndex = 0;
+                badge.setAttribute('role', 'button');
+                badge.setAttribute('aria-label', labels.image);
+              }
               badge.replaceChildren(image);
             }
           }
@@ -285,6 +924,11 @@ export class WriteProDocument {
           if (/^\d{1,3}$/.test(value || '')) element.setAttribute(attr, value);
         }
         const isBlock = ['p', 'li'].includes(tag);
+        if (isBlock) {
+          const walker = this.document.createTreeWalker(child, 4);
+          if (!walker.nextNode()) child.append(this.document.createTextNode(''));
+        }
+        if (['td', 'th'].includes(tag)) element.dataset.cell = this.cells.push(child) - 1;
         if (isBlock) element.dataset.block = this.blocks.push(child) - 1;
         const isLocked = locked || this.protected(child);
         if (isLocked) element.classList.add('locked-content');
