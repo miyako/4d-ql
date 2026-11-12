@@ -2,6 +2,11 @@
 var $title; $author; $subject; $company; $notes : Text
 WP GET ATTRIBUTES($doc; wk title; $title; wk author; $author; wk subject; $subject; wk company; $company; wk notes; $notes)
 var $result : Object:=New object("text"; WP Get text($doc; wk expressions as source); "metadata"; New object("title"; $title; "author"; $author; "subject"; $subject; "company"; $company; "notes"; $notes); "images"; WP Get elements($doc; wk type image).length; "tables"; WP Get elements($doc; wk type table).length; "formulas"; New collection(); "links"; New collection())
+$result.page:=New object("document"; wp_page_stats($doc); "sections"; New collection())
+var $section : Object
+For each ($section; WP Get sections($doc))
+	$result.page.sections.push(wp_page_stats($section))
+End for each
 var $item : Object
 $result.bookmarks:=New object()
 ARRAY TEXT($bookmarkNames; 0)

@@ -5,14 +5,20 @@ import { DocumentError, MAX_ARCHIVE } from './archive.js';
 import { languages, messages, detectLanguage } from './i18n.js';
 import { LocalHistory } from './history.js';
 import { readImage } from './image.js';
+import { pageUnits, paperPresets, pageFields, pageDisplay, pagePoints, pagePaperSize } from './page-setup.js';
 
 let locale = detectLanguage();
 let theme = 'system';
+let pageUnit = 'mm';
+let pageDraft = null;
+let pageChanges = {};
 try {
   const savedLanguage = localStorage.getItem('4wp-language');
   if (savedLanguage in messages) locale = savedLanguage;
   const savedTheme = localStorage.getItem('4wp-theme');
   if (['system', 'light', 'dark'].includes(savedTheme)) theme = savedTheme;
+  const savedUnit = localStorage.getItem('4wp-page-unit');
+  if (Object.hasOwn(pageUnits, savedUnit)) pageUnit = savedUnit;
 } catch (error) {
   console.warn('Preferences unavailable', error);
 }
@@ -82,6 +88,7 @@ document.querySelector('#app').innerHTML = `
         <button id="outdent" data-label="outdent">⇤</button><button id="indent" data-label="indent">⇥</button>
         <button id="find-toggle" data-i18n="find" aria-expanded="false" aria-controls="find-panel"></button>
         <button id="bookmarks-toggle" data-i18n="bookmarks" aria-expanded="false" aria-controls="bookmarks-panel"></button>
+        <button id="page-toggle" data-i18n="pageSetup" aria-expanded="false" aria-controls="page-panel"></button>
       </div>
       <details class="editing-tools"><summary data-i18n="moreTools"></summary><div class="tool-groups">
         <label><span data-i18n="spacing"></span><select id="spacing"><option value="0">0 pt</option><option value="6">6 pt</option><option value="12">12 pt</option><option value="18">18 pt</option><option value="24">24 pt</option></select></label>
@@ -124,6 +131,27 @@ document.querySelector('#app').innerHTML = `
         </form>
         <p id="bookmark-name-help" data-i18n="bookmarkNameHelp"></p>
         <p id="bookmark-status" role="status"></p><ul id="bookmark-list" data-label="bookmarks"></ul>
+      </section>
+      <section id="page-panel" class="tool-panel page-panel" aria-labelledby="page-heading" hidden>
+        <h3 id="page-heading" data-i18n="pageSetup"></h3>
+        <p data-i18n="pageScope"></p><p id="page-overrides" data-i18n="pageOverrides" hidden></p>
+        <p id="page-protection" role="status"></p>
+        <label><span data-i18n="pageUnits"></span><select id="page-units"><option>mm</option><option>cm</option><option>in</option><option>pt</option></select></label>
+        <form id="page-form" novalidate aria-describedby="page-precision page-protection">
+          <label><span data-i18n="pagePaper"></span><select id="page-preset">
+            <option value="custom" data-i18n="pageCustom"></option>
+            <option value="a4">A4</option><option value="a3">A3</option><option value="a5">A5</option>
+            <option value="letter">Letter</option><option value="legal">Legal</option><option value="tabloid">Tabloid</option>
+          </select></label>
+          <label><span data-i18n="pageOrientation"></span><select id="page-orientation">
+            <option value="portrait" data-i18n="pagePortrait"></option><option value="landscape" data-i18n="pageLandscape"></option>
+          </select></label>
+          ${pageFields.map(field => `<label><span data-i18n="page${field[0].toUpperCase() + field.slice(1)}"></span><input id="page-${field}" type="number" step="any" min="0" required aria-describedby="page-precision"><span class="page-unit" aria-hidden="true"></span></label>`).join('')}
+          <p id="page-precision" data-i18n="pagePrecision"></p>
+          <p><span data-i18n="pageNativeSize"></span>: <output id="page-native-size" aria-live="polite"></output></p>
+          <button id="page-apply" type="submit" data-i18n="pageApply"></button>
+        </form>
+        <button id="page-close" data-i18n="close"></button>
       </section>
       <p id="recovery-notice" class="notice" data-i18n="recovered" hidden></p>
       <div id="error" class="notice error" role="alert" hidden><strong data-i18n="errorTitle"></strong><p id="error-message"></p><button id="dismiss-error" data-i18n="close"></button></div>
@@ -292,6 +320,7 @@ function render(caret = null) {
   renderHistory();
   refreshFindCount();
   renderBookmarks();
+  renderPageSetup();
 }
 
 function localize() {
@@ -314,6 +343,7 @@ function remember() {
   try {
     localStorage.setItem('4wp-language', locale);
     localStorage.setItem('4wp-theme', theme);
+    localStorage.setItem('4wp-page-unit', pageUnit);
   } catch (error) {
     console.warn('Preferences could not be saved', error);
   }
@@ -877,6 +907,88 @@ function togglePanel(button, panel) {
   $(panel).hidden = !$(panel).hidden;
   $(button).setAttribute('aria-expanded', String(!$(panel).hidden));
 }
+function pageSizeStatus() {
+  try { $('page-native-size').textContent = pagePaperSize(pageDraft).join(' × '); }
+  catch (error) {
+    if (!(error instanceof DocumentError)) throw error;
+    $('page-native-size').textContent = t('pageInvalid');
+  }
+}
+
+function pageInputs() {
+  $('page-units').value = pageUnit;
+  for (const field of pageFields) $('page-' + field).value = pageDisplay(pageDraft[field], pageUnit);
+  for (const element of document.querySelectorAll('.page-unit')) element.textContent = pageUnit;
+  $('page-orientation').value = pageDraft.orientation;
+  const dimensions = [pagePoints(pageDraft.width), pagePoints(pageDraft.height)];
+  $('page-preset').value = Object.keys(paperPresets).find(key => paperPresets[key].every((value, index) => Math.abs(value - dimensions[index]) < 1e-8)) || 'custom';
+  pageSizeStatus();
+}
+
+function renderPageSetup() {
+  const setup = model.pageSetup();
+  pageDraft = { ...setup.geometry };
+  pageChanges = {};
+  $('page-overrides').hidden = ![...setup.sections.keys()].some(index => index > 0);
+  $('page-protection').textContent = setup.reason ? t(setup.reason) : '';
+  for (const control of $('page-form').querySelectorAll('input,select,button')) control.disabled = Boolean(setup.reason);
+  pageInputs();
+  for (const property of ['width', 'min-width', 'max-width', 'min-height', 'padding']) $('paper').style.removeProperty(property);
+  if (!setup.reason) {
+    const [width, height] = pagePaperSize(setup.geometry);
+    $('paper').style.width = `${width}pt`;
+    $('paper').style.minWidth = `${width}pt`;
+    $('paper').style.maxWidth = 'none';
+    $('paper').style.minHeight = `${height}pt`;
+    $('paper').style.padding = ['top', 'right', 'bottom', 'left'].map(field => `${pagePoints(setup.geometry[field])}pt`).join(' ');
+  }
+}
+
+$('page-toggle').onclick = () => {
+  togglePanel('page-toggle', 'page-panel');
+  if (!$('page-panel').hidden) { renderPageSetup(); $('page-units').focus(); }
+};
+function closePageSetup() {
+  $('page-panel').hidden = true;
+  $('page-toggle').setAttribute('aria-expanded', 'false');
+  $('page-toggle').focus();
+}
+$('page-close').onclick = closePageSetup;
+$('page-panel').addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); closePageSetup(); }
+});
+$('page-units').onchange = event => {
+  // Invalid in-progress fields cannot be converted without losing the user's input.
+  try {
+    for (const field of pageFields) pagePoints(pageDraft[field]);
+    pageUnit = event.target.value;
+    remember();
+    pageInputs();
+  } catch (error) {
+    $('page-units').value = pageUnit;
+    showError(error);
+  }
+};
+for (const field of pageFields) $('page-' + field).oninput = event => {
+  pageChanges[field] = pageDraft[field] = `${event.target.value}${pageUnit}`;
+  if (field === 'width' || field === 'height') $('page-preset').value = 'custom';
+  pageSizeStatus();
+};
+$('page-orientation').onchange = event => {
+  pageChanges.orientation = pageDraft.orientation = event.target.value;
+  pageSizeStatus();
+};
+$('page-preset').onchange = event => {
+  const preset = paperPresets[event.target.value];
+  if (!preset) return;
+  for (const [index, field] of ['width', 'height'].entries()) pageChanges[field] = pageDraft[field] = `${preset[index]}pt`;
+  pageInputs();
+};
+$('page-form').onsubmit = event => {
+  event.preventDefault();
+  perform('pageSetup', () => model.setPageSetup(pageChanges));
+  $('page-apply').focus();
+};
 $('find-toggle').onclick = () => { togglePanel('find-toggle', 'find-panel'); if (!$('find-panel').hidden) $('find-query').focus(); };
 $('history-toggle').onclick = () => { togglePanel('history-toggle', 'history-panel'); renderHistory(); };
 $('bookmarks-toggle').onclick = () => {

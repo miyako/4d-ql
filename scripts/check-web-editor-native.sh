@@ -10,6 +10,10 @@ LOCK="$HOME/.copilot/4d-ql-native-gate.lock"
 mkdir -p "$HOME/.copilot"
 mkdir "$LOCK" 2>/dev/null || { echo "Another native gate owns $LOCK. Coordinate ownership; never remove a live lock." >&2; exit 1; }
 trap 'rmdir "$LOCK"' EXIT
+if ps -axo comm= | grep -F '/4D.app/Contents/MacOS/4D' >/dev/null; then
+  echo "Full native 4D is already running. Coordinate ownership; never interrupt another process." >&2
+  exit 1
+fi
 mkdir -p "$DEST/Input" "$DEST/Output"
 DEST=$(cd "$DEST" && pwd)
 cp -R "$ROOT/Tests/Fixtures/wpfixture/Project" "$DEST/Project"
@@ -42,6 +46,8 @@ with (root / logfile).open("w") as log:
         raise SystemExit(f"Full 4D exited with {code}; inspect native.log. No native pass is claimed.")
 PY
 }
+run_4d wp_page_check page-native.log
+[ -s "$DEST/Output/page-report.json" ] || { echo "Full 4D produced no page report; inspect $DEST/page-native.log." >&2; exit 1; }
 run_4d wp_range_check range-native.log
 [ -s "$DEST/Output/range-report.json" ] || { echo "Full 4D produced no range report; inspect $DEST/range-native.log." >&2; exit 1; }
 (cd "$ROOT/web-editor" && npm run build && node scripts/native-roundtrip.mjs prepare "$DEST")
