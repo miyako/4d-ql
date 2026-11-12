@@ -38,6 +38,7 @@ let plainPaste = false;
 let currentBookmark = null;
 let bookmarkHighlight = null;
 let bookmarkSelection = null;
+let protectedSelection = false;
 const history = new LocalHistory();
 const t = key => messages[locale][key];
 
@@ -257,6 +258,7 @@ function updateStatus() {
 function render(caret = null) {
   clearBookmarkHighlight();
   bookmarkSelection = null;
+  protectedSelection = false;
   active = null;
   selection = null;
   selectedImage = null;
@@ -415,6 +417,14 @@ function captureSelection(inputCaret = false) {
   const browserRange = selected.getRangeAt(0);
   if (!$('paper').contains(browserRange.startContainer) || !$('paper').contains(browserRange.endContainer)) return;
   bookmarkSelection = browserRange.cloneRange();
+  protectedSelection = [...$('paper').querySelectorAll('.formula-object')].some(element =>
+    element.contains(browserRange.startContainer) || element.contains(browserRange.endContainer) ||
+    !browserRange.collapsed && browserRange.intersectsNode(element));
+  if (protectedSelection) {
+    selection = null;
+    active = null;
+    return;
+  }
   const startRun = parent(browserRange.startContainer)?.closest('[data-run]');
   const endRun = parent(browserRange.endContainer)?.closest('[data-run]');
   const intersected = startRun && endRun ? [] : [...$('paper').querySelectorAll('[data-run]')].filter(run => browserRange.intersectsNode(run));
@@ -480,7 +490,7 @@ $('paper').addEventListener('input', event => {
   if (composition || event.inputType === 'insertCompositionText') return;
   if (event.target.dataset.run === undefined) return;
   try {
-    if (model.hasBookmarks) throw new DocumentError('protected');
+    if (model.tracksNativeEdits) throw new DocumentError('protected');
     if (!event.target.textContent || event.target.textContent === '\u200b') event.target.dataset.empty = '';
     else delete event.target.dataset.empty;
     const last = model.editRun(Number(event.target.dataset.run), event.target.textContent);
@@ -526,7 +536,7 @@ $('paper').addEventListener('keydown', event => {
     return;
   }
   captureSelection();
-  if (model.hasBookmarks && ['Backspace', 'Delete'].includes(event.key) && (event.altKey || event.ctrlKey || event.metaKey)) {
+  if (model.tracksNativeEdits && ['Backspace', 'Delete'].includes(event.key) && (event.altKey || event.ctrlKey || event.metaKey)) {
     event.preventDefault();
     showError(new DocumentError('protected'));
     return;
@@ -559,12 +569,15 @@ $('paper').addEventListener('beforeinput', event => {
   } else if (['insertParagraph', 'insertLineBreak'].includes(event.inputType)) {
     event.preventDefault();
     perform('paragraph', () => model.splitParagraph(currentSelection(), event.inputType === 'insertLineBreak'));
-  } else if (event.inputType === 'insertText' && selection && (model.hasBookmarks || selection.startRun !== selection.endRun || model.runs[selection.startRun].data === '\u200b')) {
+  } else if (protectedSelection) {
+    event.preventDefault();
+    showError(new DocumentError('protected'));
+  } else if (event.inputType === 'insertText' && selection && (model.tracksNativeEdits || selection.startRun !== selection.endRun || model.runs[selection.startRun].data === '\u200b')) {
     event.preventDefault();
     perform('typing', () => model.replaceText(selection, event.data || ''));
   } else if (['deleteContentBackward', 'deleteContentForward'].includes(event.inputType) && deleteAtBoundary(event.inputType === 'deleteContentBackward')) {
     event.preventDefault();
-  } else if (model.hasBookmarks) {
+  } else if (model.tracksNativeEdits) {
     event.preventDefault();
     perform('typing', () => {
       if (!selection || !['deleteContentBackward', 'deleteContentForward'].includes(event.inputType)) throw new DocumentError('protected');
@@ -581,7 +594,15 @@ $('paper').addEventListener('beforeinput', event => {
     });
   }
 });
-$('paper').addEventListener('compositionstart', () => { composition = currentSelection(); });
+$('paper').addEventListener('compositionstart', event => {
+  try { composition = currentSelection(); }
+  catch (error) {
+    event.preventDefault();
+    composition = null;
+    showError(error);
+    render();
+  }
+});
 $('paper').addEventListener('compositionend', event => {
   const range = composition;
   composition = null;
@@ -701,6 +722,7 @@ window.addEventListener('drop', event => {
 
 function currentSelection() {
   captureSelection();
+  if (protectedSelection) throw new DocumentError('protected');
   if (selection) return selection;
   const index = active ?? model.runs.findLastIndex(node => !model.protected(node.parentElement));
   const node = model.runs[index];

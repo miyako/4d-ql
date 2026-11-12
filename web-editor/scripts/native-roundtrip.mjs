@@ -8,6 +8,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { JSDOM } from 'jsdom';
 import { nativeMetadata } from '../src/native-ranges.js';
 import { prepareRangeCases, prepareBookmarkCases } from './native-range-cases.mjs';
+import { prepareFormulaCases, verifyFormulaCase } from './native-formula-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtures = resolve(root, '../Tests/FourDFileKitTests/Fixtures/WritePro');
@@ -229,6 +230,7 @@ async function prepare() {
     }
     await prepareRangeCases(directory, cases);
     await prepareBookmarkCases(directory, cases);
+    await prepareFormulaCases(directory, cases, browser, server.resolvedUrls.local[0]);
     assert.deepEqual(browserErrors, [], 'Browser runtime errors');
     await writeFile(manifestPath, JSON.stringify({ cases }, null, 2));
   } finally {
@@ -247,11 +249,14 @@ async function verify() {
   assert.deepEqual(report.errors, [], `Native 4D errors: ${JSON.stringify(report.errors)}`);
   assert.equal(report.cases.length, cases.length, 'Native case count');
   const results = new Map(report.cases.map(item => [item.name, item]));
+  const dom = new JSDOM();
+  for (const key of ['document', 'DOMParser', 'XMLSerializer']) globalThis[key] = dom.window[key];
   for (const entry of cases) {
     const actual = results.get(entry.name);
     assert(actual?.imported && actual?.reopened, `${entry.name}: missing native import/reopen evidence`);
     const before = actual.imported;
     const after = actual.reopened;
+    if (entry.formula) await verifyFormulaCase(directory, entry, actual);
     for (const key of ['text', 'metadata', 'bookmarks', 'images', 'imagePixels', 'tables', 'first']) assert.deepEqual(after[key], before[key], `${entry.name}: native re-export changed ${key}`);
     if (entry.ranges) {
       assert.equal(before.text, entry.ranges.text, `${entry.name}: text differs from native edit`);
@@ -291,6 +296,7 @@ async function verify() {
   assert.deepEqual(fresh.imagePixels, { width: 48, height: 32 }, 'Native image decoded at original pixel dimensions');
   assert.equal(fresh.first.size, '18pt', 'New native font size');
   console.log(`Native 4D ${report.version}: ${cases.length} import/export/reopen cases passed.`);
+  dom.window.close();
 }
 
 await (mode === 'prepare' ? prepare() : verify());

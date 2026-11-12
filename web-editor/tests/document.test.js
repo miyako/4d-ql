@@ -63,7 +63,7 @@ describe('real 4D 21.2 archives', () => {
     const table = WriteProDocument.open(fixture('table'));
     const tableHost = render(table);
     expect(tableHost.querySelector('table [contenteditable]')).not.toBeNull();
-    expect(tableHost.textContent).toContain(messages.en.preserved);
+    expect(tableHost.textContent).toContain(messages.en.formulaUnsupported);
     expect(table.document.querySelector('#t2')).not.toBeNull();
   });
 });

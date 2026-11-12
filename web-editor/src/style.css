@@ -71,6 +71,11 @@ input[type="color"] { width: 30px; height: 30px; padding: 3px; border: 1px solid
 .paper img { max-width: 100%; max-height: 320px; object-fit: contain; vertical-align: middle; }
 .preserved-object { display: inline-block; font: 11px/1.5 -apple-system, sans-serif; background: #f1f3f5; color: #536478; border: 1px dashed #c1ccda; border-radius: 4px; padding: 3px 7px; margin: 3px; vertical-align: middle; }
 div.preserved-object { display: block; margin-top: 16px; }
+.paper .formula-object { max-width: 100%; white-space: normal; color: #233247; background: #edf3fb; border-color: #62738a; text-align: start; }
+.formula-object > span { display: block; overflow-wrap: anywhere; }
+.formula-source { font-family: ui-monospace, monospace; white-space: pre-wrap; }
+.formula-value { white-space: pre-wrap; }
+.formula-limit { font-style: italic; }
 .locked-content { cursor: default; }
 .inert-link { color: #326b9e; text-decoration: underline; }
 .document-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 14px 20px; color: var(--muted); font-size: 10px; border-top: 1px solid var(--border); }

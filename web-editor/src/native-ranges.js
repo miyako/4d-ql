@@ -11,17 +11,17 @@ export function nativeBoundary(text, offset) {
 
 // Native range objects use origin 1; serialized bookmark pairs use origin 0.
 // Both count UTF-16 with an exclusive end. Breaks and pictures occupy one slot.
-export function nativeBody(document, values, imageSource = image => /^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(image.getAttribute('src') || '')) {
+export function nativeBody(document, values, imageSource = image => /^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(image.getAttribute('src') || ''), formula = () => false) {
   const positions = new Map();
   const tables = [];
   let text = '';
   let blocks = 0;
   const fail = () => { throw new DocumentError('protected'); };
-  const check = element => {
+  const check = (element, isFormula = false) => {
     const style = values(element);
     if (element.namespaceURI !== XHTML ||
       [...element.attributes].some(attribute => attribute.namespaceURI && attribute.namespaceURI !== 'http://www.w3.org/XML/1998/namespace') ||
-      Object.keys(style).some(key => /^-d4-(ref|anchor|section)/.test(key)) ||
+      Object.keys(style).some(key => /^-d4-(anchor|section)/.test(key) || !isFormula && /^-d4-ref/.test(key)) ||
       /section\d.*(Header|Footer)/i.test(element.getAttribute('class') || '') ||
       style['page-break-after'] === 'always' || style['break-after'] === 'column' ||
       style.display === 'none' || ['hidden', 'collapse'].includes(style.visibility)) fail();
@@ -33,9 +33,13 @@ export function nativeBody(document, values, imageSource = image => /^data:image
       text += textValue(node.data);
       positions.set(node, { start, end: text.length + 1 });
     } else if (node.nodeType === 1) {
-      check(node);
+      const isFormula = formula(node);
+      check(node, isFormula);
       if (!INLINE.has(node.localName)) fail();
-      if (node.localName === 'br' || node.localName === 'img') {
+      if (isFormula) {
+        text += '\ufffc';
+        positions.set(node, { start, end: text.length + 1 });
+      } else if (node.localName === 'br' || node.localName === 'img') {
         if (node.childNodes.length || node.localName === 'img' && !imageSource(node)) fail();
         text += node.localName === 'br' ? '\n' : '\ufffc';
         positions.set(node, { start, end: text.length + 1 });
@@ -152,7 +156,7 @@ export function nativeBody(document, values, imageSource = image => /^data:image
       for (const [node, position] of positions) {
         const index = position.offsets?.indexOf(offset);
         if (index >= 0) return { node, offset: index };
-        if (node.nodeType === 1 && ['br', 'img'].includes(node.localName) &&
+        if (node.nodeType === 1 && (['br', 'img'].includes(node.localName) || formula(node)) &&
           (offset === position.start || offset === position.end)) {
           return { node: node.parentNode, offset: [...node.parentNode.childNodes].indexOf(node) + Number(offset === position.end) };
         }

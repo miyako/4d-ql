@@ -76,6 +76,10 @@ Native bookmarks track supported edits; unsupported ranges and structures stay
 protected. See the editor README for the exact feature boundaries, local data
 limits and full-4D compatibility gate. The Pages demo follows `main`, not
 unmerged feature branches.
+Bookmark management is available on main via [#40](https://github.com/miyako/4d-ql/pull/40).
+The formula-display increment is unmerged: it shows native source and
+distinguishable saved values, keeps formulas read-only and allows only
+native-verified surrounding edits; it never evaluates formulas.
 The [roadmap/status table](web-editor/README.md#roadmap-and-status) separates
 available features, this in-progress increment, approved next steps and
 unscheduled proposals.

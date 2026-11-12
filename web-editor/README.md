@@ -7,12 +7,12 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`81bf932` / #39](https://github.com/miyako/4d-ql/pull/39).
+[`c646c1e` / #40](https://github.com/miyako/4d-ql/pull/40).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
-Phase 5 and later are not in that main baseline; deployment status is separate. The table is not a
+Phase 6 and later are not in that main baseline; deployment status is separate. The table is not a
 promise of dates or full Write Pro parity.
 
 | Phase | Feature scope | Status |
@@ -21,8 +21,8 @@ promise of dates or full Write Pro parity.
 | 2. Everyday editing | Cross-run text/selections, formatting/styles/lists, basic tables/images, links, sanitized paste, find/replace, counts/zoom, undo/redo, versions and local recovery | Available |
 | 3. Native verification and bookmarks | Full-4D import/export/reopen gate; scoped paragraph/flat-list/inline-object bookmark adjustments; unsupported ranges protected | Available; scoped evidence, not arbitrary compatibility |
 | 4. Bookmarked tables and native list levels | Same-cell text/paste/cut, paragraph/list and inline-object edits; simple table insertion, row edits and column deletion; native indented/mixed-marker lists. Partial cross-cell bookmarks, column insertion and nested HTML stay protected | Available on main via #39 |
-| 5. Bookmark management | List, navigate/highlight, create from selections/carets, rename and delete native bookmarks; exact names, native range validation and atomic history/recovery | In progress; this unmerged PR only, not main/deployed behavior |
-| 6. Formula-aware protected display | Source and stored cached values only when actually available; explicit unavailable-value notice; safe surrounding edits, no evaluation | Planned; subsequent separate PR |
+| 5. Bookmark management | List, navigate/highlight, create from selections/carets, rename and delete native bookmarks; exact names, native range validation and atomic history/recovery | Available on main via #40 |
+| 6. Formula-aware protected display | Source and stored cached values only when actually available; explicit unavailable-value notice; scoped safe surrounding edits, no evaluation | In progress; this unmerged PR only, not main/deployed behavior |
 | 7. Broader range/complex-structure safety | Partial cross-cell ranges, column insertion, nested/merged tables and generic ranges only after native research | Proposed |
 | 8. Richer media and objects | More native picture formats, anchored objects and text boxes with preservation-aware controls | Proposed |
 | 9. Document/page structure | Page/section settings, headers/footers, tabs and columns | Proposed |
@@ -117,7 +117,7 @@ Find/replace searches literal text across adjacent formatting runs, with
 optional case sensitivity and a 1,000-match limit. The footer shows
 language-aware word/character counts and document zoom.
 
-### Bookmark management (unmerged increment)
+### Bookmark management (available on main)
 
 **Bookmarks** opens a keyboard-accessible panel. Select text, an insertion
 point, or supported structural boundaries in the document, then enter a name
@@ -203,6 +203,47 @@ requests; other images (including native 4DPicture wrappers) and unsupported
 objects have placeholders.
 They are still retained in exported archives.
 
+### Formula-aware display (unmerged increment)
+
+Formula cards expose the **native tokenized source**, optional name and
+**Saved value**, with a keyboard-focusable, localized **Read-only formula**
+label. They never evaluate, detokenize or execute the source, fetch references,
+or infer results from literals, page numbers or sample data. Source, names and
+saved values are untrusted text, not HTML or CSS to execute.
+
+Supported inline text formulas are XHTML `span` references with a quoted
+`-d4-ref` (direct or from a supported native stylesheet rule), optional
+`-d4-ref-name`, and text/ordinary nested-span content. The original XML,
+attributes and archive resources remain authoritative. A distinguishable,
+non-whitespace saved textual value is shown exactly, including `0`; otherwise
+the card explicitly says the value is unavailable. Empty, NBSP, zero-width and
+whitespace-only content is not treated as a saved result. Full 4D 21.2 exports
+NBSP for independently computed text, empty, NBSP, numeric-zero and Unicode
+formulas: **computation does not imply a cached result in the archive**.
+Native import/export also preserves explicitly supplied saved text (`SAVED`
+and `0` in the gate); those are stored content, not browser-computed values,
+and may be stale.
+
+Each supported text formula occupies **one native UTF-16 slot**, independent
+of source/value length. In otherwise supported documents, typing/IME,
+grapheme deletion, cut/paste, replacement and character formatting in adjacent
+text use registered native-tape transactions, with or without bookmarks.
+Paragraph split/join and rich paste can move an intact supported formula
+between paragraphs. Formula subtree identity, order, XML/attributes and cached
+text are checked atomically; crossing selections, boundary deletion into the
+object and formula mutations fail without changing the model. Find/replace
+does not search inside cards or match across a formula. History, versions and
+recovery retain the original objects and resources.
+
+Compiled `-d4-ref-url` resources, name-only/empty-source references, image
+formulas, data-source tables, nested references and nontext results remain
+protected. A compiled source is explicitly unavailable; its resource is not
+decoded or executed. Surrounding-edit compatibility is not claimed for these
+forms. In bookmarked documents they retain the existing whole-document guard.
+Formula-containing list conversion, destructive selections across objects,
+complex tables, generic/malformed ranges, headers/footers, anchored/hidden
+objects and other unsupported structures are not enabled by this increment.
+
 Named text bookmarks are editable in documents consisting of paragraphs, native
 indented/mixed-marker lists, simple native-shaped tables, ordinary inline
 formatting/links and supported inline pictures. A central
@@ -242,11 +283,11 @@ collapsed bookmark stays before insertion at its own position. Deletion shrinks
 overlaps and removes entirely deleted nonempty bookmarks and strictly enclosed
 collapsed bookmarks, as observed in 4D. Thus replacing an entire bookmarked
 selection removes that bookmark; undo restores it. Bookmark management above
-is this unmerged increment only. Arbitrary native-command equivalence is not claimed.
+is available on main via #40. Arbitrary native-command equivalence is not claimed.
 
 Generic `ranges` metadata, malformed/duplicate/out-of-bounds bookmarks, endpoints
 inside surrogate pairs, and bookmarked documents containing noncanonical tables,
-partial cross-cell/table ranges, nested HTML lists, formulas,
+partial cross-cell/table ranges, nested HTML lists, unsupported formula forms,
 section/header/footer/anchored structures, hidden content or unsupported
 pictures remain **read-only**. Unsupported browser input operations (for example
 word-delete/autocorrect input types without established mapping) are also rejected,
@@ -311,7 +352,7 @@ differences fail the gate.
 
 The gate first runs isolated native offset and mutation probes, then creates
 genuine browser downloads and model exports, imports them in full 4D, exports
-them through 4D and reopens those exports. Its 372 cases include the original 14:
+them through 4D and reopens those exports. Its 869 cases include the original 14:
 the preloaded brief, a newly formatted document with a hyperlink, image and table,
 and original and browser-exported versions of all six fixtures. It checks text, metadata,
 image/table counts, formula sources and links; sampled first-character
@@ -358,6 +399,25 @@ list ranges. The browser intentionally rejects the normalization/overwrite
 counterexamples rather than claiming native command equivalence for them.
 Both browser/model input archives and native reexports are checked against
 native raw serialized pairs, names, getter ranges and selected text.
+
+The formula increment adds 497 cases to the preceding 372: 14 independent
+native originals, 240 model edits, 240 actual browser downloads and three
+downloads after undo/redo and IndexedDB reload. The native oracle covers
+uncomputed/computed formulas, empty/NBSP/zero/Unicode sources, names, formatting,
+supplied saved text/zero/empty/NBSP, anchored image formulas and data-source
+tables. Twelve supported variants each receive twenty independent native
+operations: insertion before/at either boundary/after, deletion, deletion then
+insertion, split/join on either side and exactly at both formula boundaries,
+line break, rich-text-equivalent paste before/after/at either boundary,
+and formatting. Actual browser IME commits are included. Raw serialized pairs,
+native text/bookmark getters, metadata,
+source/name/cache, unchanged formula XML and resource bytes are checked.
+Compiled-resource preservation has inert browser/model tests, **not** native
+compiled-source decoding or editing certification.
+`tests/fixtures/native-formulas.json` is regenerated by the same oracle capture
+script. The shared `$HOME/.copilot/4d-ql-native-gate.lock` serializes full-4D
+gates across worktrees; a held lock fails explicitly instead of launching a
+second application instance. Coordinate ownership; never remove another run's lock.
 
 Keep the entire evidence directory (including `Output/range-report.json`,
 `Output/range-errors.json`, the copied probe project, native originals and
