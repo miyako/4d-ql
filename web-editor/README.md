@@ -45,7 +45,10 @@ page.
 
 Open or drop your own `.4wp`, or start a new document. Selections can span
 adjacent formatting runs and paragraphs. Type, cut, paste or apply bold, italic,
-underline, font, size and color without flattening the original XML formatting.
+underline, strikethrough, highlighting, font, size and color without flattening
+the original XML formatting. Underline and strikethrough toggle independently.
+The toolbar indicates mixed selections instead of reporting only the first run;
+formatting retains the selection and its direction.
 Without a text selection, character formatting applies to the whole active
 run. Enter splits at the caret; Backspace/Delete joins compatible adjacent
 paragraphs; Shift+Enter inserts a line break. Enter on an empty list item exits
@@ -60,6 +63,14 @@ protected from structural edits. Rich clipboard paste retains basic text
 formatting, paragraphs and lists, but discards scripts, remote images and
 unsupported HTML. Copying an entire native document through HTML is not a
 preservation workflow: use `.4wp` import/export.
+Use Ctrl/Cmd+Shift+V to paste plain text, or **Paste plain text** under More
+tools (the button requires clipboard permission). Clipboard failures and stale
+asynchronous reads are reported rather than silently inserting elsewhere.
+**Link** creates, updates or removes absolute HTTP, HTTPS and mailto links;
+embedded credentials and active URL schemes are rejected. Links remain inert
+in the editor. Select text to create a link; a caret inside an existing link
+updates that whole link. Selections crossing existing links must remove them
+before adding a replacement.
 
 Insert PNG/JPEG files through the picker, clipboard image files or drag-and-drop
 at the caret/drop position. New images fit the page width initially. Select an
@@ -73,7 +84,9 @@ Find/replace searches literal text across adjacent formatting runs, with
 optional case sensitivity and a 1,000-match limit. The footer shows
 language-aware word/character counts and document zoom.
 
-Undo/redo is document-wide with grouped typing, bounded to 100 snapshots and
+Undo/redo is document-wide with grouped typing and selection/caret restoration,
+including recovered undo history. These editor-only cursor bookmarks do not
+modify native 4D bookmark metadata. History is bounded to 100 snapshots and
 approximately 8 MiB of UTF-16 undo history (at least the latest snapshot is
 retained). **History** displays automatic versions and lets you name and
 restore a version; restoration itself is undoable. Local versions are bounded
@@ -133,7 +146,9 @@ layout. Section-break paragraphs and protected/native structures cannot be
 split or merged destructively. Unsupported content is not necessarily shown in full. Preserve your
 originals and **reopen edited downloads in the full 4D application before
 production use**. New-document and edit compatibility has structural tests
-against real 4D 21.2 fixtures; native 4D reopening is not certified.
+against real 4D 21.2 fixtures. An isolated full-4D compatibility gate also verifies
+the cases described below; this is scoped evidence, not general native-layout
+or arbitrary-document certification.
 
 Input limits: 16 MiB ZIP, 32 MiB total expanded data, 512 entries, 20,000
 elements, 60,000 DOM nodes, 64 levels. CRC corruption, ambiguous HTML entries,
@@ -160,3 +175,35 @@ clipboard sanitization, version restoration, reload recovery and browser
 editing/download workflows.
 The browser suite builds and serves the production bundle, including its CSP.
 See [format evidence](../docs/WRITEPRO-FORMAT.md) for the observed 4D dialect.
+
+### Full-4D release gate
+
+Before releasing import/export changes, run from the repository root:
+
+```sh
+bash scripts/check-web-editor-native.sh /absolute/path/to/new-evidence-directory
+```
+
+The output directory must not exist and should be outside disposable worktrees.
+The script requires installed web-editor dependencies and Playwright Chromium.
+It defaults to `/Applications/4D 21.2/4D.app/Contents/MacOS/4D`; set `FOURD` to
+another full application's executable if needed. **tool4d cannot substitute for
+the full application's Write Pro engine.** Only a copied repository fixture
+project runs, dataless, without opening personal projects or changing fixtures.
+Missing application/report, compilation/native errors, timeouts and semantic
+differences fail the gate.
+
+The gate creates genuine browser downloads, imports them in full 4D, exports
+them through 4D and reopens those exports. Its 14 cases cover the preloaded
+brief, a newly formatted document with a hyperlink, image and table, and original
+and browser-exported versions of all six fixtures. It checks text, metadata,
+image/table counts, formula sources and links; sampled first-character
+formatting is compared with native originals. The new document additionally
+checks the actual first glyph, bold/italic/underline/strikethrough, size,
+highlight and hyperlink, and native decoding of the inserted 48-by-32 image.
+Bookmarked/read-only cases must also remain byte-identical in browser exports.
+
+Full 4D 21.2 (`F0012102`) passed these 14 cases. Keep `Input/`,
+`Output/native-report.json`, native reexports and `native.log` together as
+evidence. The gate does not evaluate formulas or certify pagination, visual
+fidelity, all character formatting, other 4D versions or untested documents.
