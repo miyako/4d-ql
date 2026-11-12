@@ -1,4 +1,5 @@
 import { DocumentError } from './archive.js';
+import { paragraphBreak } from './sections.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const INLINE = new Set(['span', 'a', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'br', 'img']);
@@ -25,10 +26,22 @@ export function nativeBody(document, values, imageSource = image => /^data:image
     const style = values(element);
     if (element.namespaceURI !== XHTML ||
       [...element.attributes].some(attribute => attribute.namespaceURI && attribute.namespaceURI !== 'http://www.w3.org/XML/1998/namespace') ||
-      Object.keys(style).some(key => /^-d4-(anchor|section)/.test(key) || !isFormula && /^-d4-ref/.test(key)) ||
+      Object.keys(style).some(key => /^-d4-anchor/.test(key) || /^-d4-section/.test(key) &&
+        !(key === '-d4-section-break-after' && element.localName === 'p' && element.parentElement?.localName === 'body') ||
+        !isFormula && /^-d4-ref/.test(key)) ||
       /section\d.*(Header|Footer)/i.test(element.getAttribute('class') || '') ||
-      style['page-break-after'] === 'always' || style['break-after'] === 'column' ||
+      style['break-after'] === 'column' ||
       style.display === 'none' || ['hidden', 'collapse'].includes(style.visibility)) fail();
+    if (style['-d4-section-break-after'] || style['page-break-after']) {
+      try {
+        const kind = paragraphBreak(style);
+        if (kind && (element.localName !== 'p' || element.parentElement?.localName !== 'body' ||
+          element.nextElementSibling?.localName !== 'p')) fail();
+      } catch (error) {
+        if (!(error instanceof DocumentError)) throw error;
+        fail();
+      }
+    }
   };
   const inline = node => {
     const start = text.length + 1;

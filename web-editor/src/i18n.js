@@ -1,5 +1,6 @@
 import { toolMessages } from './tool-messages.js';
 import { pageMessages } from './page-messages.js';
+import { sectionMessages } from './section-messages.js';
 
 export const languages = {
   en: 'English', ja: '日本語', fr: 'Français', de: 'Deutsch', es: 'Español', it: 'Italiano',
@@ -163,7 +164,7 @@ const it = {
 };
 
 export const messages = { en, ja, fr, de, es, it };
-for (const language of Object.keys(messages)) Object.assign(messages[language], toolMessages[language], pageMessages[language]);
+for (const language of Object.keys(messages)) Object.assign(messages[language], toolMessages[language], pageMessages[language], sectionMessages[language]);
 
 export function detectLanguage(preferences = navigator.languages) {
   return preferences.map(value => value.split('-')[0]).find(value => value in messages) || 'en';

@@ -6,12 +6,14 @@ import { languages, messages, detectLanguage } from './i18n.js';
 import { LocalHistory } from './history.js';
 import { readImage } from './image.js';
 import { pageUnits, paperPresets, pageFields, pageDisplay, pagePoints, pagePaperSize } from './page-setup.js';
+import { paragraphBreak } from './sections.js';
 
 let locale = detectLanguage();
 let theme = 'system';
 let pageUnit = 'mm';
 let pageDraft = null;
 let pageChanges = {};
+let pageTarget = 0;
 try {
   const savedLanguage = localStorage.getItem('4wp-language');
   if (savedLanguage in messages) locale = savedLanguage;
@@ -134,10 +136,17 @@ document.querySelector('#app').innerHTML = `
       </section>
       <section id="page-panel" class="tool-panel page-panel" aria-labelledby="page-heading" hidden>
         <h3 id="page-heading" data-i18n="pageSetup"></h3>
-        <p data-i18n="pageScope"></p><p id="page-overrides" data-i18n="pageOverrides" hidden></p>
+        <p data-i18n="sectionScope"></p><p id="page-overrides" data-i18n="pageOverrides" hidden></p>
+        <p id="section-active" role="status"></p>
+        <label><span data-i18n="sectionSetup"></span><select id="page-target"></select></label>
         <p id="page-protection" role="status"></p>
         <label><span data-i18n="pageUnits"></span><select id="page-units"><option>mm</option><option>cm</option><option>in</option><option>pt</option></select></label>
         <form id="page-form" novalidate aria-describedby="page-precision page-protection">
+          <div id="section-controls" class="section-controls" hidden>
+            <label><span data-i18n="sectionName"></span><input id="section-name" type="text" maxlength="1024"></label>
+            <label><input id="section-inherit-orientation" type="checkbox" data-label="sectionInheritOrientation" aria-describedby="section-orientation-state"><span data-i18n="sectionInheritOrientation"></span><span id="section-orientation-state"></span></label>
+            <label><input id="section-inherit-margins" type="checkbox" data-label="sectionInheritMargins" aria-describedby="section-margins-state"><span data-i18n="sectionInheritMargins"></span><span id="section-margins-state"></span></label>
+          </div>
           <label><span data-i18n="pagePaper"></span><select id="page-preset">
             <option value="custom" data-i18n="pageCustom"></option>
             <option value="a4">A4</option><option value="a3">A3</option><option value="a5">A5</option>
@@ -151,6 +160,14 @@ document.querySelector('#app').innerHTML = `
           <p><span data-i18n="pageNativeSize"></span>: <output id="page-native-size" aria-live="polite"></output></p>
           <button id="page-apply" type="submit" data-i18n="pageApply"></button>
         </form>
+        <p data-i18n="breakHelp"></p>
+        <div class="section-controls">
+          <label><span data-i18n="breakInsert"></span><select id="break-kind">
+            <option value="page" data-i18n="breakPage"></option><option value="section" data-i18n="breakSection"></option><option value="continuous" data-i18n="breakContinuous"></option>
+          </select></label><button id="break-insert" data-i18n="breakInsert"></button>
+          <label><span data-i18n="breakChoose"></span><select id="break-list"></select></label><button id="break-remove" data-i18n="breakRemove"></button>
+        </div>
+        <p data-i18n="sectionPreview"></p>
         <button id="page-close" data-i18n="close"></button>
       </section>
       <p id="recovery-notice" class="notice" data-i18n="recovered" hidden></p>
@@ -202,6 +219,10 @@ function updateStatus() {
   $('selection-state').hidden = true;
   const block = active !== null ? $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-block]') : null;
   const sourceBlock = block ? model.blocks[Number(block.dataset.block)] : null;
+  const sectionIndex = sourceBlock ? model.sectionIndex(sourceBlock) : null;
+  $('section-active').textContent = `${t('sectionActive')}: ${sectionIndex ?? '—'}`;
+  $('break-insert').disabled = model.readOnly || !selection;
+  $('break-remove').disabled = model.readOnly || !$('break-list').options.length;
   $('paragraph').disabled = model.readOnly;
   $('insert-table').disabled = model.readOnly || Boolean(sourceBlock && sourceBlock.parentElement.localName !== 'body');
   $('insert-image').disabled = model.readOnly;
@@ -927,12 +948,40 @@ function pageInputs() {
 
 function renderPageSetup() {
   const setup = model.pageSetup();
-  pageDraft = { ...setup.geometry };
+  const layout = model.sectionLayout();
+  if (!layout.sections.some(section => section.index === pageTarget)) pageTarget = 0;
+  const section = pageTarget ? model.sectionSetup(pageTarget) : null;
+  $('page-target').replaceChildren(new Option(t('sectionDefaults'), '0'), ...layout.sections.map(item => {
+    const name = model.sectionSetup(item.index).name;
+    return new Option(`${t('sectionLabel')} ${item.index}${name ? ` · ${name}` : ''}`, String(item.index));
+  }));
+  $('page-target').value = String(pageTarget);
+  pageDraft = { ...(section?.geometry || setup.geometry) };
   pageChanges = {};
   $('page-overrides').hidden = ![...setup.sections.keys()].some(index => index > 0);
-  $('page-protection').textContent = setup.reason ? t(setup.reason) : '';
-  for (const control of $('page-form').querySelectorAll('input,select,button')) control.disabled = Boolean(setup.reason);
+  const reason = section?.reason || setup.reason;
+  $('page-protection').textContent = reason ? t(reason) : '';
+  for (const control of $('page-form').querySelectorAll('input,select,button')) control.disabled = Boolean(reason);
+  $('section-controls').hidden = !section;
+  if (section) {
+    $('section-name').value = section.name;
+    $('section-inherit-orientation').checked = !Object.hasOwn(section.overrides, 'orientation');
+    $('section-inherit-margins').checked = !Object.hasOwn(section.overrides, 'top');
+  }
+  pageInheritance(reason);
   pageInputs();
+  const breaks = model.blocks.flatMap((block, index) => {
+    if (block.localName !== 'p' || block.parentElement.localName !== 'body') return [];
+    try {
+      const kind = paragraphBreak(model.values(block));
+      return kind ? [new Option(`${index + 1} · ${t({ page: 'breakPage', section: 'breakSection', continuous: 'breakContinuous' }[kind])}`, String(index))] : [];
+    } catch (error) {
+      if (!(error instanceof DocumentError)) throw error;
+      return [];
+    }
+  });
+  $('break-list').replaceChildren(...breaks);
+  $('break-remove').disabled = model.readOnly || !breaks.length;
   for (const property of ['width', 'min-width', 'max-width', 'min-height', 'padding']) $('paper').style.removeProperty(property);
   if (!setup.reason) {
     const [width, height] = pagePaperSize(setup.geometry);
@@ -944,7 +993,29 @@ function renderPageSetup() {
   }
 }
 
+function pageInheritance(reason = null) {
+  if (!pageTarget) return;
+  const inheritedOrientation = $('section-inherit-orientation').checked;
+  const inheritedMargins = $('section-inherit-margins').checked;
+  for (const id of ['page-preset', 'page-width', 'page-height']) $(id).disabled = true;
+  $('page-orientation').disabled = Boolean(reason) || inheritedOrientation;
+  for (const side of ['top', 'right', 'bottom', 'left']) $('page-' + side).disabled = Boolean(reason) || inheritedMargins;
+  $('section-orientation-state').textContent = t(inheritedOrientation ? 'sectionInherited' : 'sectionOverride');
+  $('section-margins-state').textContent = t(inheritedMargins ? 'sectionInherited' : 'sectionOverride');
+}
+$('page-target').onchange = event => { pageTarget = Number(event.target.value); renderPageSetup(); };
+for (const group of ['orientation', 'margins']) $('section-inherit-' + group).onchange = () => {
+  const defaults = model.pageSetup().geometry;
+  if ($('section-inherit-' + group).checked) {
+    for (const field of group === 'orientation' ? ['orientation'] : ['top', 'right', 'bottom', 'left']) pageDraft[field] = defaults[field];
+  }
+  pageInheritance();
+  pageInputs();
+};
+$('break-insert').onclick = () => perform('breakEdit', () => model.insertBreak(currentSelection(), $('break-kind').value));
+$('break-remove').onclick = () => perform('breakEdit', () => model.removeBreak(Number($('break-list').value)));
 $('page-toggle').onclick = () => {
+  captureSelection();
   togglePanel('page-toggle', 'page-panel');
   if (!$('page-panel').hidden) { renderPageSetup(); $('page-units').focus(); }
 };
@@ -986,7 +1057,12 @@ $('page-preset').onchange = event => {
 };
 $('page-form').onsubmit = event => {
   event.preventDefault();
-  perform('pageSetup', () => model.setPageSetup(pageChanges));
+  if (pageTarget) perform('sectionSetup', () => model.setSectionSetup(pageTarget, {
+    name: $('section-name').value,
+    orientation: $('section-inherit-orientation').checked ? null : pageDraft.orientation,
+    margins: $('section-inherit-margins').checked ? null : Object.fromEntries(['top', 'right', 'bottom', 'left'].map(side => [side, pageDraft[side]])),
+  }));
+  else perform('pageSetup', () => model.setPageSetup(pageChanges));
   $('page-apply').focus();
 };
 $('find-toggle').onclick = () => { togglePanel('find-toggle', 'find-panel'); if (!$('find-panel').hidden) $('find-query').focus(); };
