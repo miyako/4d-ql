@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { zipSync, strToU8, strFromU8, unzipSync } from 'fflate';
+import structuralEvidence from '../fixtures/native-structures.json' with { type: 'json' };
 
 async function open(page) {
   const xml = '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Bookmarks</title><meta name="bookmarks" content="{&quot;span&quot;:[2,5],&quot;point&quot;:[3,3],&quot;all&quot;:[0,9]}"/></head><body><p>abcdefghi</p></body></html>';
@@ -41,6 +42,23 @@ async function downloaded(page) {
   }, xml);
 }
 
+const structural = name => structuralEvidence.structures.find(item => item.name === name);
+const serialized = item => Object.fromEntries(Object.entries(item.serialized).map(([name, pair]) => [name, pair.map(offset => offset - 1)]));
+async function openStructural(page, name) {
+  await page.goto('/');
+  await page.locator('#file').setInputFiles({
+    name: `${name}.4wp`, mimeType: 'application/zip',
+    buffer: Buffer.from(zipSync({ 'Document.html': strToU8(structural(name).xml) })),
+  });
+  await expect(page.locator('#paper')).toContainText('BEFORE');
+}
+async function selectRun(run, start, end = start) {
+  await run.evaluate((element, { start, end }) => {
+    element.focus();
+    window.getSelection().setBaseAndExtent(element.firstChild, start, element.firstChild, end);
+  }, { start, end });
+}
+
 test('bookmark-aware typing, Unicode, deletion, cut, undo and recovered redo keep offsets', async ({ page }) => {
   await open(page);
   await expect(page.locator('#readonly-notice')).toContainText('Bookmarks are adjusted');
@@ -69,7 +87,7 @@ test('bookmark-aware typing, Unicode, deletion, cut, undo and recovered redo kee
   expect((await downloaded(page)).bookmarks).toEqual({ all: [2, 8] });
 });
 
-test('paragraph/paste changes preserve bookmarks and unsupported structures roll back', async ({ page }) => {
+test('paragraph/paste changes and table insertion preserve bookmarks', async ({ page }) => {
   await open(page);
   await select(page, 3);
   await page.keyboard.press('Enter');
@@ -91,7 +109,66 @@ test('paragraph/paste changes preserve bookmarks and unsupported structures roll
   const before = await downloaded(page);
   await page.locator('summary').click();
   await page.locator('#insert-table').click();
-  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.locator('#paper table')).toHaveCount(1);
+  expect((await downloaded(page)).bookmarks).toEqual(before.bookmarks);
+});
+
+test('table Unicode editing, undo and recovered redo keep native ranges coherent', async ({ page }) => {
+  await openStructural(page, 'unicodeCell');
+  await selectRun(page.locator('#paper td [contenteditable]').first(), 1);
+  await page.keyboard.insertText('😀日é');
+  const edited = await downloaded(page);
+  expect(edited.bookmarks).toEqual(serialized(structural('unicodeCell')));
+  await page.locator('#undo').click();
+  await expect(page.locator('#paper td').first()).toHaveText('AB');
+  await expect(page.locator('#draft-state')).toHaveText('Local draft saved');
+  await page.reload();
+  await expect(page.locator('#recovery-notice')).toBeVisible();
+  await page.locator('#redo').click();
+  expect(await downloaded(page)).toEqual(edited);
+});
+
+for (const [name, cell, button] of [
+  ['addRow', 0, 'add-row'], ['appendRow', 2, 'add-row'],
+  ['removeRow', 0, 'remove-row'], ['removeLastRow', 2, 'remove-row'],
+  ['removeColumn', 0, 'remove-column'], ['removeLastColumn', 1, 'remove-column'],
+]) {
+  test(`table ${name} matches independently native-generated ranges`, async ({ page }) => {
+    await openStructural(page, name);
+    await selectRun(page.locator('#paper td').nth(cell).locator('[contenteditable]').first(), 0);
+    await page.locator('summary').click();
+    await page.locator(`#${button}`).click();
+    expect((await downloaded(page)).bookmarks).toEqual(serialized(structural(name)));
+    await page.locator('#undo').click();
+    await expect(page.locator('#paper td')).toHaveCount(4);
+    await page.locator('#redo').click();
+    expect((await downloaded(page)).bookmarks).toEqual(serialized(structural(name)));
+  });
+}
+
+test('native indented list splitting preserves levels and bookmark positions', async ({ page }) => {
+  await openStructural(page, 'listSplit');
+  await selectRun(page.locator('#paper li [contenteditable]').filter({ hasText: /^CD$/ }), 1);
+  await page.keyboard.press('Enter');
+  expect((await downloaded(page)).bookmarks).toEqual(serialized(structural('listSplit')));
+  await expect(page.locator('#paper ul li').nth(1)).toHaveCSS('margin-left', '32px');
+  await expect(page.locator('#paper ul li').nth(2)).toHaveCSS('margin-left', '32px');
+});
+
+test('partial cross-cell bookmarks and column insertion are visibly protected', async ({ page }) => {
+  await openStructural(page, 'boundary-table');
+  await expect(page.locator('#readonly-notice')).toContainText('Read-only');
+  await expect(page.locator('#paper [contenteditable]')).toHaveCount(0);
+  await page.locator('#file').setInputFiles({
+    name: 'table.4wp', mimeType: 'application/zip',
+    buffer: Buffer.from(zipSync({ 'Document.html': strToU8(structural('table').xml) })),
+  });
+  await expect(page.locator('#paper td [contenteditable]')).toHaveCount(4);
+  const before = await downloaded(page);
+  await selectRun(page.locator('#paper td [contenteditable]').first(), 0);
+  await page.locator('summary').click();
+  await page.locator('#add-column').click();
+  await expect(page.getByRole('alert')).toContainText('Adding columns');
   expect(await downloaded(page)).toEqual(before);
 });
 

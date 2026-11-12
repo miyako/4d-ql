@@ -90,10 +90,44 @@ committed native oracle contains 165 such primitive combinations; each gate run
 independently repeats them and compares native bookmark positions and selected
 text with editor exports after import/export/reopen.
 
-These observations do not establish table, nested-list, formula, floating-object,
-header/footer, section-break or generic `ranges` offsets. Bookmarked documents
-containing those structures, unsupported pictures or invalid/surrogate-splitting
-range endpoints remain read-only in the editor.
+### Table boundaries and native list indentation
+
+`wp_structure_probe` adds independently executed native operations and a
+partial-cross-boundary bookmark matrix to the same full-4D gate.
+
+- Within a table, each cell has **one counted terminator**, and each row has
+  **one additional terminator**. Paragraphs within a cell retain ordinary
+  paragraph separators. `BEFORE`, a 2-by-2 table of `AB/CD/EF/GH`, and `AFTER`
+  have 26 slots: `BEFORE\rAB\rCD\r\rEF\rGH\r\rAFTER`. The internal editor tape
+  uses `\r` for structural terminators; native `WP Get text` renders intervening
+  cells as tabs in a whole-table selection but as paragraph breaks in individual
+  cell selections. It is not a plain-text offset oracle.
+- Native row insertion between rows splices at the next row's start; appending
+  rows splices **before the preceding final row terminator**. Row deletion
+  removes all cells and that row's final terminator. Column deletion is a set
+  of separate cell-and-terminator deletions, replayed from the last row upward.
+- `WP Bookmark range` may return a normalized full-cell or rectangular selection
+  even when the serialized bookmark has different endpoints. Native mutations
+  can also normalize partially cross-cell ranges in command-dependent ways.
+  Keep raw serialized offsets authoritative. The editor supports same-cell and
+  row-separator bookmarks, collapsed ranges, bookmarks outside tables and ranges
+  enclosing a whole table. Partial cross-cell/table ranges stay read-only.
+  Column insertion remains protected for all bookmarked documents: native
+  collapsed-boundary and row-separator behavior differs from ordinary splices.
+- Native `wk list style type` plus `wk margin left` produces flat `li` siblings
+  with indentation/marker CSS, sometimes in adjacent `ul`/`ol` groups. Indented
+  levels add **no slots** beyond ordinary paragraph separators. Native
+  indentation, marker changes, typing, paste and paragraph split/join are
+  covered. In contrast, arbitrary nested HTML `li > ul/ol` is flattened by the
+  21.2 importer: `AB<ul><li>CD</li></ul>` becomes `ABCD ` in the parent item.
+  The editor does not silently convert such bookmarked structures or paste.
+
+Supported bookmarked tables are native-shaped, unmerged, rectangular direct
+`tr`/`td`/`th` structures with paragraph/list cell content and body paragraphs
+before and after. Other table forms, arbitrary nested HTML lists, newer
+multi-level style sheets, formula, floating-object, header/footer,
+section-break or generic `ranges` semantics are not established. Unsupported
+structures/pictures and invalid/surrogate-splitting endpoints remain protected.
 
 ## Breaks and sections
 

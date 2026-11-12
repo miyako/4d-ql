@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
+import { JSDOM } from 'jsdom';
+import { nativeMetadata } from '../src/native-ranges.js';
 
 const directory = resolve(process.argv[2]);
 assert.deepEqual(JSON.parse(await readFile(resolve(directory, 'Output/range-errors.json'), 'utf8')), []);
@@ -25,3 +27,18 @@ const result = {
 };
 await mkdir(new URL('../tests/fixtures/', import.meta.url), { recursive: true });
 await writeFile(new URL('../tests/fixtures/native-ranges.json', import.meta.url), JSON.stringify(result, null, 2) + '\n');
+const dom = new JSDOM();
+const archive = async (name, suffix) => {
+  const files = unzipSync(await readFile(resolve(directory, `Output/structure-${name}-${suffix}.4wp`)));
+  return strFromU8(Object.entries(files).find(([name]) => /\.html$/i.test(name))[1]);
+};
+const structures = [];
+for (const item of report.structures) {
+  if (item.name.startsWith('boundary-') && item.name !== 'boundary-table') continue;
+  const xml = await archive(item.name, 'original');
+  const after = new dom.window.DOMParser().parseFromString(await archive(item.name, 'native'), 'application/xhtml+xml');
+  structures.push({ name: item.name, xml, before: item.before, after: item.after, serialized: nativeMetadata(after).bookmarks });
+}
+assert.equal(structures.length, 33, 'Native table/list coverage');
+await writeFile(new URL('../tests/fixtures/native-structures.json', import.meta.url), JSON.stringify({ version: report.version, structures }) + '\n');
+dom.window.close();

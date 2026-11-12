@@ -70,7 +70,15 @@ The separate [4WP Editor web app](web-editor/README.md) provides experimental
 browser-based `.4wp` text and formatting editing, with preservation-aware
 import/export, six UI languages and light/dark appearance. It runs independently
 of the Swift Quick Look runtime; native layout and formula evaluation are not
-provided.
+provided. Selection-aware formatting, links, images, simple tables/lists,
+find/replace, undo/redo, local versions and reload recovery are included.
+Native bookmarks track supported edits; unsupported ranges and structures stay
+protected. See the editor README for the exact feature boundaries, local data
+limits and full-4D compatibility gate. The Pages demo follows `main`, not
+unmerged feature branches.
+The [roadmap/status table](web-editor/README.md#roadmap-and-status) separates
+available features, this in-progress increment, approved next steps and
+unscheduled proposals.
 
 4D View Pro previews are static spreadsheet grids and require neither 4D nor
 SpreadJS at preview time. Saved formula results are displayed without executing

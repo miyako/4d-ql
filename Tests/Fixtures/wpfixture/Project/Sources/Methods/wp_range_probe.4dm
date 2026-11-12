@@ -142,4 +142,5 @@ For ($start; 1; 10)
 		End for each
 	End for
 End for
+$report.structures:=wp_structure_probe
 $root.file("Output/range-report.json").setText(JSON Stringify($report; *))

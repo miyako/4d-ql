@@ -207,7 +207,7 @@ export class WriteProDocument {
       this.hasBookmarks = Object.keys(bookmarks).length > 0;
       if (this.hasBookmarks) {
         const body = this.nativeView();
-        if (Object.values(bookmarks).some(pair => !pair.every(offset => nativeBoundary(body.text, offset)))) throw new DocumentError('protected');
+        if (!body.supports(bookmarks) || Object.values(bookmarks).some(pair => !pair.every(offset => nativeBoundary(body.text, offset)))) throw new DocumentError('protected');
       }
     } catch (error) {
       if (!(error instanceof DocumentError) || error.code !== 'protected') throw error;
@@ -282,6 +282,7 @@ export class WriteProDocument {
       if (tracked) {
         const body = this.nativeView();
         if (body.text !== this.nativeTransaction.text ||
+          !body.supports(this.nativeTransaction.bookmarks) ||
           JSON.stringify(nativeMetadata(this.document).bookmarks) !== JSON.stringify(this.nativeTransaction.bookmarks)) throw new DocumentError('protected');
       }
       const after = this.serialize();
@@ -315,18 +316,29 @@ export class WriteProDocument {
     const body = this.nativeView();
     if (body.text !== transaction.text ||
       JSON.stringify(nativeMetadata(this.document).bookmarks) !== JSON.stringify(transaction.bookmarks)) throw new DocumentError('protected');
-    const start = range.startContainer ? body.point(range.startContainer, range.startOffset) : range.start;
-    const end = range.endContainer ? body.point(range.endContainer, range.endOffset) : range.end;
-    if (!nativeBoundary(body.text, start) || !nativeBoundary(body.text, end) || end < start) throw new DocumentError('protected');
+    const removals = Array.isArray(range) ? range : null;
+    const start = removals ? null : range.startContainer ? body.point(range.startContainer, range.startOffset) : range.start;
+    const end = removals ? null : range.endContainer ? body.point(range.endContainer, range.endOffset) : range.end;
+    const edits = removals || [{ start, end }];
+    if (!edits.length || edits.some((edit, index) => !nativeBoundary(body.text, edit.start) ||
+      !nativeBoundary(body.text, edit.end) || edit.end < edit.start ||
+      index > 0 && edit.end > edits[index - 1].start)) throw new DocumentError('protected');
     this.nativeDepth = true;
     let result;
     try { result = change(); }
     finally { this.nativeDepth = false; }
     const after = this.nativeView().text;
-    const length = after.length - body.text.length + end - start;
-    if (!after.isWellFormed() || length < 0 || after.slice(0, start - 1) !== body.text.slice(0, start - 1) ||
-      after.slice(start - 1 + length) !== body.text.slice(end - 1)) throw new DocumentError('protected');
-    transaction.bookmarks = spliceBookmarks(transaction.bookmarks, start, end, length);
+    if (removals) {
+      // Measure column deletion atomically, not its temporarily irregular rows.
+      const expected = removals.reduce((text, edit) => text.slice(0, edit.start - 1) + text.slice(edit.end - 1), body.text);
+      if (after !== expected) throw new DocumentError('protected');
+      for (const edit of removals) transaction.bookmarks = spliceBookmarks(transaction.bookmarks, edit.start, edit.end, 0);
+    } else {
+      const length = after.length - body.text.length + end - start;
+      if (!after.isWellFormed() || length < 0 || after.slice(0, start - 1) !== body.text.slice(0, start - 1) ||
+        after.slice(start - 1 + length) !== body.text.slice(end - 1)) throw new DocumentError('protected');
+      transaction.bookmarks = spliceBookmarks(transaction.bookmarks, start, end, length);
+    }
     transaction.text = after;
     writeBookmarks(transaction.meta, transaction.bookmarks);
     return result;
@@ -865,6 +877,7 @@ export class WriteProDocument {
     const column = [...row.children].indexOf(cell);
     if (action === 'removeRow' && rows.length === 1 || action === 'removeColumn' && row.children.length === 1) throw new DocumentError('tableMinimum');
     if (!['addRow', 'removeRow', 'addColumn', 'removeColumn'].includes(action)) throw new DocumentError('invalidDocument');
+    if (this.hasBookmarks && action === 'addColumn') throw new DocumentError('bookmarkColumn');
     this.mutate('table', () => {
       const emptyCell = template => {
         const fresh = template.cloneNode(false);
@@ -876,13 +889,23 @@ export class WriteProDocument {
         return fresh;
       };
       if (action === 'addRow') {
-        const fresh = this.document.createElementNS(XHTML, 'tr');
-        for (const old of row.children) fresh.append(emptyCell(old));
-        row.after(fresh);
+        // Native append inserts before the previous final row terminator.
+        const offset = this.nativeOffset(row, true) - (row === rows.at(-1) ? 1 : 0);
+        this.nativeChange({ start: offset, end: offset }, () => {
+          const fresh = this.document.createElementNS(XHTML, 'tr');
+          for (const old of row.children) fresh.append(emptyCell(old));
+          row.after(fresh);
+        });
       }
-      if (action === 'removeRow') row.remove();
+      if (action === 'removeRow') this.nativeChange({
+        start: this.nativeOffset(row), end: this.nativeOffset(row, true),
+      }, () => row.remove());
       if (action === 'addColumn') for (const item of rows) item.children[column].after(emptyCell(item.children[column]));
-      if (action === 'removeColumn') for (const item of rows) item.children[column].remove();
+      if (action === 'removeColumn') {
+        const removed = rows.reverse().map(item => item.children[column]);
+        const removals = removed.map(cell => ({ start: this.nativeOffset(cell), end: this.nativeOffset(cell, true) }));
+        this.nativeChange(removals, () => { for (const cell of removed) cell.remove(); });
+      }
     });
   }
 
@@ -891,27 +914,30 @@ export class WriteProDocument {
     if (this.readOnly || after && (after.parentElement.localName !== 'body' || this.protected(after))) throw new DocumentError('protected');
     if (!Number.isInteger(rowCount) || !Number.isInteger(columnCount) || rowCount < 1 || rowCount > 20 || columnCount < 1 || columnCount > 10) throw new DocumentError('tableSize');
     this.mutate('table', () => {
-      const table = this.document.createElementNS(XHTML, 'table');
-      table.setAttribute('style', 'border-collapse:collapse;width:100%');
-      for (let r = 0; r < rowCount; r++) {
-        const row = this.document.createElementNS(XHTML, 'tr');
-        for (let c = 0; c < columnCount; c++) {
-          const cell = this.document.createElementNS(XHTML, 'td');
-          cell.setAttribute('style', 'border:1pt solid #A8B9CD;padding:4pt');
-          const paragraph = this.document.createElementNS(XHTML, 'p');
-          paragraph.setAttribute('class', 'Normal');
-          paragraph.textContent = '\u200b';
-          cell.append(paragraph);
-          row.append(cell);
+      const offset = this.nativeOffset(after, true);
+      return this.nativeChange({ start: offset, end: offset }, () => {
+        const table = this.document.createElementNS(XHTML, 'table');
+        table.setAttribute('style', 'border-collapse:collapse;width:100%');
+        for (let r = 0; r < rowCount; r++) {
+          const row = this.document.createElementNS(XHTML, 'tr');
+          for (let c = 0; c < columnCount; c++) {
+            const cell = this.document.createElementNS(XHTML, 'td');
+            cell.setAttribute('style', 'border:1pt solid #A8B9CD;padding:4pt');
+            const paragraph = this.document.createElementNS(XHTML, 'p');
+            paragraph.setAttribute('class', 'Normal');
+            paragraph.textContent = '\u200b';
+            cell.append(paragraph);
+            row.append(cell);
+          }
+          table.append(row);
         }
-        table.append(row);
-      }
-      if (after) after.after(table);
-      else this.document.querySelector('body').append(table);
-      const paragraph = this.document.createElementNS(XHTML, 'p');
-      paragraph.setAttribute('class', 'Normal');
-      paragraph.textContent = '\u200b';
-      table.after(paragraph);
+        if (after) after.after(table);
+        else this.document.querySelector('body').append(table);
+        const paragraph = this.document.createElementNS(XHTML, 'p');
+        paragraph.setAttribute('class', 'Normal');
+        paragraph.textContent = '\u200b';
+        table.after(paragraph);
+      });
     });
   }
 
