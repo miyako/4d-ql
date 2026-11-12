@@ -1,5 +1,6 @@
 import './style.css';
 import { WriteProDocument } from './document.js';
+import { createExampleDocument } from './example.js';
 import { DocumentError, MAX_ARCHIVE } from './archive.js';
 import { languages, messages, detectLanguage } from './i18n.js';
 
@@ -13,7 +14,7 @@ try {
 } catch (error) {
   console.warn('Preferences unavailable', error);
 }
-let model = WriteProDocument.create(messages[locale].untitled);
+let model = createExampleDocument();
 let saved = model.serialize();
 let active = null;
 let selection = null;

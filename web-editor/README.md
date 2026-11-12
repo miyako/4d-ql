@@ -36,7 +36,14 @@ domain. Deploy the entire `dist/` directory, including its license notices.
 
 ## Editing
 
-Open or drop a `.4wp`, or start a new document. Click a text run to edit;
+The app opens with **North Room**, a fictional concept brief for a neighbourhood
+reading room. Its editorial typography, inline emphasis, pull quote and small
+project table are editable document content, not a feature checklist. The
+English example is independent of the UI language and can be downloaded as a
+`.4wp`. It starts without unsaved changes; **New document** still opens a blank
+page.
+
+Open or drop your own `.4wp`, or start a new document. Click a text run to edit;
 select text **within one run** to apply bold, italic, underline, font, size or
 color. With no selection, formatting applies to the whole active run. Runs
 correspond to the original XML text nodes, so adjacent runs can have different

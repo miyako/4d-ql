@@ -9,6 +9,7 @@ test('create, format a selection, undo, redo, download and reopen', async ({ pag
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
   let run = page.locator('[contenteditable]').first();
   await run.fill('Hello world');
   await expect(page.locator('#save-state')).toHaveText('Unsaved changes');
@@ -65,6 +66,7 @@ test('six languages, appearance persistence and mobile layout', async ({ page })
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
   await page.locator('[contenteditable]').first().fill('Mobile text');
   await page.getByRole('button', { name: 'Add paragraph', exact: true }).click();
   await expect(page.locator('#paper p')).toHaveCount(2);
@@ -72,6 +74,7 @@ test('six languages, appearance persistence and mobile layout', async ({ page })
 
 test('line breaks and collapsed-caret formatting retain the complete run', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
   const run = page.locator('[contenteditable]').first();
   await run.fill('A paragraph');
   await run.press('ArrowLeft');
@@ -87,6 +90,7 @@ test('line breaks and collapsed-caret formatting retain the complete run', async
 
 test('whole-run formatting toggles off and blank paper accepts focus', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
   await page.locator('#paper').click({ position: { x: 150, y: 170 } });
   await expect(page.locator('[contenteditable]').first()).toBeFocused();
   await page.keyboard.type('Format me');
@@ -100,4 +104,31 @@ test('whole-run formatting toggles off and blank paper accepts focus', async ({ 
     await page.getByRole('button', { name, exact: true }).click();
     expect(await page.locator('[contenteditable]').first().evaluate((element, prop) => getComputedStyle(element)[prop], property)).toBe(off);
   }
+});
+
+test('preloaded brief is editable and exports as a complete native document', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#document-title')).toHaveText('North Room - concept brief');
+  await expect(page.locator('#save-state')).toHaveText('Ready');
+  await expect(page.locator('#paper')).toContainText('slower afternoons.');
+  await expect(page.locator('#paper .preserved-object')).toHaveCount(0);
+  await expect(page.locator('#paper table tr')).toHaveCount(3);
+  const opening = page.locator('#paper table [contenteditable]').last();
+  await opening.fill('Six weeks to welcome our first readers');
+  await expect(page.locator('#save-state')).toHaveText('Unsaved changes');
+  const pending = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download .4wp', exact: true }).click();
+  const download = await pending;
+  expect(download.suggestedFilename()).toBe('North Room - concept brief.4wp');
+  const bytes = readFileSync(await download.path());
+  const xml = strFromU8(unzipSync(bytes)['North Room.html']);
+  expect(xml).toContain('-d4-version:2.20');
+  expect(xml).toContain('Six weeks to welcome our first readers');
+  await page.locator('#file').setInputFiles({ name: 'brief.4wp', mimeType: 'application/zip', buffer: bytes });
+  await expect(page.locator('#paper table [contenteditable]').last()).toHaveText('Six weeks to welcome our first readers');
+  await expect(page.locator('#paper')).toContainText('slower afternoons.');
+  await expect(page.locator('#save-state')).toHaveText('Ready');
+  await page.getByRole('button', { name: 'New document', exact: true }).click();
+  await expect(page.locator('#document-title')).toHaveText('Untitled');
+  await expect(page.locator('#paper table')).toHaveCount(0);
 });
