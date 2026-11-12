@@ -125,7 +125,7 @@ partial-cross-boundary bookmark matrix to the same full-4D gate.
 Supported bookmarked tables are native-shaped, unmerged, rectangular direct
 `tr`/`td`/`th` structures with paragraph/list cell content and body paragraphs
 before and after. Other table forms, arbitrary nested HTML lists, newer
-multi-level style sheets, formula, floating-object, header/footer,
+multi-level style sheets, unsupported formula forms, floating-object, header/footer,
 section-break or generic `ranges` semantics are not established. Unsupported
 structures/pictures and invalid/surrogate-splitting endpoints remain protected.
 
@@ -193,6 +193,51 @@ data source with `-d4-ref` on `table` and template cells with formulas on
 `This.item`; anchored pictures use `-d4-ref` with an empty `src`. The preview
 detokenizes the source and computes only `This.pageNumber`, `This.pageCount`,
 `This.pageIndex`, `This.sectionName` and `This.sectionIndex`.
+
+### Web editor formula evidence (full 4D F0012102)
+
+The web editor does **not** use the preview's detokenization or sample
+computations. `wp_formula_probe`, executed before relaxing its range guards,
+independently creates fourteen formula/source/cache variants and performs
+twenty surrounding operations on each of twelve supported text variants.
+
+- A text formula occupies **one native UTF-16 slot**, regardless of source
+  or cached textual length. `AB<formula>CD` has native range `[1,6]`.
+  The editor represents the atom with U+FFFC, never the projected card's
+  `textContent` or cached-value length.
+- Native `WP COMPUTE FORMULAS` followed by `.4wp` export still writes NBSP for
+  text, empty, NBSP, zero and Unicode results. Explicit `visibleReferences:false`
+  and `recomputeFormulas:false` export options do not supply a distinguishable
+  cache. Do not label NBSP as a computed/saved value, and never infer results
+  from source tokens. Empty and whitespace-only caches cannot be distinguished
+  safely from placeholders.
+- Native import of a text reference containing supplied nested-span `SAVED`
+  or `0` preserves that text in subsequent `.4wp` exports (the styling spans
+  can be normalized onto the reference). Supplied empty/NBSP content remains
+  indistinguishable from the native placeholder. These fixtures demonstrate
+  retained saved content, **not** native computation producing a saved cache.
+- Insertion before, at either formula boundary and after; adjacent deletion
+  and delete-then-insert replacement; paragraph split/join on either side and
+  exactly at both formula boundaries;
+  line breaks, paste and text formatting preserve the formula and follow the
+  established native bookmark affinities. Formula-enclosing, formula-slot,
+  crossing-start/end and collapsed bookmarks are included.
+- Quoted `-d4-ref` and optional `-d4-ref-name` on inline text spans are the
+  scoped editable-surroundings form. The source remains native-tokenized,
+  displayed as inert text. Ordinary nested formatting spans may hold saved
+  text; nested references or nontext results remain protected.
+- Anchored picture references and table data sources are separately created
+  by the native probe but remain unsupported for surrounding range editing.
+  `-d4-ref-url` compiled resources are preserved opaquely; their preservation
+  is covered by inert browser/model resource tests, not certified native
+  compiled-source decoding. Headers/footers, generic/malformed ranges, hidden
+  structures and all previous complex-table guards remain in force.
+
+The full gate compares 497 formula originals/model/browser/recovery archives
+with independent native source/cache, text, raw bookmark pairs, getter ranges,
+metadata and import/export/reopen results. Formula subtrees and resource bytes
+must remain unchanged in editor downloads; transactions that cross or alter
+an atom roll back. See the [editor's exact limits](../web-editor/README.md#formula-aware-display-unmerged-increment).
 
 ## Pictures, text boxes and tables
 

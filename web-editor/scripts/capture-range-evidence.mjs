@@ -41,4 +41,16 @@ for (const item of report.structures) {
 }
 assert.equal(structures.length, 33, 'Native table/list coverage');
 await writeFile(new URL('../tests/fixtures/native-structures.json', import.meta.url), JSON.stringify({ version: report.version, structures }) + '\n');
+assert.equal(report.formulas.length, 14, 'Native formula coverage');
+const variants = [];
+const stats = value => ({ text: value.text, bookmarks: pairs(value.bookmarks), end: value.end });
+for (const item of report.formulas) {
+  const files = unzipSync(await readFile(resolve(directory, `Output/formula-${item.name}-original.4wp`)));
+  const xml = strFromU8(Object.entries(files).find(([name]) => /\.html$/i.test(name))[1]).replace(/^\ufeff/, '');
+  variants.push({
+    name: item.name, xml, before: stats(item.before), formulas: item.native.formulas,
+    operations: item.operations.map(operation => ({ name: operation.name, after: stats(operation.after) })),
+  });
+}
+await writeFile(new URL('../tests/fixtures/native-formulas.json', import.meta.url), JSON.stringify({ version: report.version, variants }) + '\n');
 dom.window.close();

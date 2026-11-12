@@ -202,12 +202,22 @@ export class WriteProDocument {
     this.styles = rules(this.document);
     this.readOnly = false;
     this.hasBookmarks = false;
+    this.formulaTracking = false;
     try {
       const { bookmarks } = nativeMetadata(this.document);
       this.hasBookmarks = Object.keys(bookmarks).length > 0;
       if (this.hasBookmarks) {
         const body = this.nativeView();
         if (!body.supports(bookmarks) || Object.values(bookmarks).some(pair => !pair.every(offset => nativeBoundary(body.text, offset)))) throw new DocumentError('protected');
+        this.formulaTracking = this.formulaElements().length > 0;
+      }
+      if (!this.hasBookmarks && this.formulaElements().length) {
+        try {
+          this.nativeView();
+          this.formulaTracking = true;
+        } catch (error) {
+          if (!(error instanceof DocumentError) || error.code !== 'protected') throw error;
+        }
       }
     } catch (error) {
       if (!(error instanceof DocumentError) || error.code !== 'protected') throw error;
@@ -229,11 +239,43 @@ export class WriteProDocument {
     return Object.assign(values, declarations(element.getAttribute('style') || ''));
   }
 
-  protected(element) {
+  formula(element) {
+    const values = this.values(element);
+    if (!Object.keys(values).some(key => /^-d4-ref/.test(key))) return null;
+    const string = property => {
+      if (!values[property]) return null;
+      try {
+        const nodes = css.parse(values[property], { context: 'value' }).children.toArray();
+        return nodes.length === 1 && nodes[0].type === 'String' ? nodes[0].value : null;
+      } catch { return null; }
+    };
+    const source = string('-d4-ref');
+    const name = string('-d4-ref-name');
+    const textual = node => [...node.childNodes].every(child => child.nodeType === 3 ||
+      child.nodeType === 1 && child.namespaceURI === XHTML && child.localName === 'span' &&
+      ![...child.attributes].some(attribute => attribute.namespaceURI && attribute.namespaceURI !== 'http://www.w3.org/XML/1998/namespace') &&
+      !Object.keys(this.values(child)).some(key => /^-d4-(ref|anchor|section|protected)/.test(key)) &&
+      !['none'].includes(this.values(child).display) && !['hidden', 'collapse'].includes(this.values(child).visibility) &&
+      textual(child));
+    const supported = element.namespaceURI === XHTML && element.localName === 'span' && source !== null && source.trim().length > 0 &&
+      !Object.keys(values).some(key => /^-d4-ref/.test(key) && !['-d4-ref', '-d4-ref-name'].includes(key)) &&
+      textual(element);
+    const text = supported ? element.textContent : '';
+    return { source, name, supported, value: text && !/^[\s\u200b]*$/u.test(text) ? text : null };
+  }
+
+  formulaElements() {
+    return [...this.document.querySelectorAll('body *')].filter(element => this.formula(element));
+  }
+
+  get tracksNativeEdits() { return this.hasBookmarks || this.formulaTracking; }
+
+  protected(element, allowFormulas = false) {
     for (let current = element; current?.nodeType === 1; current = current.parentElement) {
       const values = this.values(current);
       if (current.namespaceURI !== XHTML || !SAFE_TAGS.has(current.localName) && current.localName !== 'body' ||
-        values['-d4-protected'] === 'true' || Object.keys(values).some(key => /^-d4-(ref|anchor)/.test(key)) ||
+        values['-d4-protected'] === 'true' || Object.keys(values).some(key =>
+          /^-d4-anchor/.test(key) || /^-d4-ref/.test(key) && !(allowFormulas && this.formula(current)?.supported)) ||
         /section\d.*(Header|Footer)/i.test(current.getAttribute('class') || '') ||
         ['hidden', 'collapse'].includes(values.visibility) || values.display === 'none') return true;
       if (current.localName === 'body') break;
@@ -273,12 +315,18 @@ export class WriteProDocument {
     try {
       if (!restore && this.readOnly) throw new DocumentError('protected');
       const metadata = restore ? { bookmarks: {} } : nativeMetadata(this.document);
-      const tracked = !restore && (Object.keys(metadata.bookmarks).length > 0 || label === 'bookmark');
+      const objects = restore ? [] : this.formulaElements().map(node => ({ node, xml: node.outerHTML }));
+      const tracked = !restore && (this.tracksNativeEdits || label === 'bookmark');
       this.nativeTransaction = tracked ? {
         text: this.nativeView().text,
         bookmarks: metadata.bookmarks, meta: metadata.meta,
       } : null;
       const result = change();
+      if (!restore) {
+        const afterObjects = this.formulaElements();
+        if (afterObjects.length !== objects.length || objects.some(({ node, xml }, index) =>
+          afterObjects[index] !== node || node.outerHTML !== xml)) throw new DocumentError('protected');
+      }
       if (tracked) {
         const body = this.nativeView();
         if (body.text !== this.nativeTransaction.text ||
@@ -308,7 +356,8 @@ export class WriteProDocument {
   }
 
   nativeView() {
-    return nativeBody(this.document, element => this.values(element), image => this.imageSource(image));
+    return nativeBody(this.document, element => this.values(element), image => this.imageSource(image),
+      element => Boolean(this.formula(element)?.supported));
   }
 
   bookmarks() {
@@ -344,7 +393,7 @@ export class WriteProDocument {
         transaction.meta.setAttribute('name', 'bookmarks');
         this.document.querySelector('head').append(transaction.meta);
       }
-      writeBookmarks(transaction.meta, transaction.bookmarks);
+      if (transaction.meta) writeBookmarks(transaction.meta, transaction.bookmarks);
     });
   }
 
@@ -421,7 +470,7 @@ export class WriteProDocument {
       transaction.bookmarks = spliceBookmarks(transaction.bookmarks, start, end, length);
     }
     transaction.text = after;
-    writeBookmarks(transaction.meta, transaction.bookmarks);
+    if (transaction.meta) writeBookmarks(transaction.meta, transaction.bookmarks);
     return result;
   }
 
@@ -567,10 +616,10 @@ export class WriteProDocument {
     return range;
   }
 
-  guardRange(range) {
+  guardRange(range, allowFormulas = false) {
     if (this.readOnly) throw new DocumentError('protected');
     for (const element of this.document.querySelectorAll('body *')) {
-      if (range.intersectsNode(element) && this.protected(element)) throw new DocumentError('protected');
+      if (range.intersectsNode(element) && this.protected(element, allowFormulas)) throw new DocumentError('protected');
       if (range.intersectsNode(element) && element.localName === 'img' && !this.imageSource(element)) throw new DocumentError('protected');
     }
   }
@@ -665,7 +714,7 @@ export class WriteProDocument {
     });
   }
 
-  structureSafe(block) {
+  structureSafe(block, allowFormulas = false) {
     if (!block || this.protected(block)) throw new DocumentError('protected');
     const values = this.values(block);
     if (values['-d4-section-break-after'] || values['page-break-after'] === 'always' || values['break-after'] === 'column') {
@@ -673,7 +722,7 @@ export class WriteProDocument {
     }
     const range = this.document.createRange();
     range.selectNodeContents(block);
-    this.guardRange(range);
+    this.guardRange(range, allowFormulas);
   }
 
   replaceRange(range, content) {
@@ -690,7 +739,7 @@ export class WriteProDocument {
       const siblings = [...first.parentElement.children];
       for (const block of siblings.slice(siblings.indexOf(first), siblings.indexOf(last) + 1)) {
         if (block.localName !== first.localName) throw new DocumentError('structuralSelection');
-        this.structureSafe(block);
+        this.structureSafe(block, true);
       }
     }
     if (range.collapsed && range.startContainer.nodeType === 3 && range.startContainer.data === '\u200b') {
@@ -725,13 +774,13 @@ export class WriteProDocument {
     return this.mutate(label, () => {
       this.replaceRange(range, fragment);
       return { node, offset: node.length };
-    }, label === 'typing' ? this.hasBookmarks ? 'range-typing' : node : null);
+    }, label === 'typing' ? this.tracksNativeEdits ? 'range-typing' : node : null);
   }
 
   splitParagraph(selection, lineBreak = false) {
     const range = this.range(selection);
     const block = this.runs[selection.startRun].parentElement.closest('p,li');
-    this.structureSafe(block);
+    this.structureSafe(block, true);
     if (lineBreak) return this.replaceText(selection, '\n', 'paragraph');
     if (block.localName === 'li' && !block.textContent.replace(/\u200b/g, '').trim() && !block.querySelector('img,br,ul,ol')) {
       const node = this.runs[selection.startRun];
@@ -755,6 +804,11 @@ export class WriteProDocument {
       if (!block.textContent && !block.querySelector('img,br')) block.textContent = '\u200b';
       if (!next.textContent && !next.querySelector('img,br')) next.textContent = '\u200b';
       block.after(next);
+      if ([...next.querySelectorAll('span')].some(element => this.formula(element)?.supported)) {
+        const node = this.document.createTextNode('');
+        next.prepend(node);
+        return { node, offset: 0 };
+      }
       const walker = this.document.createTreeWalker(next, 4);
       const node = walker.nextNode();
       if (!node) { next.append(this.document.createTextNode('\u200b')); return { node: next.lastChild, offset: 0 }; }
@@ -767,8 +821,8 @@ export class WriteProDocument {
     const block = node?.parentElement.closest('p,li');
     const other = backward ? block?.previousElementSibling : block?.nextElementSibling;
     if (!other || other.localName !== block.localName) return null;
-    this.structureSafe(block);
-    this.structureSafe(other);
+    this.structureSafe(block, true);
+    this.structureSafe(other, true);
     return this.mutate('paragraph', () => {
       const first = backward ? other : block;
       const last = backward ? block : other;
@@ -798,6 +852,7 @@ export class WriteProDocument {
       gap.setStart(node, node.length);
       gap.setEnd(sameBlock ? other : block, sameBlock ? 0 : block.childNodes.length);
     }
+    this.guardRange(gap);
     const objects = [...block.querySelectorAll('img,br')].filter(element => gap.intersectsNode(element));
     const object = backward ? objects.at(-1) : objects[0];
     if (!object) return null;
@@ -817,7 +872,7 @@ export class WriteProDocument {
     const fragment = cleanPaste(html, plain, this.document);
     const range = this.range(selection);
     const block = this.runs[selection.startRun].parentElement.closest('p,li');
-    this.structureSafe(block);
+    this.structureSafe(block, true);
     return this.mutate('paste', () => this.nativeChange(range, () => {
       const marker = this.document.createTextNode('');
       this.replaceRange(range, marker);
@@ -1101,6 +1156,7 @@ export class WriteProDocument {
   find(query, caseSensitive = false) {
     if (!query) return [];
     const matches = [];
+    const formulas = this.formulaElements();
     const grouped = new Map();
     this.runs.forEach((node, index) => {
       const block = node.parentElement.closest('p,li');
@@ -1121,7 +1177,14 @@ export class WriteProDocument {
           if (offset + match[0].length <= start + item.node.length) { last = { index: item.index, offset: offset + match[0].length - start }; break; }
           start += item.node.length;
         }
-        if (first && last) matches.push({ startRun: first.index, start: first.offset, endRun: last.index, end: last.offset });
+        if (first && last) {
+          const range = this.document.createRange();
+          range.setStart(this.runs[first.index], first.offset);
+          range.setEnd(this.runs[last.index], last.offset);
+          if (!formulas.some(element => range.intersectsNode(element))) {
+            matches.push({ startRun: first.index, start: first.offset, endRun: last.index, end: last.offset });
+          }
+        }
         if (matches.length > 1000) throw new DocumentError('tooManyMatches');
       }
     }
@@ -1206,6 +1269,11 @@ export class WriteProDocument {
       if (element.previousSibling?.nodeType !== 3) element.before(this.document.createTextNode(''));
       if (element.nextSibling?.nodeType !== 3) element.after(this.document.createTextNode(''));
     }
+    for (const element of this.formulaElements()) {
+      if (!this.formula(element).supported || this.protected(element.parentElement) || !element.closest('p,li')) continue;
+      if (element.previousSibling?.nodeType !== 3) element.before(this.document.createTextNode(''));
+      if (element.nextSibling?.nodeType !== 3) element.after(this.document.createTextNode(''));
+    }
     const project = (source, target, locked = false, inBlock = false, decoration = '', background = '') => {
       for (const child of source.childNodes) {
         if (child.nodeType === 3) {
@@ -1235,6 +1303,29 @@ export class WriteProDocument {
         if (child.nodeType !== 1) continue;
         const tag = child.localName;
         const values = this.values(child);
+        const formula = this.formula(child);
+        if (formula) {
+          const badge = document.createElement('span');
+          this.projection.set(child, badge);
+          badge.className = 'preserved-object formula-object';
+          badge.setAttribute('role', 'group');
+          badge.setAttribute('aria-label', labels.formulaReadonly);
+          badge.tabIndex = 0;
+          const line = (label, text, className) => {
+            const row = document.createElement('span');
+            row.className = className;
+            const heading = document.createElement('strong');
+            heading.textContent = `${label}: `;
+            row.append(heading, document.createTextNode(text));
+            badge.append(row);
+          };
+          line(labels.formulaReadonly, formula.name || labels.formula);
+          line(labels.formulaValue, formula.value ?? labels.formulaUnavailable, 'formula-value');
+          line(labels.formulaSource, formula.source ?? labels.formulaSourceUnavailable, 'formula-source');
+          if (!formula.supported) line(labels.formula, labels.formulaUnsupported, 'formula-limit');
+          target.append(badge);
+          continue;
+        }
         const hidden = values.display === 'none' || values.visibility === 'hidden' ||
           /section\d.*(Header|Footer)/i.test(child.getAttribute('class') || '');
         if (hidden) {
