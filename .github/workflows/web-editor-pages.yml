@@ -1,0 +1,57 @@
+name: Publish web editor demo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web-editor/**'
+      - 'Tests/FourDFileKitTests/Fixtures/WritePro/**'
+      - 'LICENSE'
+      - '.github/workflows/web-editor-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    defaults:
+      run:
+        working-directory: web-editor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web-editor/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - uses: actions/configure-pages@v5
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web-editor/dist
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy demo
+        id: deployment
+        uses: actions/deploy-pages@v4

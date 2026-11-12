@@ -20,6 +20,20 @@ production build locally. Opening `index.html` directly with `file://` is not
 supported. Dependencies are bundled locally, not loaded from a CDN.
 Production builds include their license texts in `THIRD_PARTY_NOTICES.txt`.
 
+## GitHub Pages demo
+
+The [Publish web editor demo workflow](../.github/workflows/web-editor-pages.yml)
+tests and builds the application, uploads `web-editor/dist`, and deploys it to
+GitHub Pages on relevant pushes to `main` or a manual run from `main`. Pull
+requests do not publish a demo. Deployment uses the `github-pages` environment
+and GitHub's OIDC authentication, with no deployment secrets.
+
+After merging the workflow, select **Settings > Pages > Build and deployment >
+Source: GitHub Actions** in the repository, then run **Publish web editor demo**.
+The default project site URL is `https://miyako.github.io/4d-ql/`. Vite emits
+relative asset URLs so the same build works at that project path or a custom
+domain. Deploy the entire `dist/` directory, including its license notices.
+
 ## Editing
 
 Open or drop a `.4wp`, or start a new document. Click a text run to edit;

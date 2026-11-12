@@ -31,8 +31,7 @@ button.primary { background: var(--accent); color: var(--surface); border-color:
 button.primary:hover { color: var(--accent); }
 .app-header { padding: 28px 36px; display: flex; justify-content: space-between; gap: 24px; align-items: center; border-bottom: 1px solid var(--border); background: var(--surface); }
 .brand { display: flex; align-items: center; gap: 14px; }
-.brand-mark { width: 48px; height: 48px; display: grid; place-content: center; background: var(--accent); color: var(--surface); border-radius: 14px; font: italic 28px Georgia, serif; position: relative; }
-.brand-mark span { position: absolute; bottom: 5px; right: 7px; font-size: 15px; }
+.brand-mark { width: 48px; height: 48px; display: grid; place-content: center; background: var(--accent); color: var(--surface); border-radius: 14px; font: italic 28px Georgia, serif; }
 h1 { margin: 0 0 5px; font-size: 21px; letter-spacing: -.5px; white-space: nowrap; }
 .brand p { margin: 0; color: var(--muted); font-size: 13px; }
 .pill { font-size: 10px; font-weight: 500; letter-spacing: .2px; padding: 4px 7px; margin-left: 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--muted); vertical-align: middle; }

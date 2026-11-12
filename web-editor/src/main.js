@@ -24,7 +24,7 @@ const t = key => messages[locale][key];
 
 document.querySelector('#app').innerHTML = `
   <header class="app-header">
-    <div class="brand"><div class="brand-mark" aria-hidden="true">W<span>p</span></div>
+    <div class="brand"><div class="brand-mark" aria-hidden="true">W</div>
       <div><h1>4WP Studio <span class="pill" data-i18n="experimental"></span></h1><p data-i18n="tagline"></p></div>
     </div>
     <div class="file-actions">

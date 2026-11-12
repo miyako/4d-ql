@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  base: './',
   plugins: [{
     name: 'distribution-licenses',
     generateBundle() {
