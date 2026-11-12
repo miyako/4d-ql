@@ -134,6 +134,31 @@ export function nativeBody(document, values, imageSource = image => /^data:image
       if (!result) fail();
       return result;
     },
+    locate(offset, forward = true) {
+      if (!nativeBoundary(text, offset)) fail();
+      const candidates = [...positions].filter(([node, position]) => node.nodeType === 3 &&
+        offset >= position.start && offset <= position.end);
+      const match = candidates.find(([, position]) => forward ? offset < position.end : offset > position.start) || candidates[0];
+      if (match) {
+        const [node, position] = match;
+        let index = 0;
+        let counted = position.start;
+        while (index < node.length && counted < offset) {
+          if (node.data[index] !== '\u200b') counted++;
+          index++;
+        }
+        return { node, offset: index };
+      }
+      for (const [node, position] of positions) {
+        const index = position.offsets?.indexOf(offset);
+        if (index >= 0) return { node, offset: index };
+        if (node.nodeType === 1 && ['br', 'img'].includes(node.localName) &&
+          (offset === position.start || offset === position.end)) {
+          return { node: node.parentNode, offset: [...node.parentNode.childNodes].indexOf(node) + Number(offset === position.end) };
+        }
+      }
+      fail();
+    },
   };
 }
 
@@ -154,6 +179,9 @@ export function nativeMetadata(document) {
     Object.values(data).some(pair => !Array.isArray(pair) || pair.length !== 2 ||
       !pair.every(Number.isSafeInteger) || pair[0] < 0 || pair[1] < pair[0] ||
       pair[1] >= Number.MAX_SAFE_INTEGER)) throw new DocumentError('protected');
+  // JSON.parse alone would silently discard duplicate (including escaped) keys.
+  const names = [...meta.getAttribute('content').matchAll(/("(?:\\.|[^"\\])*")\s*:/g)].map(match => JSON.parse(match[1]));
+  if (new Set(names).size !== names.length || names.length !== Object.keys(data).length) throw new DocumentError('protected');
   return { meta, bookmarks: Object.fromEntries(Object.entries(data).map(([name, pair]) => [name, pair.map(offset => offset + 1)])) };
 }
 

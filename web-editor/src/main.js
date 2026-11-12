@@ -35,6 +35,9 @@ let composition = null;
 let draggedImage = null;
 let draftStatus = null;
 let plainPaste = false;
+let currentBookmark = null;
+let bookmarkHighlight = null;
+let bookmarkSelection = null;
 const history = new LocalHistory();
 const t = key => messages[locale][key];
 
@@ -77,6 +80,7 @@ document.querySelector('#app').innerHTML = `
         <button id="bullets" data-label="bullets">•</button><button id="numbering" data-label="numbering">1.</button>
         <button id="outdent" data-label="outdent">⇤</button><button id="indent" data-label="indent">⇥</button>
         <button id="find-toggle" data-i18n="find" aria-expanded="false" aria-controls="find-panel"></button>
+        <button id="bookmarks-toggle" data-i18n="bookmarks" aria-expanded="false" aria-controls="bookmarks-panel"></button>
       </div>
       <details class="editing-tools"><summary data-i18n="moreTools"></summary><div class="tool-groups">
         <label><span data-i18n="spacing"></span><select id="spacing"><option value="0">0 pt</option><option value="6">6 pt</option><option value="12">12 pt</option><option value="18">18 pt</option><option value="24">24 pt</option></select></label>
@@ -107,6 +111,17 @@ document.querySelector('#app').innerHTML = `
       <section id="history-panel" class="tool-panel history-panel" hidden>
         <p data-i18n="historyHelp"></p><label><span data-i18n="versionName"></span><input id="version-name" type="text" maxlength="100"></label>
         <button id="save-version" data-i18n="saveVersion"></button><ol id="version-list"></ol>
+      </section>
+      <section id="bookmarks-panel" class="tool-panel bookmarks-panel" aria-labelledby="bookmarks-heading" hidden>
+        <h3 id="bookmarks-heading" data-i18n="bookmarks"></h3><p data-i18n="bookmarkHelp"></p>
+        <form id="bookmark-form">
+          <label><span data-i18n="bookmarkName"></span><input id="bookmark-name" type="text" autocomplete="off" spellcheck="false" aria-describedby="bookmark-name-help"></label>
+          <button id="bookmark-create" type="submit" data-i18n="bookmarkCreate"></button>
+          <button id="bookmark-rename" type="button" data-i18n="bookmarkRename" disabled></button>
+          <button id="bookmark-delete" type="button" data-i18n="bookmarkDelete" disabled></button>
+        </form>
+        <p id="bookmark-name-help" data-i18n="bookmarkNameHelp"></p>
+        <p id="bookmark-status" role="status"></p><ul id="bookmark-list" data-label="bookmarks"></ul>
       </section>
       <p id="recovery-notice" class="notice" data-i18n="recovered" hidden></p>
       <div id="error" class="notice error" role="alert" hidden><strong data-i18n="errorTitle"></strong><p id="error-message"></p><button id="dismiss-error" data-i18n="close"></button></div>
@@ -150,6 +165,9 @@ function updateStatus() {
   const editable = active !== null && model.runs[active] && !model.protected(model.runs[active].parentElement);
   for (const id of ['bold', 'italic', 'underline', 'strike', 'font', 'size', 'color', 'highlight', 'link-toggle', 'apply-link', 'remove-link', 'left', 'center', 'right', 'paragraph-style', 'bullets', 'numbering', 'outdent', 'indent', 'spacing', 'line-height']) $(id).disabled = !editable;
   $('paste-plain').disabled = model.readOnly;
+  $('bookmark-create').disabled = model.readOnly || !bookmarkSelection;
+  $('bookmark-rename').disabled = model.readOnly || currentBookmark === null;
+  $('bookmark-delete').disabled = model.readOnly || currentBookmark === null;
   $('selection-state').hidden = true;
   const block = active !== null ? $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-block]') : null;
   const sourceBlock = block ? model.blocks[Number(block.dataset.block)] : null;
@@ -237,6 +255,8 @@ function updateStatus() {
 }
 
 function render(caret = null) {
+  clearBookmarkHighlight();
+  bookmarkSelection = null;
   active = null;
   selection = null;
   selectedImage = null;
@@ -253,6 +273,7 @@ function render(caret = null) {
   else if (caret?.selection) restoreSelection(caret.selection);
   renderHistory();
   refreshFindCount();
+  renderBookmarks();
 }
 
 function localize() {
@@ -287,6 +308,8 @@ function replaceDocument(next) {
   errorCode = null;
   downloadReady = false;
   versions = [];
+  currentBookmark = null;
+  $('bookmark-name').value = '';
   $('recovery-notice').hidden = true;
   $('error').hidden = true;
   render();
@@ -391,6 +414,7 @@ function captureSelection(inputCaret = false) {
   const parent = node => node.nodeType === 1 ? node : node.parentElement;
   const browserRange = selected.getRangeAt(0);
   if (!$('paper').contains(browserRange.startContainer) || !$('paper').contains(browserRange.endContainer)) return;
+  bookmarkSelection = browserRange.cloneRange();
   const startRun = parent(browserRange.startContainer)?.closest('[data-run]');
   const endRun = parent(browserRange.endContainer)?.closest('[data-run]');
   const intersected = startRun && endRun ? [] : [...$('paper').querySelectorAll('[data-run]')].filter(run => browserRange.intersectsNode(run));
@@ -429,6 +453,9 @@ $('paper').addEventListener('focusin', event => {
     updateStatus();
   }
 });
+$('paper').addEventListener('pointerdown', clearBookmarkHighlight);
+$('paper').addEventListener('focusout', event => { if ($('bookmarks-panel').contains(event.relatedTarget)) captureSelection(); });
+$('bookmarks-panel').addEventListener('pointerdown', () => captureSelection());
 $('paper').addEventListener('click', event => {
   model.endGroup();
   const image = event.target.closest('[data-image]');
@@ -472,6 +499,7 @@ $('paper').addEventListener('input', event => {
   }
 });
 $('paper').addEventListener('keydown', event => {
+  clearBookmarkHighlight();
   if (event.isComposing) return;
   if (event.key.toLowerCase() === 'v') plainPaste = Boolean((event.ctrlKey || event.metaKey) && event.shiftKey);
   if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'a') {
@@ -813,6 +841,102 @@ function togglePanel(button, panel) {
 }
 $('find-toggle').onclick = () => { togglePanel('find-toggle', 'find-panel'); if (!$('find-panel').hidden) $('find-query').focus(); };
 $('history-toggle').onclick = () => { togglePanel('history-toggle', 'history-panel'); renderHistory(); };
+$('bookmarks-toggle').onclick = () => {
+  captureSelection();
+  togglePanel('bookmarks-toggle', 'bookmarks-panel');
+  if (!$('bookmarks-panel').hidden) { renderBookmarks(); $('bookmark-name').focus(); }
+};
+$('bookmarks-panel').addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    $('bookmarks-panel').hidden = true;
+    $('bookmarks-toggle').setAttribute('aria-expanded', 'false');
+    clearBookmarkHighlight();
+    $('bookmarks-toggle').focus();
+  }
+});
+$('bookmark-form').onsubmit = event => {
+  event.preventDefault();
+  perform('bookmark', () => {
+    const savedSelection = model.selection;
+    if (!bookmarkSelection) throw new DocumentError('selection');
+    model.changeBookmark($('bookmark-name').value, { selection: model.sourceRange(bookmarkSelection) });
+    currentBookmark = $('bookmark-name').value;
+    return savedSelection ? { selection: savedSelection } : null;
+  });
+  $('bookmark-name').focus();
+};
+for (const [id, remove] of [['bookmark-rename', false], ['bookmark-delete', true]]) $(id).onclick = () => {
+  perform('bookmark', () => {
+    if (currentBookmark === null) throw new DocumentError('bookmarkMissing');
+    model.changeBookmark($('bookmark-name').value, { previous: currentBookmark, remove });
+    currentBookmark = remove ? null : $('bookmark-name').value;
+  });
+  $('bookmark-name').focus();
+};
+
+function clearBookmarkHighlight() {
+  CSS.highlights?.delete('bookmark');
+  for (const element of $('paper').querySelectorAll('.bookmark-boundary')) element.classList.remove('bookmark-boundary');
+  bookmarkHighlight = null;
+}
+
+function navigateBookmark(name) {
+  try {
+    clearBookmarkHighlight();
+    const { range, selection: selected } = model.bookmarkRange(name);
+    currentBookmark = name;
+    $('bookmark-name').value = name;
+    window.getSelection().removeAllRanges();
+    active = null;
+    selection = null;
+    model.selection = null;
+    bookmarkSelection = null;
+    if (selected) {
+      model.rememberSelection(selected);
+      restoreSelection(model.selection);
+    }
+    bookmarkHighlight = range;
+    if (CSS.highlights) CSS.highlights.set('bookmark', new Highlight(range));
+    const node = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+    if (range.collapsed || !selected) node.classList.add('bookmark-boundary');
+    node.scrollIntoView({ block: 'nearest' });
+    renderBookmarks();
+    if (!selected) [...$('bookmark-list').querySelectorAll('button')].find(button => button.textContent === name)?.focus();
+    updateStatus();
+  } catch (error) {
+    showError(error instanceof DocumentError && error.code === 'protected' ? new DocumentError('bookmarkNavigation') : error);
+  }
+}
+
+function renderBookmarks() {
+  let items;
+  try { items = model.bookmarks(); }
+  catch (error) {
+    if (!(error instanceof DocumentError) || error.code !== 'protected') throw error;
+    $('bookmark-list').replaceChildren();
+    $('bookmark-status').textContent = t('bookmarkUnavailable');
+    currentBookmark = null;
+    updateStatus();
+    return;
+  }
+  if (!items.some(item => item.name === currentBookmark)) currentBookmark = null;
+  $('bookmark-list').replaceChildren(...items.map(item => {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = item.name;
+    button.setAttribute('aria-pressed', String(item.name === currentBookmark));
+    button.onclick = () => navigateBookmark(item.name);
+    const bounds = document.createElement('span');
+    bounds.textContent = `[${item.start - 1}, ${item.end - 1})`;
+    li.append(button, bounds);
+    return li;
+  }));
+  const chosen = items.find(item => item.name === currentBookmark);
+  $('bookmark-status').textContent = chosen ? `${chosen.name} · [${chosen.start - 1}, ${chosen.end - 1}) · ${t(bookmarkHighlight ? 'bookmarkLocated' : 'bookmarkSelected')}` : t(items.length ? 'bookmarkChoose' : 'bookmarkEmpty');
+  updateStatus();
+}
 $('link-toggle').onclick = () => {
   captureSelection();
   togglePanel('link-toggle', 'link-panel');

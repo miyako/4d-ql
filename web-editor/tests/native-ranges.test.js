@@ -45,6 +45,108 @@ describe('full 4D F0012102 evidence', () => {
 });
 
 describe('range-safe transactions', () => {
+  it('creates the first Unicode and collapsed bookmarks, rejects destructive names, and recovers undo/redo', () => {
+    let model = make('<p>A😀日éB</p>', {});
+    model.changeBookmark('日本語😀é', { selection: selection(0, 1, 0, 3) });
+    expect(ranges(model)).toEqual({ '日本語😀é': [2, 4] });
+    render(model);
+    model.changeBookmark('__proto__', { selection: selection(0, 3) });
+    expect(ranges(model)).toEqual({ '日本語😀é': [2, 4], ['__proto__']: [4, 4] });
+    for (const name of ['', 'two words', 'a.b', 'a"\\&<>', 'a\u0000b', '\ud800', '\uffff']) {
+      const before = model.serialize();
+      expect(() => model.changeBookmark(name, { selection: selection(0, 0) })).toThrow('bookmarkNameInvalid');
+      expect(model.serialize()).toBe(before);
+      render(model);
+    }
+    expect(() => model.changeBookmark('__proto__', { selection: selection(0, 0) })).toThrow('bookmarkDuplicate');
+    render(model);
+    model.changeBookmark('Renamed_日本語', { previous: '日本語😀é' });
+    expect(ranges(model)).toEqual({ ['__proto__']: [4, 4], 'Renamed_日本語': [2, 4] });
+    model = WriteProDocument.unpack(model.pack());
+    model.undo();
+    expect(ranges(model)).toEqual({ '日本語😀é': [2, 4], ['__proto__']: [4, 4] });
+    model.undo(true);
+    model.changeBookmark('', { previous: 'Renamed_日本語', remove: true });
+    expect(ranges(model)).toEqual({ ['__proto__']: [4, 4] });
+    model.undo();
+    expect(ranges(model)).toEqual({ ['__proto__']: [4, 4], 'Renamed_日本語': [2, 4] });
+  });
+
+  it('rejects duplicate renames and surrogate-splitting ranges without changing content or history', () => {
+    const model = make('<p>A😀B</p>', { abc: [1, 2], ABC: [4, 5] });
+    const before = model.serialize();
+    expect(() => model.changeBookmark('ABC', { previous: 'abc' })).toThrow('bookmarkDuplicate');
+    expect(model.serialize()).toBe(before);
+    render(model);
+    expect(() => model.changeBookmark('bad', { selection: selection(0, 2) })).toThrow('protected');
+    expect(model.serialize()).toBe(before);
+    expect(model.undoStack).toHaveLength(0);
+  });
+
+  it('keeps native table raw endpoints when renaming and maps every structural boundary without textContent guesses', () => {
+    const { model } = structural('table');
+    const before = ranges(model);
+    const body = model.nativeView();
+    for (let offset = 1; offset <= body.text.length + 1; offset++) {
+      const point = body.locate(offset);
+      expect(body.point(point.node, point.offset)).toBe(offset);
+    }
+    for (const { name, start, end } of model.bookmarks()) {
+      const mapped = model.bookmarkRange(name);
+      if (mapped.selection) {
+        const range = model.range(mapped.selection);
+        expect([body.point(range.startContainer, range.startOffset), body.point(range.endContainer, range.endOffset)]).toEqual([start, end]);
+      }
+    }
+    model.changeBookmark('renamed', { previous: 'unit10' });
+    expect(ranges(model).renamed).toEqual(before.unit10);
+    expect(model.nativeView().text).toBe(body.text);
+    render(model);
+    const ab = model.runs.findIndex(node => node.data === 'AB');
+    const cd = model.runs.findIndex(node => node.data === 'CD');
+    expect(() => model.changeBookmark('crossCell', { selection: selection(ab, 1, cd, 1) })).toThrow('bookmarkRange');
+  });
+
+  it('maps bookmarks across Unicode, soft breaks, pictures and paragraph boundaries to their native offsets', () => {
+    for (const item of evidence.offsets) {
+      const model = new WriteProDocument(item.xml);
+      render(model);
+      const body = model.nativeView();
+      for (let offset = 1; offset <= body.text.length + 1; offset++) {
+        if (!/[\uD800-\uDBFF]/.test(body.text[offset - 2] || '') || !/[\uDC00-\uDFFF]/.test(body.text[offset - 1] || '')) {
+          const point = body.locate(offset);
+          expect(body.point(point.node, point.offset), `${item.name}: ${offset}`).toBe(offset);
+        }
+      }
+      for (const { name } of model.bookmarks()) expect(model.bookmarkRange(name).range).toBeDefined();
+    }
+  });
+
+  it('keeps protected documents and protected text immutable for bookmark operations', () => {
+    const locked = make('<p><span style="-d4-protected:true">abcdefghi</span></p>', {});
+    expect(() => locked.changeBookmark('name', { selection: selection(0, 0, 0, 3) })).toThrow('protected');
+    const { model } = structural('boundary-table');
+    const before = model.serialize();
+    expect(() => model.changeBookmark('name', { previous: 'whole' })).toThrow('protected');
+    expect(() => model.changeBookmark('', { previous: 'whole', remove: true })).toThrow('protected');
+    expect(model.serialize()).toBe(before);
+  });
+
+  it('protects duplicate metadata keys rather than silently dropping a bookmark during management', () => {
+    for (const content of ['{"a":[0,1],"a":[2,3]}', '{"a":[0,1],"\\u0061":[2,3]}', '{"a":{"hidden":[0,1]},"a":[2,3]}']) {
+      const model = make();
+      model.document.querySelector('meta[name="bookmarks"]').setAttribute('content', content);
+      model.refresh();
+      expect(model.readOnly).toBe(true);
+      const before = model.serialize();
+      expect(() => model.changeBookmark('new', { previous: 'a' })).toThrow('protected');
+      expect(model.serialize()).toBe(before);
+    }
+    const model = make('<p>abc</p>', { 'a":b': [1, 2] });
+    expect(model.readOnly).toBe(false);
+    expect(model.bookmarks()[0].name).toBe('a":b');
+  });
+
   it.each([
     ['addRow', 0, 'addRow'], ['appendRow', 2, 'addRow'],
     ['removeRow', 0, 'removeRow'], ['removeLastRow', 2, 'removeRow'],

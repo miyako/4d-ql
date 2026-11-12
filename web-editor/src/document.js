@@ -273,7 +273,7 @@ export class WriteProDocument {
     try {
       if (!restore && this.readOnly) throw new DocumentError('protected');
       const metadata = restore ? { bookmarks: {} } : nativeMetadata(this.document);
-      const tracked = !restore && Object.keys(metadata.bookmarks).length > 0;
+      const tracked = !restore && (Object.keys(metadata.bookmarks).length > 0 || label === 'bookmark');
       this.nativeTransaction = tracked ? {
         text: this.nativeView().text,
         bookmarks: metadata.bookmarks, meta: metadata.meta,
@@ -283,6 +283,7 @@ export class WriteProDocument {
         const body = this.nativeView();
         if (body.text !== this.nativeTransaction.text ||
           !body.supports(this.nativeTransaction.bookmarks) ||
+          Object.values(this.nativeTransaction.bookmarks).some(pair => !pair.every(offset => nativeBoundary(body.text, offset))) ||
           JSON.stringify(nativeMetadata(this.document).bookmarks) !== JSON.stringify(this.nativeTransaction.bookmarks)) throw new DocumentError('protected');
       }
       const after = this.serialize();
@@ -308,6 +309,86 @@ export class WriteProDocument {
 
   nativeView() {
     return nativeBody(this.document, element => this.values(element), image => this.imageSource(image));
+  }
+
+  bookmarks() {
+    return Object.entries(nativeMetadata(this.document).bookmarks).map(([name, [start, end]]) => ({ name, start, end }));
+  }
+
+  changeBookmark(name, { selection, previous, remove = false } = {}) {
+    return this.mutate('bookmark', () => {
+      const transaction = this.nativeTransaction;
+      const bookmarks = transaction.bookmarks;
+      if (remove && previous === undefined) throw new DocumentError('bookmarkMissing');
+      if (previous !== undefined && !Object.hasOwn(bookmarks, previous)) throw new DocumentError('bookmarkMissing');
+      if (!remove && (typeof name !== 'string' || !name.length || !name.isWellFormed() ||
+        /[^A-Za-z0-9_\-\u0080-\u{10ffff}]|[\uFFFE\uFFFF]/u.test(name))) throw new DocumentError('bookmarkNameInvalid');
+      if (!remove && Object.hasOwn(bookmarks, name) && previous !== name) throw new DocumentError('bookmarkDuplicate');
+      if (!remove && previous === name) return;
+      let pair;
+      if (!remove) {
+        if (previous !== undefined) pair = bookmarks[previous];
+        else {
+          const range = selection?.startContainer ? selection : this.range(selection);
+          if (range.startContainer.ownerDocument !== this.document || range.endContainer.ownerDocument !== this.document) throw new DocumentError('selection');
+          this.guardRange(range);
+          const body = this.nativeView();
+          pair = [body.point(range.startContainer, range.startOffset), body.point(range.endContainer, range.endOffset)];
+          if (!body.supports({ [name]: pair })) throw new DocumentError('bookmarkRange');
+        }
+      }
+      const entries = Object.entries(bookmarks).filter(([key]) => key !== previous);
+      transaction.bookmarks = Object.fromEntries(remove ? entries : [...entries, [name, pair]]);
+      if (!transaction.meta) {
+        transaction.meta = this.document.createElementNS(XHTML, 'meta');
+        transaction.meta.setAttribute('name', 'bookmarks');
+        this.document.querySelector('head').append(transaction.meta);
+      }
+      writeBookmarks(transaction.meta, transaction.bookmarks);
+    });
+  }
+
+  bookmarkRange(name) {
+    const { bookmarks } = nativeMetadata(this.document);
+    if (!Object.hasOwn(bookmarks, name)) throw new DocumentError('bookmarkMissing');
+    const pair = bookmarks[name];
+    const body = this.nativeView();
+    const first = body.locate(pair[0]);
+    const last = body.locate(pair[1], pair[0] === pair[1]);
+    const point = ({ node, offset }) => {
+      const element = this.projection.get(node);
+      if (!element) throw new DocumentError('bookmarkNavigation');
+      if (node.nodeType === 3) return [element.firstChild || element, offset];
+      const next = [...node.childNodes].slice(offset).map(child => this.projection.get(child)).find(child => child?.parentNode === element);
+      return [element, next ? [...element.childNodes].indexOf(next) : element.childNodes.length];
+    };
+    const range = document.createRange();
+    range.setStart(...point(first));
+    range.setEnd(...point(last));
+    const editableSelection = first.node.nodeType === 3 && last.node.nodeType === 3 &&
+      first.node.parentElement.closest('td,th') === last.node.parentElement.closest('td,th') &&
+      this.runs.includes(first.node) && this.runs.includes(last.node) ? {
+        startRun: this.runs.indexOf(first.node), start: first.offset,
+        endRun: this.runs.indexOf(last.node), end: last.offset,
+      } : null;
+    return { range, selection: editableSelection };
+  }
+
+  sourceRange(projected) {
+    const reverse = new Map([...this.projection].map(([source, target]) => [target, source]));
+    const point = (node, offset) => {
+      const run = node.nodeType === 3 ? node.parentElement : node;
+      const text = reverse.get(run);
+      if (text?.nodeType === 3) return [text, node.nodeType === 3 ? offset : offset ? text.length : 0];
+      const source = reverse.get(node);
+      if (!source) throw new DocumentError('bookmarkRange');
+      const next = [...node.childNodes].slice(offset).map(child => reverse.get(child)).find(child => child?.parentNode === source);
+      return [source, next ? [...source.childNodes].indexOf(next) : source.childNodes.length];
+    };
+    const range = this.document.createRange();
+    range.setStart(...point(projected.startContainer, projected.startOffset));
+    range.setEnd(...point(projected.endContainer, projected.endOffset));
+    return range;
   }
 
   nativeChange(range, change) {
@@ -1112,12 +1193,14 @@ export class WriteProDocument {
   }
 
   render(host, labels) {
+    this.projection = new Map();
     host.replaceChildren();
     this.runs = [];
     this.blocks = [];
     this.images = [];
     this.cells = [];
     const body = this.document.querySelector('body');
+    this.projection.set(body, host);
     for (const element of body.querySelectorAll('img,br')) {
       if (this.protected(element) || element.localName === 'img' && !this.imageSource(element) || !element.closest('p,li')) continue;
       if (element.previousSibling?.nodeType !== 3) element.before(this.document.createTextNode(''));
@@ -1131,6 +1214,7 @@ export class WriteProDocument {
             continue;
           }
           const run = document.createElement('span');
+          this.projection.set(child, run);
           const index = this.runs.push(child) - 1;
           run.dataset.run = index;
           run.className = 'text-run';
@@ -1155,6 +1239,7 @@ export class WriteProDocument {
           /section\d.*(Header|Footer)/i.test(child.getAttribute('class') || '');
         if (hidden) {
           const badge = document.createElement('div');
+          this.projection.set(child, badge);
           badge.className = 'preserved-object';
           badge.textContent = labels.preserved;
           target.append(badge);
@@ -1163,6 +1248,7 @@ export class WriteProDocument {
         const native = Object.keys(values).some(key => /^-d4-(ref|anchor)/.test(key));
         if (native || tag === 'img' || !SAFE_TAGS.has(tag) || child.namespaceURI !== XHTML) {
           const badge = document.createElement('span');
+          this.projection.set(child, badge);
           badge.className = 'preserved-object';
           badge.textContent = tag === 'img' ? labels.image : labels.preserved;
           if (tag === 'img' && !native) {
@@ -1188,6 +1274,7 @@ export class WriteProDocument {
           continue;
         }
         const element = document.createElement(tag === 'a' ? 'span' : tag);
+        this.projection.set(child, element);
         for (const [property, value] of Object.entries(values)) {
           if (property !== 'text-decoration' && !(property === 'background-color' && INLINE_TAGS.has(tag)) && SAFE_PROPERTIES.test(property) && SAFE_VALUE.test(value) && value.length < 200 &&
             !/url|expression|var\(|!important/i.test(value)) element.style.setProperty(property, value);

@@ -7,7 +7,7 @@ import { preview } from 'vite';
 import { unzipSync, strFromU8 } from 'fflate';
 import { JSDOM } from 'jsdom';
 import { nativeMetadata } from '../src/native-ranges.js';
-import { prepareRangeCases } from './native-range-cases.mjs';
+import { prepareRangeCases, prepareBookmarkCases } from './native-range-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtures = resolve(root, '../Tests/FourDFileKitTests/Fixtures/WritePro');
@@ -24,8 +24,11 @@ async function prepare() {
   });
   const browser = await chromium.launch();
   const cases = [];
+  const browserErrors = [];
+  const watch = page => page.on('pageerror', error => browserErrors.push(error.message));
   try {
     const page = await browser.newPage({ acceptDownloads: true });
+    watch(page);
     page.on('dialog', dialog => dialog.accept());
     await page.goto(server.resolvedUrls.local[0]);
     await page.getByRole('button', { name: 'New document', exact: true }).waitFor();
@@ -115,6 +118,7 @@ async function prepare() {
       'insertTable', 'listSplit', 'listJoin', 'listPaste', 'listTyping', 'listCell',
     ]) {
       const page = await browser.newPage({ acceptDownloads: true });
+      watch(page);
       page.on('dialog', dialog => dialog.accept());
       await page.goto(server.resolvedUrls.local[0]);
       const native = rangeReport.structures.find(item => item.name === kind);
@@ -150,7 +154,82 @@ async function prepare() {
       await download(`structure-browser-${kind}`, { ranges: { text: native.after.text, bookmarks: native.after.bookmarks } }, page);
       await page.close();
     }
+    for (const kind of ['create', 'collapsed', 'rename', 'delete', 'case', 'cellText', 'cellPoint', 'cellTerminator', 'rowSeparator', 'wholeTable', 'listRange']) {
+      const source = await browser.newPage({ acceptDownloads: true });
+      watch(source);
+      source.on('dialog', dialog => dialog.accept());
+      await source.goto(server.resolvedUrls.local[0]);
+      await source.locator('#file').setInputFiles(resolve(directory, `Output/bookmark-${kind}-original.4wp`));
+      const native = rangeReport.management.operations.find(item => item.name === kind);
+      await expect(source.locator('#save-state')).toHaveText('Ready');
+      const select = async (start, end = start) => {
+        await source.locator('#paper [data-run]').first().evaluate((element, [start, end]) => {
+          element.focus();
+          getSelection().setBaseAndExtent(element.firstChild, start, element.firstChild, end);
+        }, [start, end]);
+      };
+      if (native.bounds) {
+        await source.locator('#paper').evaluate((paper, kind) => {
+          const range = document.createRange();
+          const cells = paper.querySelectorAll('td');
+          const table = paper.querySelector('table');
+          if (kind === 'listRange') {
+            const items = paper.querySelectorAll('li');
+            range.setStart(items[1].querySelector('[data-run]').firstChild, 0);
+            range.setEnd(items[2].querySelector('[data-run]').firstChild, 2);
+          } else if (kind === 'wholeTable') range.selectNodeContents(table);
+          else if (kind === 'rowSeparator') {
+            range.setStart(table.firstChild, table.firstChild.childNodes.length);
+            range.setEnd(table, 1);
+          } else {
+            const text = cells[0].querySelector('[data-run]').firstChild;
+            range.setStart(text, kind === 'cellText' ? 0 : 2);
+            if (kind === 'cellTerminator') range.setEnd(cells[0].parentNode, 1);
+            else range.setEnd(text, 2);
+          }
+          getSelection().removeAllRanges();
+          getSelection().addRange(range);
+          document.dispatchEvent(new Event('selectionchange'));
+        }, kind);
+      } else await select(1, 3);
+      await source.locator('#bookmarks-toggle').click();
+      const create = async name => {
+        await source.locator('#bookmark-name').fill(name);
+        await source.locator('#bookmark-create').click();
+        await expect(source.getByRole('alert')).toBeHidden();
+      };
+      await create(native.bounds ? 'managed' : '日本語😀é');
+      if (kind === 'collapsed') { await select(3); await create('point'); }
+      if (kind === 'case') {
+        await select(0, 1); await create('ABC');
+        await select(4, 6); await create('abc');
+      }
+      if (kind === 'rename') {
+        await source.locator('#bookmark-name').fill('renamed_日本語😀é');
+        await source.locator('#bookmark-rename').click();
+      }
+      if (kind === 'delete') await source.locator('#bookmark-delete').click();
+      await expect(source.getByRole('alert')).toBeHidden();
+      const archive = unzipSync(await readFile(resolve(directory, `Output/bookmark-${kind}-native.4wp`)));
+      const xml = strFromU8(Object.entries(archive).find(([name]) => /\.html$/i.test(name))[1]);
+      const serialized = await source.evaluate(xml => {
+        const doc = new DOMParser().parseFromString(xml, 'application/xhtml+xml');
+        return Object.fromEntries(Object.entries(JSON.parse(doc.querySelector('meta[name="bookmarks"]')?.getAttribute('content') || '{}')).map(([name, pair]) => [name, pair.map(offset => offset + 1)]));
+      }, xml);
+      await download(`bookmark-browser-${kind}`, { ranges: { text: native.after.text, bookmarks: native.after.bookmarks, serialized } }, source);
+      if (['create', 'collapsed', 'rename', 'delete', 'cellTerminator'].includes(kind)) {
+        await source.locator('#undo').click();
+        await source.locator('#redo').click();
+        await expect(source.locator('#draft-state')).toHaveText('Local draft saved');
+        await source.reload();
+        await expect(source.locator('#recovery-notice')).toBeVisible();
+        await download(`bookmark-browser-recovered-${kind}`, { ranges: { text: native.after.text, bookmarks: native.after.bookmarks, serialized } }, source);
+      }
+      await source.close();
+    }
     await prepareRangeCases(directory, cases);
+    await prepareBookmarkCases(directory, cases);
+    assert.deepEqual(browserErrors, [], 'Browser runtime errors');
     await writeFile(manifestPath, JSON.stringify({ cases }, null, 2));
   } finally {
     await browser.close();
@@ -178,11 +257,13 @@ async function verify() {
       assert.equal(before.text, entry.ranges.text, `${entry.name}: text differs from native edit`);
       assert.deepEqual(before.bookmarks, entry.ranges.bookmarks, `${entry.name}: bookmarks differ from native edit`);
       if (entry.ranges.serialized) {
-        const files = unzipSync(await readFile(resolve(directory, `Output/${entry.name}.4wp`)));
-        const xml = strFromU8(Object.entries(files).find(([name]) => /\.html$/i.test(name))[1]);
         const dom = new JSDOM();
-        const doc = new dom.window.DOMParser().parseFromString(xml, 'application/xhtml+xml');
-        assert.deepEqual(nativeMetadata(doc).bookmarks, entry.ranges.serialized, `${entry.name}: serialized native reexport differs`);
+        for (const file of [`Input/${entry.file}`, `Output/${entry.name}.4wp`]) {
+          const files = unzipSync(await readFile(resolve(directory, file)));
+          const xml = strFromU8(Object.entries(files).find(([name]) => /\.html$/i.test(name))[1]);
+          const doc = new dom.window.DOMParser().parseFromString(xml, 'application/xhtml+xml');
+          assert.deepEqual(nativeMetadata(doc).bookmarks, entry.ranges.serialized, `${entry.name}: serialized ${file} differs`);
+        }
         dom.window.close();
       }
     }

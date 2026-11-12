@@ -36,10 +36,10 @@ async function downloaded(page) {
   const bytes = readFileSync(await (await waiting).path());
   const files = unzipSync(bytes);
   const xml = strFromU8(Object.entries(files).find(([name]) => /\.html$/i.test(name))[1]);
-  return page.evaluate(xml => {
+  return JSON.parse(await page.evaluate(xml => {
     const doc = new DOMParser().parseFromString(xml, 'application/xhtml+xml');
-    return { text: doc.querySelector('body').textContent, bookmarks: JSON.parse(doc.querySelector('meta[name="bookmarks"]').getAttribute('content')) };
-  }, xml);
+    return JSON.stringify({ text: doc.querySelector('body').textContent, bookmarks: JSON.parse(doc.querySelector('meta[name="bookmarks"]').getAttribute('content')) });
+  }, xml));
 }
 
 const structural = name => structuralEvidence.structures.find(item => item.name === name);
@@ -58,6 +58,115 @@ async function selectRun(run, start, end = start) {
     window.getSelection().setBaseAndExtent(element.firstChild, start, element.firstChild, end);
   }, { start, end });
 }
+
+test('bookmark panel creates, navigates, validates, renames, deletes and recovers atomic history', async ({ page }) => {
+  await open(page);
+  await select(page, 1, 4);
+  await page.locator('#bookmarks-toggle').click();
+  await expect(page.locator('#bookmark-name')).toBeFocused();
+  await page.locator('#bookmark-name').fill('日本語😀é');
+  await page.locator('#bookmark-name').press('Enter');
+  await expect(page.locator('#bookmark-list button')).toHaveCount(4);
+  expect((await downloaded(page)).bookmarks['日本語😀é']).toEqual([1, 4]);
+  await page.locator('#bookmark-list button').filter({ hasText: /^日本語😀é$/ }).click();
+  expect(await page.evaluate(() => getSelection().toString())).toBe('bcd');
+  await expect(page.locator('#bookmark-status')).toContainText('[1, 4)');
+  await page.locator('#bookmark-name').fill('span');
+  await page.locator('#bookmark-rename').click();
+  await expect(page.getByRole('alert')).toContainText('Nothing was overwritten');
+  expect((await downloaded(page)).bookmarks['日本語😀é']).toEqual([1, 4]);
+  await page.locator('#dismiss-error').click();
+  await page.locator('#bookmark-name').fill('bad name');
+  await page.locator('#bookmark-rename').click();
+  await expect(page.getByRole('alert')).toContainText('name was not changed');
+  await page.locator('#dismiss-error').click();
+  await page.locator('#bookmark-name').fill('Renamed_日本語');
+  await page.locator('#bookmark-rename').click();
+  await expect(page.locator('#bookmark-list button').filter({ hasText: /^Renamed_日本語$/ })).toBeVisible();
+  await page.locator('#history-toggle').click();
+  await page.locator('#version-name').fill('Bookmark version');
+  await page.locator('#save-version').click();
+  await page.locator('#history-toggle').click();
+  await expect(page.locator('#draft-state')).toHaveText('Local draft saved');
+  await page.locator('#bookmark-delete').click();
+  await expect(page.locator('#bookmark-list button')).toHaveCount(3);
+  await page.locator('#undo').click();
+  await expect(page.locator('#bookmark-list button')).toHaveCount(4);
+  await expect(page.locator('#draft-state')).toHaveText('Local draft saved');
+  await page.reload();
+  await expect(page.locator('#recovery-notice')).toBeVisible();
+  await page.locator('#bookmarks-toggle').click();
+  await expect(page.locator('#bookmark-list button')).toHaveCount(4);
+  await page.locator('#redo').click();
+  await expect(page.locator('#bookmark-list button')).toHaveCount(3);
+  await page.locator('#history-toggle').click();
+  await page.locator('#version-list li').filter({ hasText: 'Bookmark version' }).getByRole('button').click();
+  await expect(page.locator('#bookmark-list button')).toHaveCount(4);
+  expect((await downloaded(page)).bookmarks.Renamed_日本語).toEqual([1, 4]);
+});
+
+test('first and collapsed bookmarks persist and restore through download and native-offset navigation', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#new').click();
+  await page.locator('#paper [contenteditable]').fill('A😀日éB');
+  await select(page, 1, 3);
+  await page.locator('#bookmarks-toggle').click();
+  await page.locator('#bookmark-name').fill('__proto__');
+  await page.locator('#bookmark-create').click();
+  await select(page, 3);
+  await page.locator('#bookmark-name').fill('point');
+  await page.locator('#bookmark-create').click();
+  await page.locator('#bookmark-list button').filter({ hasText: /^point$/ }).click();
+  expect(await page.evaluate(() => [getSelection().isCollapsed, getSelection().anchorOffset])).toEqual([true, 3]);
+  const file = await downloaded(page);
+  expect(file.bookmarks).toEqual({ ['__proto__']: [1, 3], point: [3, 3] });
+  await page.locator('#bookmark-list button').filter({ hasText: /^point$/ }).click();
+  await page.keyboard.insertText('XY');
+  expect((await downloaded(page)).bookmarks).toEqual({ ['__proto__']: [1, 3], point: [3, 3] });
+});
+
+test('table bookmarks navigate raw endpoints without applying native getter cell normalization', async ({ page }) => {
+  await openStructural(page, 'table');
+  await page.locator('#bookmarks-toggle').click();
+  await page.locator('#bookmark-list button').filter({ hasText: /^unit10$/ }).click();
+  await expect(page.locator('#bookmark-status')).toContainText('[9, 10)');
+  await expect(page.locator('#paper .bookmark-boundary')).toHaveCount(1);
+  await expect(page.locator('#bookmark-list button').filter({ hasText: /^unit10$/ })).toBeFocused();
+  await expect(page.locator('#bookmark-create')).toBeDisabled();
+  const before = (await downloaded(page)).bookmarks;
+  await page.locator('#bookmark-name').fill('rawBoundary');
+  await page.locator('#bookmark-rename').click();
+  expect((await downloaded(page)).bookmarks.rawBoundary).toEqual(before.unit10);
+  await page.locator('#bookmark-list button').filter({ hasText: /^unit8$/ }).click();
+  expect(await page.evaluate(() => getSelection().toString())).toBe('A');
+  await expect(page.locator('#bookmark-status')).toContainText('[7, 8)');
+});
+
+test('bookmark controls remain localized, keyboard accessible, responsive and protected', async ({ page }) => {
+  await openStructural(page, 'boundary-table');
+  await page.locator('#bookmarks-toggle').click();
+  await expect(page.locator('#bookmark-create')).toBeDisabled();
+  await page.locator('#bookmark-list button').filter({ hasText: /^whole$/ }).click();
+  await expect(page.locator('#bookmark-rename')).toBeDisabled();
+  await expect(page.locator('#bookmark-delete')).toBeDisabled();
+  await page.locator('#bookmark-name').focus();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#bookmarks-panel')).toBeHidden();
+  await expect(page.locator('#bookmarks-toggle')).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#settings-toggle').click();
+  for (const [locale, title] of [['ja', 'ブックマーク'], ['fr', 'Signets'], ['de', 'Lesezeichen'], ['es', 'Marcadores'], ['it', 'Segnalibri'], ['en', 'Bookmarks']]) {
+    await page.locator('#language').selectOption(locale);
+    await expect(page.locator('#bookmarks-toggle')).toHaveText(title);
+  }
+  for (const theme of ['light', 'dark', 'system']) {
+    await page.locator('#theme').selectOption(theme);
+    await page.locator('#bookmarks-toggle').click();
+    await expect(page.locator('#bookmark-name')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.locator('#bookmark-name').press('Escape');
+  }
+});
 
 test('bookmark-aware typing, Unicode, deletion, cut, undo and recovered redo keep offsets', async ({ page }) => {
   await open(page);
