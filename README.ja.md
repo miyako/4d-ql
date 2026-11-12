@@ -63,7 +63,7 @@ CLI の [`fourdql qr-convert`](docs/CLI.md#convert-quick-report-definitions) は
 長い本文が次のページへ流し込まれることはなく、アンカーオブジェクトの周りの文字の回り込みも再現しません。
 [形式のメモ](docs/WRITEPRO-FORMAT.md)を参照してください。
 
-独立した [4WP Studio Web アプリ](web-editor/README.md)では、`.4wp` のテキストと書式を
+独立した [4WP Editor Web アプリ](web-editor/README.md)では、`.4wp` のテキストと書式を
 ブラウザーで編集できます。元の構造を保持するインポート・エクスポート、6言語のUI、
 ライト・ダーク表示に対応する実験版です。Swift の Quick Look ランタイムとは独立して動作し、
 4D 本来のレイアウトやフォーミュラの評価は提供しません。

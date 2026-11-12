@@ -1,4 +1,4 @@
-# 4WP Studio
+# 4WP Editor
 
 A standalone, local-first HTML/CSS/JavaScript editor for ZIP-packaged 4D Write
 Pro `.4wp` documents. It has no dependency on Swift, Quick Look, a backend, or

@@ -7,7 +7,7 @@ export default defineConfig({
     name: 'distribution-licenses',
     generateBundle() {
       const notices = [
-        ['4WP Studio', '../LICENSE'],
+        ['4WP Editor', '../LICENSE'],
         ['fflate', 'node_modules/fflate/LICENSE'],
         ['css-tree', 'node_modules/css-tree/LICENSE'],
         ['mdn-data', 'node_modules/mdn-data/LICENSE'],

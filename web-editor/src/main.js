@@ -25,7 +25,7 @@ const t = key => messages[locale][key];
 document.querySelector('#app').innerHTML = `
   <header class="app-header">
     <div class="brand"><div class="brand-mark" aria-hidden="true">W</div>
-      <div><h1>4WP Studio <span class="pill" data-i18n="experimental"></span></h1><p data-i18n="tagline"></p></div>
+      <div><h1>4WP Editor <span class="pill" data-i18n="experimental"></span></h1><p data-i18n="tagline"></p></div>
     </div>
     <div class="file-actions">
       <button id="new" data-i18n="new"></button><button id="open" data-i18n="open"></button>
@@ -79,7 +79,7 @@ function showError(error) {
 
 function updateStatus() {
   $('document-title').textContent = model.title;
-  document.title = `${unsaved() ? '• ' : ''}${model.title} — 4WP Studio`;
+  document.title = `${unsaved() ? '• ' : ''}${model.title} — 4WP Editor`;
   $('save-state').textContent = t(model.readOnly ? 'readonly' : unsaved() ? 'changed' : downloadReady ? 'downloaded' : 'ready');
   $('save-state').classList.toggle('unsaved', unsaved());
   $('undo').disabled = model.undoStack.length === 0;
