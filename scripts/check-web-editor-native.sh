@@ -46,6 +46,21 @@ with (root / logfile).open("w") as log:
         raise SystemExit(f"Full 4D exited with {code}; inspect native.log. No native pass is claimed.")
 PY
 }
+run_4d wp_section_check section-native.log
+[ -s "$DEST/Output/section-report.json" ] || { echo "Full 4D produced no section report; inspect $DEST/section-native.log." >&2; exit 1; }
+python3 - "$DEST" <<'PY'
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1]) / "Output"
+errors = json.loads((root / "section-errors.json").read_text())
+if errors:
+    raise SystemExit("Native section probe failed: " + json.dumps(errors, ensure_ascii=False))
+report = json.loads((root / "section-report.json").read_text())
+if report.get("version") != "F0012102" or len(report.get("cases", [])) != 27:
+    raise SystemExit("Missing section cases or unexpected full-4D version; no native pass is claimed.")
+PY
 run_4d wp_page_check page-native.log
 [ -s "$DEST/Output/page-report.json" ] || { echo "Full 4D produced no page report; inspect $DEST/page-native.log." >&2; exit 1; }
 run_4d wp_range_check range-native.log

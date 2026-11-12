@@ -1,0 +1,86 @@
+var $root : 4D.Folder:=Folder(Get 4D folder(Database folder); fk platform path)
+var $report : Object:=New object("version"; Application version(*); "cases"; New collection())
+var $doc; $body; $range; $section; $item; $header; $pictureObject : Object
+var $type; $point; $index : Integer
+var $kind; $name : Text
+var $picture : Picture
+READ PICTURE FILE($root.file("Resources/checker.png").platformPath; $picture)
+For each ($type; New collection(wk page break; wk section break; wk continuous section break))
+	For each ($point; New collection(1; 2; 3; 4; 11))
+		$doc:=WP New()
+		$body:=WP Get body($doc)
+		WP SET TEXT($body; "AB"; wk replace)
+		WP INSERT FORMULA($body; Formula("SECTION"); wk append)
+		WP SET TEXT($body; "😀日éCD"; wk append)
+		WP NEW BOOKMARK(WP Text range($body; 1; 3); "leading")
+		WP NEW BOOKMARK(WP Text range($body; $point; $point); "point")
+		WP NEW BOOKMARK(WP Text range($body; wk start text; wk end text); "whole")
+		$name:="section-"+String($type)+"-"+String($point)
+		$item:=New object("name"; $name; "type"; $type; "point"; $point; "before"; wp_section_stats($doc))
+		WP EXPORT DOCUMENT($doc; $root.file("Output/"+$name+"-original.4wp").platformPath; wk 4wp)
+		$range:=WP Insert break(WP Text range($body; $point; $point); $type; wk replace)
+		$item.insertedRange:=New object("start"; $range.start; "end"; $range.end)
+		$item.after:=wp_section_stats($doc)
+		WP EXPORT DOCUMENT($doc; $root.file("Output/"+$name+"-insert.4wp").platformPath; wk 4wp)
+		$range:=WP Insert break(WP Text range($body; $point; $point+1); wk paragraph break; wk replace)
+		$item.paragraph:=wp_section_stats($doc)
+		WP EXPORT DOCUMENT($doc; $root.file("Output/"+$name+"-paragraph.4wp").platformPath; wk 4wp)
+		WP SET TEXT(WP Text range($body; $point; $point+1); ""; wk replace)
+		$item.deleted:=wp_section_stats($doc)
+		WP EXPORT DOCUMENT($doc; $root.file("Output/"+$name+"-delete.4wp").platformPath; wk 4wp)
+		$report.cases.push($item)
+	End for each
+End for each
+// Splits before existing sections, overrides, and hidden associations are
+// intentionally observed separately from the simple text insertion matrix.
+For each ($kind; New collection("inherited"; "overridden"; "associated"))
+	For each ($point; New collection(1; 3; 5; 7))
+		$doc:=WP New()
+		$body:=WP Get body($doc)
+		WP SET TEXT($body; "AB"; wk replace)
+		$range:=WP Insert break($body; wk section break; wk append)
+		WP SET TEXT($body; "CD"; wk append)
+		$range:=WP Insert break($body; wk continuous section break; wk append)
+		WP SET TEXT($body; "EF"; wk append)
+		For ($index; 1; 3)
+			$section:=WP Get section($doc; $index)
+			If ($kind#"inherited")
+				WP SET ATTRIBUTES($section; wk section name; "Named "+String($index); wk page margin left; String(20*$index)+"pt")
+				If ($index=2)
+					WP SET ATTRIBUTES($section; wk page orientation; wk landscape)
+				End if
+			End if
+			If ($kind="associated")
+				$header:=WP New header($section)
+				WP SET TEXT($header; "HEADER "+String($index); wk replace)
+				$header:=WP New subsection($section; wk first page)
+				$header:=WP Get header($header)
+				WP SET TEXT($header; "FIRST "+String($index); wk replace)
+			End if
+		End for
+		If ($kind="associated")
+			$pictureObject:=WP Add picture($doc; $picture)
+			WP SET ATTRIBUTES($pictureObject; wk anchor page; wk anchor all; wk anchor section; 3; wk width; "20pt")
+		End if
+		$name:="section-"+$kind+"-"+String($point)
+		$item:=New object("name"; $name; "point"; $point; "before"; wp_section_stats($doc))
+		WP EXPORT DOCUMENT($doc; $root.file("Output/"+$name+"-original.4wp").platformPath; wk 4wp)
+		$range:=WP Insert break(WP Text range($body; $point; $point); wk continuous section break; wk replace)
+		$item.after:=wp_section_stats($doc)
+		WP EXPORT DOCUMENT($doc; $root.file("Output/"+$name+"-insert.4wp").platformPath; wk 4wp)
+		$range:=WP Insert break(WP Text range($body; $point; $point+1); wk paragraph break; wk replace)
+		$item.paragraph:=wp_section_stats($doc)
+		WP EXPORT DOCUMENT($doc; $root.file("Output/"+$name+"-paragraph.4wp").platformPath; wk 4wp)
+		$report.cases.push($item)
+	End for each
+End for each
+// Explicit overrides and native resets establish inheritance independently.
+$doc:=WP Import document($root.file("Output/section-overridden-7-original.4wp").platformPath)
+$section:=WP Get section($doc; 2)
+WP SET ATTRIBUTES($section; wk section name; "日本語 & \"quoted\""; wk page margin; "12pt 13pt 14pt 15pt"; wk page orientation; wk portrait)
+$report.settings:=wp_section_stats($doc)
+WP EXPORT DOCUMENT($doc; $root.file("Output/section-settings.4wp").platformPath; wk 4wp)
+WP RESET ATTRIBUTES($section; wk page margin; wk page orientation)
+$report.reset:=wp_section_stats($doc)
+WP EXPORT DOCUMENT($doc; $root.file("Output/section-reset.4wp").platformPath; wk 4wp)
+$root.file("Output/section-report.json").setText(JSON Stringify($report; *))
