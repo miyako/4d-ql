@@ -145,4 +145,5 @@ End for
 $report.structures:=wp_structure_probe
 $report.management:=wp_bookmark_probe
 $report.formulas:=wp_formula_probe
+$report.complex:=wp_complex_probe
 $root.file("Output/range-report.json").setText(JSON Stringify($report; *))

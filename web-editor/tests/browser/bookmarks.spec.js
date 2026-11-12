@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { zipSync, strToU8, strFromU8, unzipSync } from 'fflate';
 import structuralEvidence from '../fixtures/native-structures.json' with { type: 'json' };
+import complexEvidence from '../fixtures/native-complex.json' with { type: 'json' };
 
 async function open(page) {
   const xml = '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Bookmarks</title><meta name="bookmarks" content="{&quot;span&quot;:[2,5],&quot;point&quot;:[3,3],&quot;all&quot;:[0,9]}"/></head><body><p>abcdefghi</p></body></html>';
@@ -216,7 +217,7 @@ test('paragraph/paste changes and table insertion preserve bookmarks', async ({ 
   });
   expect((await downloaded(page)).bookmarks).toEqual({ span: [2, 9], point: [3, 3], all: [0, 13] });
   const before = await downloaded(page);
-  await page.locator('summary').click();
+  await page.locator('.editing-tools summary').click();
   await page.locator('#insert-table').click();
   await expect(page.locator('#paper table')).toHaveCount(1);
   expect((await downloaded(page)).bookmarks).toEqual(before.bookmarks);
@@ -245,7 +246,7 @@ for (const [name, cell, button] of [
   test(`table ${name} matches independently native-generated ranges`, async ({ page }) => {
     await openStructural(page, name);
     await selectRun(page.locator('#paper td').nth(cell).locator('[contenteditable]').first(), 0);
-    await page.locator('summary').click();
+    await page.locator('.editing-tools summary').click();
     await page.locator(`#${button}`).click();
     expect((await downloaded(page)).bookmarks).toEqual(serialized(structural(name)));
     await page.locator('#undo').click();
@@ -275,7 +276,7 @@ test('partial cross-cell bookmarks and column insertion are visibly protected', 
   await expect(page.locator('#paper td [contenteditable]')).toHaveCount(4);
   const before = await downloaded(page);
   await selectRun(page.locator('#paper td [contenteditable]').first(), 0);
-  await page.locator('summary').click();
+  await page.locator('.editing-tools summary').click();
   await page.locator('#add-column').click();
   await expect(page.getByRole('alert')).toContainText('Adding columns');
   expect(await downloaded(page)).toEqual(before);
@@ -300,4 +301,93 @@ test('bookmark typing groups undo, maps IME commits and rejects unmapped input',
   })).toBe(false);
   await expect(page.getByRole('alert')).toBeVisible();
   expect(await downloaded(page)).toEqual(before);
+});
+
+async function openComplex(page, name) {
+  const item = complexEvidence.cases.find(item => item.name === name);
+  await page.goto('/');
+  await page.locator('#file').setInputFiles({
+    name: `${name}.4wp`, mimeType: 'application/zip',
+    buffer: Buffer.from(zipSync({ 'Document.html': strToU8(item.xml), 'Resources/opaque.bin': Uint8Array.of(0, 255, 128) })),
+  });
+  await expect(page.locator('#paper')).toContainText('BEFORE');
+  return item;
+}
+
+for (const name of ['grid-addColumn', 'grid-appendColumn', 'uneven-addColumn', 'uneven-appendColumn', 'empty-addColumn', 'empty-appendColumn']) {
+  test(`bookmarked ${name} downloads native pairs and recovers coherent undo/redo`, async ({ page }) => {
+    const item = await openComplex(page, name);
+    const firstRow = page.locator('#paper tr').first().locator('td');
+    await selectRun((name.includes('append') ? firstRow.last() : firstRow.first()).locator('[contenteditable]').first(), 0);
+    await page.locator('.editing-tools summary').click();
+    await page.locator('#add-column').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('alert')).toBeHidden();
+    expect((await downloaded(page)).bookmarks).toEqual(serialized(item));
+    await page.locator('#undo').click();
+    await expect(page.locator('#draft-state')).toHaveText('Local draft saved');
+    await page.reload();
+    await page.locator('#redo').click();
+    expect((await downloaded(page)).bookmarks).toEqual(serialized(item));
+  });
+}
+
+test('cross-cell bookmarks allow endpoint additions and management but explain protected operations', async ({ page }) => {
+  await openComplex(page, 'grid-identity');
+  await page.locator('#capabilities summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#capability-list')).toContainText('bookmark spans cells');
+  await selectRun(page.locator('#paper td [contenteditable]').first(), 2);
+  const before = await downloaded(page);
+  await selectRun(page.locator('#paper td [contenteditable]').first(), 2);
+  await page.keyboard.insertText('X');
+  await expect(page.getByRole('alert')).toContainText('Insertion inside a bookmark spanning cells');
+  expect(await downloaded(page)).toEqual(before);
+  await page.locator('#dismiss-error').click();
+  await selectRun(page.locator('#paper td [contenteditable]').first(), 0);
+  await page.keyboard.insertText('XY');
+  const item = complexEvidence.cases.find(item => item.name === 'grid-typing');
+  expect((await downloaded(page)).bookmarks).toEqual(serialized(item));
+  await page.locator('#bookmarks-toggle').click();
+  await page.locator('#bookmark-list button').filter({ hasText: /^b9_12$/ }).click();
+  await page.locator('#bookmark-name').fill('cross_日本語');
+  await page.locator('#bookmark-rename').click();
+  expect((await downloaded(page)).bookmarks.cross_日本語).toEqual(serialized(item).b9_12);
+});
+
+test('merged-table typing preserves geometry, versions and localized accessible capability notices', async ({ page }) => {
+  const item = await openComplex(page, 'rectangle-typing');
+  await page.locator('#history-toggle').click();
+  await page.locator('#version-name').fill('Merged original');
+  await page.locator('#save-version').click();
+  await page.locator('#history-toggle').click();
+  await selectRun(page.locator('#paper td [contenteditable]').first(), 0);
+  await page.keyboard.insertText('XY');
+  expect((await downloaded(page)).bookmarks).toEqual(serialized(item));
+  await expect(page.locator('#paper td').first()).toHaveAttribute('rowspan', '2');
+  await expect(page.locator('#paper td').first()).toHaveAttribute('colspan', '2');
+  await page.locator('.editing-tools summary').click();
+  await expect(page.locator('#add-row')).toHaveAttribute('aria-describedby', 'table-capability');
+  await page.locator('#add-row').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('alert')).toContainText('merged or irregular tables');
+  await page.locator('#dismiss-error').click();
+  await page.locator('#history-toggle').click();
+  await page.locator('#version-list li').filter({ hasText: 'Merged original' }).getByRole('button').click();
+  expect((await downloaded(page)).bookmarks).toEqual(Object.fromEntries(Object.entries(item.before).map(([name, pair]) => [name, pair.map(offset => offset - 1)])));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#settings-toggle').click();
+  for (const [locale, title] of [['ja', '編集機能と制限'], ['fr', 'Capacités de modification'], ['de', 'Bearbeitungsmöglichkeiten'], ['es', 'Capacidades de edición'], ['it', 'Capacità di modifica'], ['en', 'Editing capabilities']]) {
+    await page.locator('#language').selectOption(locale);
+    await expect(page.locator('#capabilities summary')).toHaveText(title);
+    await page.locator('#capabilities summary').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#capability-list')).toBeVisible();
+    await page.keyboard.press('Enter');
+  }
+  for (const theme of ['light', 'dark', 'system']) {
+    await page.locator('#theme').selectOption(theme);
+    await expect(page.locator('#capabilities summary')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
 });

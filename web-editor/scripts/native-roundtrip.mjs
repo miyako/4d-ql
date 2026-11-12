@@ -9,6 +9,7 @@ import { JSDOM } from 'jsdom';
 import { nativeMetadata } from '../src/native-ranges.js';
 import { prepareRangeCases, prepareBookmarkCases } from './native-range-cases.mjs';
 import { prepareFormulaCases, verifyFormulaCase } from './native-formula-cases.mjs';
+import { prepareComplexCases } from './native-complex-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtures = resolve(root, '../Tests/FourDFileKitTests/Fixtures/WritePro');
@@ -62,7 +63,7 @@ async function prepare() {
     const png = Buffer.from(/src="data:image\/png;base64,([^"]+)"/.exec(html)[1], 'base64');
     await page.locator('#image-file').setInputFiles({ name: 'native-check.png', mimeType: 'image/png', buffer: png });
     await expect(page.locator('#paper img')).toHaveCount(1);
-    await page.locator('summary').click();
+    await page.locator('.editing-tools summary').click();
     await page.getByRole('button', { name: 'Insert table', exact: true }).click();
     await page.locator('table [contenteditable]').first().fill('Native cell');
     await download('new-document');
@@ -138,7 +139,7 @@ async function prepare() {
         window.getSelection().setBaseAndExtent(element.firstChild, offset, element.firstChild, cut ? 2 : offset);
       }, { offset, cut: kind === 'cut' });
       if (rowEdits[kind] || kind === 'insertTable') {
-        if (await page.locator('details').getAttribute('open') === null) await page.locator('summary').click();
+        if (await page.locator('.editing-tools').getAttribute('open') === null) await page.locator('.editing-tools summary').click();
         await page.locator(`#${rowEdits[kind]?.[1] || 'insert-table'}`).click();
       } else if (['cut', 'pasteCell', 'listPaste'].includes(kind)) {
         await page.locator('#paper').evaluate((paper, cut) => {
@@ -231,6 +232,7 @@ async function prepare() {
     await prepareRangeCases(directory, cases);
     await prepareBookmarkCases(directory, cases);
     await prepareFormulaCases(directory, cases, browser, server.resolvedUrls.local[0]);
+    await prepareComplexCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     assert.deepEqual(browserErrors, [], 'Browser runtime errors');
     await writeFile(manifestPath, JSON.stringify({ cases }, null, 2));
   } finally {
@@ -257,6 +259,13 @@ async function verify() {
     const before = actual.imported;
     const after = actual.reopened;
     if (entry.formula) await verifyFormulaCase(directory, entry, actual);
+    if (entry.resources) {
+      const source = unzipSync(await readFile(resolve(directory, 'Input', entry.resources)));
+      const edited = unzipSync(await readFile(resolve(directory, 'Input', entry.file)));
+      for (const [name, bytes] of Object.entries(source)) {
+        if (!/\.x?html$/i.test(name)) assert.deepEqual(edited[name], bytes, `${entry.name}: original resource ${name} changed`);
+      }
+    }
     for (const key of ['text', 'metadata', 'bookmarks', 'images', 'imagePixels', 'tables', 'first']) assert.deepEqual(after[key], before[key], `${entry.name}: native re-export changed ${key}`);
     if (entry.ranges) {
       assert.equal(before.text, entry.ranges.text, `${entry.name}: text differs from native edit`);

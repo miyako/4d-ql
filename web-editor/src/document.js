@@ -201,14 +201,24 @@ export class WriteProDocument {
   refresh() {
     this.styles = rules(this.document);
     this.readOnly = false;
+    this.readOnlyReason = null;
     this.hasBookmarks = false;
     this.formulaTracking = false;
+    let reason = 'bookmarkMetadata';
     try {
       const { bookmarks } = nativeMetadata(this.document);
       this.hasBookmarks = Object.keys(bookmarks).length > 0;
       if (this.hasBookmarks) {
+        reason = 'bookmarkStructure';
         const body = this.nativeView();
-        if (!body.supports(bookmarks) || Object.values(bookmarks).some(pair => !pair.every(offset => nativeBoundary(body.text, offset)))) throw new DocumentError('protected');
+        if (!body.supports(bookmarks)) {
+          reason = 'bookmarkTableCross';
+          throw new DocumentError('protected');
+        }
+        if (Object.values(bookmarks).some(pair => !pair.every(offset => nativeBoundary(body.text, offset)))) {
+          reason = 'bookmarkMetadata';
+          throw new DocumentError('protected');
+        }
         this.formulaTracking = this.formulaElements().length > 0;
       }
       if (!this.hasBookmarks && this.formulaElements().length) {
@@ -222,6 +232,7 @@ export class WriteProDocument {
     } catch (error) {
       if (!(error instanceof DocumentError) || error.code !== 'protected') throw error;
       this.readOnly = true;
+      this.readOnlyReason = error.reason || reason;
     }
     this.runs = [];
     this.blocks = [];
@@ -329,8 +340,8 @@ export class WriteProDocument {
       }
       if (tracked) {
         const body = this.nativeView();
+        if (!body.supports(this.nativeTransaction.bookmarks)) throw new DocumentError('bookmarkTableCross');
         if (body.text !== this.nativeTransaction.text ||
-          !body.supports(this.nativeTransaction.bookmarks) ||
           Object.values(this.nativeTransaction.bookmarks).some(pair => !pair.every(offset => nativeBoundary(body.text, offset))) ||
           JSON.stringify(nativeMetadata(this.document).bookmarks) !== JSON.stringify(this.nativeTransaction.bookmarks)) throw new DocumentError('protected');
       }
@@ -440,7 +451,7 @@ export class WriteProDocument {
     return range;
   }
 
-  nativeChange(range, change) {
+  nativeChange(range, change, kind = 'text') {
     const transaction = this.nativeTransaction;
     if (!transaction || this.nativeDepth) return change();
     const body = this.nativeView();
@@ -450,6 +461,11 @@ export class WriteProDocument {
     const start = removals ? null : range.startContainer ? body.point(range.startContainer, range.startOffset) : range.start;
     const end = removals ? null : range.endContainer ? body.point(range.endContainer, range.endOffset) : range.end;
     const edits = removals || [{ start, end }];
+    if (body.crossesCells(transaction.bookmarks)) {
+      if (kind === 'structure' || removals) throw new DocumentError('bookmarkCrossStructure');
+      if (end > start) throw new DocumentError('bookmarkCrossDelete');
+      if (body.crossesCells(transaction.bookmarks, start)) throw new DocumentError('bookmarkCrossInsert');
+    }
     if (!edits.length || edits.some((edit, index) => !nativeBoundary(body.text, edit.start) ||
       !nativeBoundary(body.text, edit.end) || edit.end < edit.start ||
       index > 0 && edit.end > edits[index - 1].start)) throw new DocumentError('protected');
@@ -459,10 +475,10 @@ export class WriteProDocument {
     finally { this.nativeDepth = false; }
     const after = this.nativeView().text;
     if (removals) {
-      // Measure column deletion atomically, not its temporarily irregular rows.
-      const expected = removals.reduce((text, edit) => text.slice(0, edit.start - 1) + text.slice(edit.end - 1), body.text);
+      // Measure a whole column atomically, not its temporarily irregular rows.
+      const expected = removals.reduce((text, edit) => text.slice(0, edit.start - 1) + (edit.text || '') + text.slice(edit.end - 1), body.text);
       if (after !== expected) throw new DocumentError('protected');
-      for (const edit of removals) transaction.bookmarks = spliceBookmarks(transaction.bookmarks, edit.start, edit.end, 0);
+      for (const edit of removals) transaction.bookmarks = spliceBookmarks(transaction.bookmarks, edit.start, edit.end, (edit.text || '').length, edit.pointAfter);
     } else {
       const length = after.length - body.text.length + end - start;
       if (!after.isWellFormed() || length < 0 || after.slice(0, start - 1) !== body.text.slice(0, start - 1) ||
@@ -997,23 +1013,51 @@ export class WriteProDocument {
     });
   }
 
-  tableEdit(cellIndex, action) {
+  tableCapability(cellIndex, action) {
     const cell = this.cells[cellIndex];
     const table = cell?.closest('table');
-    if (!table || this.protected(table)) throw new DocumentError('protected');
+    if (!table || this.protected(table)) return this.readOnlyReason || 'protected';
+    const rows = [...table.querySelectorAll('tr')].filter(row => row.closest('table') === table);
+    if (rows.some(row => [...row.children].some(item => Number(item.getAttribute('rowspan') || 1) !== 1 ||
+      Number(item.getAttribute('colspan') || 1) !== 1)) || rows.some(row => row.children.length !== rows[0].children.length)) {
+      return 'mergedTable';
+    }
+    if (this.hasBookmarks) {
+      const body = this.nativeView();
+      const { bookmarks } = nativeMetadata(this.document);
+      if (body.crossesCells(bookmarks)) return 'bookmarkCrossStructure';
+      if (action === 'addColumn' && body.columnBoundary(table, bookmarks)) return 'bookmarkColumnBoundary';
+    }
+    return null;
+  }
+
+  capabilityCodes() {
+    if (this.readOnly) return [this.readOnlyReason];
+    const codes = new Set();
+    const tables = new Set(this.cells.map(cell => cell.closest('table')));
+    for (const table of tables) {
+      const index = this.cells.findIndex(cell => cell.closest('table') === table);
+      for (const action of ['addRow', 'addColumn']) {
+        const code = this.tableCapability(index, action);
+        if (code) codes.add(code);
+      }
+    }
+    return [...codes];
+  }
+
+  tableEdit(cellIndex, action) {
+    const reason = this.tableCapability(cellIndex, action);
+    if (reason) throw new DocumentError(reason);
+    const cell = this.cells[cellIndex];
+    const table = cell.closest('table');
     const range = this.document.createRange();
     range.selectNodeContents(table);
     this.guardRange(range);
     const rows = [...table.querySelectorAll('tr')].filter(row => row.closest('table') === table);
-    if (rows.some(row => [...row.children].some(item => Number(item.getAttribute('rowspan') || 1) !== 1 ||
-      Number(item.getAttribute('colspan') || 1) !== 1)) || rows.some(row => row.children.length !== rows[0].children.length)) {
-      throw new DocumentError('mergedTable');
-    }
     const row = cell.parentElement;
     const column = [...row.children].indexOf(cell);
     if (action === 'removeRow' && rows.length === 1 || action === 'removeColumn' && row.children.length === 1) throw new DocumentError('tableMinimum');
     if (!['addRow', 'removeRow', 'addColumn', 'removeColumn'].includes(action)) throw new DocumentError('invalidDocument');
-    if (this.hasBookmarks && action === 'addColumn') throw new DocumentError('bookmarkColumn');
     this.mutate('table', () => {
       const emptyCell = template => {
         const fresh = template.cloneNode(false);
@@ -1031,16 +1075,25 @@ export class WriteProDocument {
           const fresh = this.document.createElementNS(XHTML, 'tr');
           for (const old of row.children) fresh.append(emptyCell(old));
           row.after(fresh);
-        });
+        }, 'structure');
       }
       if (action === 'removeRow') this.nativeChange({
         start: this.nativeOffset(row), end: this.nativeOffset(row, true),
-      }, () => row.remove());
-      if (action === 'addColumn') for (const item of rows) item.children[column].after(emptyCell(item.children[column]));
+      }, () => row.remove(), 'structure');
+      if (action === 'addColumn') {
+        const preceding = rows.toReversed().map(item => item.children[column]);
+        const insertions = preceding.map(cell => ({
+          start: this.nativeOffset(cell, true), end: this.nativeOffset(cell, true),
+          text: '\r', pointAfter: true,
+        }));
+        this.nativeChange(insertions, () => {
+          for (const cell of preceding) cell.after(emptyCell(cell));
+        }, 'structure');
+      }
       if (action === 'removeColumn') {
         const removed = rows.reverse().map(item => item.children[column]);
         const removals = removed.map(cell => ({ start: this.nativeOffset(cell), end: this.nativeOffset(cell, true) }));
-        this.nativeChange(removals, () => { for (const cell of removed) cell.remove(); });
+        this.nativeChange(removals, () => { for (const cell of removed) cell.remove(); }, 'structure');
       }
     });
   }
@@ -1073,7 +1126,7 @@ export class WriteProDocument {
         paragraph.setAttribute('class', 'Normal');
         paragraph.textContent = '\u200b';
         table.after(paragraph);
-      });
+      }, 'structure');
     });
   }
 

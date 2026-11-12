@@ -7,7 +7,8 @@ DEST=${1:?Usage: bash scripts/check-web-editor-native.sh NEW_OUTPUT_DIRECTORY}
 [ -x "$FOURD" ] || { echo "Full 4D application not found; set FOURD. tool4d cannot validate Write Pro." >&2; exit 1; }
 [ ! -e "$DEST" ] || { echo "Choose a new output directory; existing evidence will not be overwritten." >&2; exit 1; }
 LOCK="$HOME/.copilot/4d-ql-native-gate.lock"
-mkdir "$LOCK" 2>/dev/null || { echo "Another full-4D gate owns $LOCK; coordinate before retrying." >&2; exit 1; }
+mkdir -p "$HOME/.copilot"
+mkdir "$LOCK" 2>/dev/null || { echo "Another native gate owns $LOCK. Coordinate ownership; never remove a live lock." >&2; exit 1; }
 trap 'rmdir "$LOCK"' EXIT
 mkdir -p "$DEST/Input" "$DEST/Output"
 DEST=$(cd "$DEST" && pwd)

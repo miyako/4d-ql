@@ -104,7 +104,8 @@ describe('range-safe transactions', () => {
     render(model);
     const ab = model.runs.findIndex(node => node.data === 'AB');
     const cd = model.runs.findIndex(node => node.data === 'CD');
-    expect(() => model.changeBookmark('crossCell', { selection: selection(ab, 1, cd, 1) })).toThrow('bookmarkRange');
+    model.changeBookmark('crossCell', { selection: selection(ab, 1, cd, 1) });
+    expect(ranges(model).crossCell).toEqual([9, 12]);
   });
 
   it('maps bookmarks across Unicode, soft breaks, pictures and paragraph boundaries to their native offsets', () => {
