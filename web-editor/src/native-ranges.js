@@ -16,7 +16,11 @@ export function nativeBody(document, values, imageSource = image => /^data:image
   const tables = [];
   let text = '';
   let blocks = 0;
-  const fail = () => { throw new DocumentError('protected'); };
+  const fail = (reason = 'bookmarkStructure') => {
+    const error = new DocumentError('protected');
+    error.reason = reason;
+    throw error;
+  };
   const check = (element, isFormula = false) => {
     const style = values(element);
     if (element.namespaceURI !== XHTML ||
@@ -35,7 +39,7 @@ export function nativeBody(document, values, imageSource = image => /^data:image
     } else if (node.nodeType === 1) {
       const isFormula = formula(node);
       check(node, isFormula);
-      if (!INLINE.has(node.localName)) fail();
+      if (!INLINE.has(node.localName)) fail(['ul', 'ol'].includes(node.localName) ? 'bookmarkNestedList' : 'bookmarkStructure');
       if (isFormula) {
         text += '\ufffc';
         positions.set(node, { start, end: text.length + 1 });
@@ -59,19 +63,41 @@ export function nativeBody(document, values, imageSource = image => /^data:image
   const table = element => {
     check(element);
     const rows = children(element);
-    if (!rows.length || rows.some(row => row.localName !== 'tr')) fail();
-    const columns = rows[0].children.length;
-    if (!columns) fail();
+    if (!rows.length || rows.some(row => row.localName !== 'tr')) fail('bookmarkTableShape');
+    const span = (cell, name) => {
+      const value = cell.getAttribute(name);
+      if (value !== null && !/^[1-9]\d*$/.test(value)) fail('bookmarkTableShape');
+      return Number(value || 1);
+    };
+    const columns = [...rows[0].children].reduce((count, cell) => count + span(cell, 'colspan'), 0);
+    if (!columns || columns > 1000) fail('bookmarkTableShape');
+    const grid = rows.map(() => Array(columns).fill(false));
     const start = text.length + 1;
     const regions = [];
+    const rowRegions = [];
     const offsets = [start];
-    for (const row of rows) {
+    let merged = false;
+    for (const [index, row] of rows.entries()) {
       check(row);
       const cells = children(row);
-      if (cells.length !== columns || cells.some(cell => !['td', 'th'].includes(cell.localName) ||
-        !['1', null].includes(cell.getAttribute('rowspan')) || !['1', null].includes(cell.getAttribute('colspan')))) fail();
+      let column = 0;
+      for (const cell of cells) {
+        if (!['td', 'th'].includes(cell.localName)) fail('bookmarkTableShape');
+        while (grid[index][column]) column++;
+        const width = span(cell, 'colspan');
+        const height = span(cell, 'rowspan');
+        if (column + width > columns || index + height > rows.length) fail('bookmarkTableShape');
+        merged ||= width > 1 || height > 1;
+        for (let r = index; r < index + height; r++) for (let c = column; c < column + width; c++) {
+          if (grid[r][c]) fail('bookmarkTableShape');
+          grid[r][c] = true;
+        }
+        column += width;
+      }
+      if (grid[index].some(occupied => !occupied)) fail('bookmarkTableShape');
       const rowStart = text.length + 1;
       const rowOffsets = [rowStart];
+      const cellRegions = [];
       // Full 4D counts one terminator per cell and an additional one per row.
       for (const cell of cells) {
         const cellStart = text.length + 1;
@@ -79,15 +105,17 @@ export function nativeBody(document, values, imageSource = image => /^data:image
         text += '\r';
         positions.set(cell, { ...positions.get(cell), start: cellStart, end: text.length + 1 });
         regions.push([cellStart, text.length + 1]);
+        cellRegions.push({ element: cell, start: cellStart, end: text.length + 1 });
         rowOffsets.push(text.length + 1);
       }
       regions.push([text.length + 1, text.length + 2]);
       text += '\r';
       positions.set(row, { start: rowStart, end: text.length + 1, offsets: rowOffsets });
+      rowRegions.push({ element: row, start: rowStart, end: text.length + 1, cells: cellRegions });
       offsets.push(text.length + 1);
     }
     positions.set(element, { start, end: text.length + 1, offsets });
-    tables.push({ start, end: text.length + 1, regions });
+    tables.push({ element, start, end: text.length + 1, regions, rows: rowRegions, merged });
   };
   const container = element => {
     check(element);
@@ -111,7 +139,7 @@ export function nativeBody(document, values, imageSource = image => /^data:image
       } else if (element.localName === 'body' && child.localName === 'table') {
         if (!previous || previous.localName !== 'p' || child.nextElementSibling?.localName !== 'p') fail();
         table(child);
-      } else fail();
+      } else fail(['ul', 'ol', 'li'].includes(element.localName) ? 'bookmarkNestedList' : 'bookmarkStructure');
       previous = child;
       offsets.push(text.length + 1);
     }
@@ -121,11 +149,26 @@ export function nativeBody(document, values, imageSource = image => /^data:image
   if (!blocks || !text.isWellFormed()) fail();
   return {
     text,
+    tables,
     supports(bookmarks) {
-      // Partial cross-cell ranges have command-dependent native normalization.
+      // Interior cross-cell ranges support additions, not destructive or table
+      // commands. Ranges entering/leaving a table normalize even on text edits.
       return Object.values(bookmarks).every(([first, last]) => first === last || tables.every(table =>
         last <= table.start || first >= table.end || first <= table.start && last >= table.end ||
-        table.regions.some(([start, end]) => first >= start && last <= end)));
+        first >= table.start && last <= table.end));
+    },
+    crossesCells(bookmarks, point) {
+      return Object.values(bookmarks).some(([first, last]) => first !== last &&
+        (point === undefined || first < point && point < last) && tables.some(table =>
+        last > table.start && first < table.end && !(first <= table.start && last >= table.end) &&
+        !table.regions.some(([start, end]) => first >= start && last <= end)));
+    },
+    columnBoundary(element, bookmarks) {
+      const table = tables.find(table => table.element === element);
+      if (!table) fail();
+      return Object.values(bookmarks).some(([first, last]) =>
+        first < table.end && last === table.end ||
+        table.rows.some(row => first === row.end - 1 && last <= row.end));
     },
     point(node, offset) {
       const position = positions.get(node);
@@ -197,7 +240,7 @@ export function writeBookmarks(meta, bookmarks) {
 
 // Editor replacements deliberately replay native deletion followed by insertion,
 // not the different, content-dependent WP SET TEXT atomic-replacement behavior.
-export function spliceBookmarks(bookmarks, start, end, length) {
+export function spliceBookmarks(bookmarks, start, end, length, pointAfter = false) {
   return Object.fromEntries(Object.entries(bookmarks).flatMap(([name, [first, last]]) => {
     if (end > start) {
       if (first === last ? start < first && first < end : start <= first && last <= end) return [];
@@ -206,7 +249,7 @@ export function spliceBookmarks(bookmarks, start, end, length) {
       last = shift(last);
     }
     if (first === last) {
-      if (start < first) first = last = first + length;
+      if (start < first || pointAfter && start === first) first = last = first + length;
     } else {
       if (start <= first) first += length;
       if (start < last) last += length;

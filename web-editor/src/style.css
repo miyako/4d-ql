@@ -89,6 +89,9 @@ div.preserved-object { display: block; margin-top: 16px; }
 .notice { margin: 16px; padding: 15px 18px; border-radius: 8px; background: var(--soft); border: 1px solid var(--border); font-size: 13px; line-height: 1.6; }
 .notice.error { border-color: #be7068; }
 .notice p { margin: 5px 0 10px; }
+.notice summary { cursor: pointer; color: var(--accent); }
+.notice summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#table-capability { flex-basis: 100%; margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
 .editing-tools { padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
 .editing-tools summary { cursor: pointer; color: var(--accent); }
 .tool-groups, .tool-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

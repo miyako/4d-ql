@@ -94,7 +94,7 @@ test('plain-text clipboard paste is literal and denied or stale reads report err
   });
   await page.goto('/');
   await page.locator('#new').click();
-  await page.locator('summary').click();
+  await page.locator('.editing-tools summary').click();
   await page.locator('#paste-plain').click();
   await expect(page.locator('#paper > p')).toHaveText(['<b>Plain</b>', 'Next']);
   await page.evaluate(() => { window.denyClipboard = true; });

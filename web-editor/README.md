@@ -7,12 +7,13 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`c646c1e` / #40](https://github.com/miyako/4d-ql/pull/40).
+[`643c520` / #41](https://github.com/miyako/4d-ql/pull/41).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
-Phase 6 and later are not in that main baseline; deployment status is separate. The table is not a
+Phase 7 is pending in this branch, not in that main baseline;
+deployment status is separate. The table is not a
 promise of dates or full Write Pro parity.
 
 | Phase | Feature scope | Status |
@@ -22,14 +23,15 @@ promise of dates or full Write Pro parity.
 | 3. Native verification and bookmarks | Full-4D import/export/reopen gate; scoped paragraph/flat-list/inline-object bookmark adjustments; unsupported ranges protected | Available; scoped evidence, not arbitrary compatibility |
 | 4. Bookmarked tables and native list levels | Same-cell text/paste/cut, paragraph/list and inline-object edits; simple table insertion, row edits and column deletion; native indented/mixed-marker lists. Partial cross-cell bookmarks, column insertion and nested HTML stay protected | Available on main via #39 |
 | 5. Bookmark management | List, navigate/highlight, create from selections/carets, rename and delete native bookmarks; exact names, native range validation and atomic history/recovery | Available on main via #40 |
-| 6. Formula-aware protected display | Source and stored cached values only when actually available; explicit unavailable-value notice; scoped safe surrounding edits, no evaluation | In progress; this unmerged PR only, not main/deployed behavior |
-| 7. Broader range/complex-structure safety | Partial cross-cell ranges, column insertion, nested/merged tables and generic ranges only after native research | Proposed |
+| 6. Formula-aware protected display | Source and stored cached values only when actually available; explicit unavailable-value notice; scoped safe surrounding edits, no evaluation | Available on main via #41 |
+| 7. Broader table/range safety | Cell-anchored column insertion; interior cross-cell bookmark management, formatting and guarded additions; grid-validated merged-cell text editing; localized capability reasons | In progress; this independent, unmerged increment. Destructive cross-cell operations, merged structural edits, nested tables and generic ranges remain protected |
 | 8. Richer media and objects | More native picture formats, anchored objects and text boxes with preservation-aware controls | Proposed |
 | 9. Document/page structure | Page/section settings, headers/footers, tabs and columns | Proposed |
 | 10. Layout/printing fidelity | Better pagination, print output and object wrapping, with native/browser differences explicit | Proposed |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
-Phases 7 onward are suggestions, not an authorized implementation queue.
+Phases 8 onward are unscheduled proposals, not an authorized implementation queue.
+Page/section settings and headers/footers are not part of this increment.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
 The [preservation contract](#preservation-contract-and-limits) and
@@ -92,7 +94,11 @@ The toolbar provides document paragraph styles plus Normal, Heading 1,
 Heading 2 and Quote, lists, alignment and indentation. **More tools** includes
 paragraph/line spacing, simple table insertion and row/column edits. Select
 a table cell to modify its row or column; merged and irregular tables remain
-protected from structural edits. Rich clipboard paste retains basic text
+protected from structural edits. **Editing capabilities** explains current
+document restrictions; selecting a cell also shows operation-specific reasons
+under More tools. The notices and table actions support keyboard access,
+all six UI languages, small screens and system/light/dark appearance.
+Rich clipboard paste retains basic text
 formatting, paragraphs and lists, but discards scripts, remote images and
 unsupported HTML. Copying an entire native document through HTML is not a
 preservation workflow: use `.4wp` import/export.
@@ -124,7 +130,9 @@ point, or supported structural boundaries in the document, then enter a name
 and choose **Create from selection** (Enter also submits). Creation uses the
 original XML projection and native UTF-16 mapping, including empty paragraphs,
 Unicode, inline objects, native lists and scoped simple tables, not DOM
-`textContent` offsets. Partial cross-cell/table ranges remain rejected.
+`textContent` offsets. Interior ranges spanning cells within one table are
+accepted in this increment; ranges entering/leaving only part of a table
+remain protected.
 
 Choose a listed name to navigate and highlight it. The list and status show
 the authoritative zero-based, end-exclusive UTF-16 pair. Text endpoints in
@@ -203,7 +211,7 @@ requests; other images (including native 4DPicture wrappers) and unsupported
 objects have placeholders.
 They are still retained in exported archives.
 
-### Formula-aware display (unmerged increment)
+### Formula-aware display (available on main)
 
 Formula cards expose the **native tokenized source**, optional name and
 **Saved value**, with a keyboard-focusable, localized **Read-only formula**
@@ -241,30 +249,55 @@ protected. A compiled source is explicitly unavailable; its resource is not
 decoded or executed. Surrounding-edit compatibility is not claimed for these
 forms. In bookmarked documents they retain the existing whole-document guard.
 Formula-containing list conversion, destructive selections across objects,
-complex tables, generic/malformed ranges, headers/footers, anchored/hidden
-objects and other unsupported structures are not enabled by this increment.
+generic/malformed ranges, headers/footers, anchored/hidden objects and other
+unsupported structures remain protected. The table capabilities below do not
+permit formula mutation or crossing a formula atom; the combined transaction
+retains formula tracking even without bookmark metadata. The native gate
+repeats both established operation matrices, not every possible formula/table
+combination.
 
 Named text bookmarks are editable in documents consisting of paragraphs, native
-indented/mixed-marker lists, simple native-shaped tables, ordinary inline
+indented/mixed-marker lists, native-shaped tables, ordinary inline
 formatting/links and supported inline pictures. A central
 transaction maps the original XML to native UTF-16 slots and adjusts bookmark
 metadata for explicit edits, including typing/IME, cut, paste, replace-all,
 paragraph split/join and image insertion/removal/movement. Formatting does not
 shift ranges. Failed or unregistered text/structural changes roll back.
 
-For tables, this includes edits within a cell, paragraph/list changes within
-that cell, table insertion, row insertion/deletion and column deletion.
-Column deletion registers separate, descending cell deletions as one atomic
-transaction. Simple tables must have direct `tr` rows with a consistent number
-of unmerged `td`/`th` cells, paragraph/list cell content, and body paragraphs
-immediately before and after the table. Bookmarks may be collapsed at cell/row
-boundaries, contained in one cell (including its terminator), contained in a
-row's final separator, outside the table, or span the entire table.
-**Partial cross-cell/table bookmarks remain read-only:** native commands can
-normalize their endpoints to different cell/row selections. Adding columns to
-any bookmarked document is explicitly rejected; its native boundary rules are
-not ordinary insertion affinities. Deleting the final row/column and destructive
-text selections across separate cells remain rejected.
+For unmerged tables, this includes edits within a cell, paragraph/list changes
+within that cell, table insertion, row insertion/deletion and column deletion.
+Column changes register descending cell splices as one atomic transaction,
+checking the complete resulting native tape rather than temporarily irregular
+rows. **Column insertion** now supports cell-anchored bookmarks, collapsed
+cell boundaries, bookmarks outside the table and bookmarks enclosing the
+table with following text. A collapsed point at an inserted column's boundary
+moves after the new cell, unlike ordinary text insertion. Row-separator
+anchors and bookmarks ending exactly at the table boundary block column
+insertion: native 4D can delete or relocate them. They are never silently
+dropped or coerced.
+
+**Interior cross-cell bookmarks** can be imported, created, navigated, renamed,
+deleted and formatted. Text/Unicode, paragraph/line breaks, paste and inline
+pictures may be added **outside spanning ranges or at their endpoints**.
+Insertion strictly inside such a range is protected: native 4D can expand
+its raw pair to a rectangular cell selection. Deletion/replacement and table
+insertion/row/column changes are protected whenever such a bookmark exists,
+because their native normalization is command-dependent. This is intentionally
+conservative, including deletions outside the spanning range. Destructive
+browser selections across cells remain rejected. An edit that would turn an
+enclosing bookmark into an unsupported partial-table range rolls back.
+
+**Merged-cell text editing** supports direct `tr`/`td`/`th` grids with positive,
+nonoverlapping, complete `rowspan`/`colspan` coverage (at most 1,000 columns).
+Cell paragraph/list content, spans, attributes and resources stay authoritative.
+Native horizontal, vertical and rectangular merges are independently probed.
+Text edits within a cell use the same registered tape; cross-cell bookmarks
+have the restrictions above. Row/column edits on merged/irregular tables are
+still protected, not expanded or flattened. All supported tables require body
+paragraphs immediately before and after them; nested tables are not supported.
+Bookmarks confined to a cell/row separator, collapsed boundaries and full-table
+enclosures retain their previous support except for the explicit column-insertion
+anchor guard. Deleting the final row/column remains rejected.
 
 Full 4D 21.2 represents native list indentation as flat `li` elements with
 paragraph indentation and marker CSS, sometimes in adjacent `ul`/`ol` groups.
@@ -282,12 +315,12 @@ shifts it; insertion inside extends it; insertion at its end is excluded. A
 collapsed bookmark stays before insertion at its own position. Deletion shrinks
 overlaps and removes entirely deleted nonempty bookmarks and strictly enclosed
 collapsed bookmarks, as observed in 4D. Thus replacing an entire bookmarked
-selection removes that bookmark; undo restores it. Bookmark management above
-is available on main via #40. Arbitrary native-command equivalence is not claimed.
+selection removes that bookmark; undo restores it. Arbitrary native-command
+equivalence is not claimed.
 
 Generic `ranges` metadata, malformed/duplicate/out-of-bounds bookmarks, endpoints
-inside surrogate pairs, and bookmarked documents containing noncanonical tables,
-partial cross-cell/table ranges, nested HTML lists, unsupported formula forms,
+inside surrogate pairs, and bookmarked documents containing invalid/incomplete
+table grids, ranges entering/leaving only part of a table, nested HTML lists, unsupported formula forms,
 section/header/footer/anchored structures, hidden content or unsupported
 pictures remain **read-only**. Unsupported browser input operations (for example
 word-delete/autocorrect input types without established mapping) are also rejected,
@@ -348,11 +381,14 @@ another full application's executable if needed. **tool4d cannot substitute for
 the full application's Write Pro engine.** Only a copied repository fixture
 project runs, dataless, without opening personal projects or changing fixtures.
 Missing application/report, compilation/native errors, timeouts and semantic
-differences fail the gate.
+differences fail the gate. The gate uses the shared fail-fast directory lock
+`$HOME/.copilot/4d-ql-native-gate.lock`; coordinate app ownership before manual
+probes too. A live lock is never removed by another run. A timeout terminates
+only that gate's own process.
 
 The gate first runs isolated native offset and mutation probes, then creates
 genuine browser downloads and model exports, imports them in full 4D, exports
-them through 4D and reopens those exports. Its 869 cases include the original 14:
+them through 4D and reopens those exports. Its 997 cases include the original 14:
 the preloaded brief, a newly formatted document with a hyperlink, image and table,
 and original and browser-exported versions of all six fixtures. It checks text, metadata,
 image/table counts, formula sources and links; sampled first-character
@@ -371,13 +407,15 @@ the independently executed native operations, not just the browser model's
 predictions. The offset fixtures cover Japanese, non-BMP and combining text,
 paragraphs, soft breaks, inline pictures, empty placeholders, flat lists and
 styled runs. `tests/fixtures/native-ranges.json` preserves a compact native oracle;
-`tests/fixtures/native-structures.json` adds the structural oracle. The structural
+`tests/fixtures/native-structures.json` adds the original structural oracle;
+`tests/fixtures/native-complex.json` adds 25 representative complex-table cases.
+The original structural
 probe executes 32 table/list cases twice: with single-slot/collapsed and
 whole-table bookmarks, and with an additional partial-cross-boundary matrix.
 The gate compares 30 supported model edits/offset exports and 21 real-browser
 downloads with independent native results, plus an unchanged protected boundary
-document. Counterexamples for partial-cross-boundary ranges and column insertion
-remain in the native report; they are not counted as supported editing cases.
+document. Counterexamples remain in the native report, not counted as supported
+editing cases.
 Both raw serialized bookmark pairs and native bookmark names, positions and
 selected text are checked. Native `WP Bookmark range` can normalize cell
 selections, so its reported pair is not substituted for the raw archive pair.
@@ -418,6 +456,21 @@ compiled-source decoding or editing certification.
 script. The shared `$HOME/.copilot/4d-ql-native-gate.lock` serializes full-4D
 gates across worktrees; a held lock fails explicitly instead of launching a
 second application instance. Coordinate ownership; never remove another run's lock.
+
+The broader-range increment adds 128 round trips to the 869-case formula baseline:
+84 scoped model exports and 44 actual browser downloads (22 operations, each
+also downloaded after undo, IndexedDB reload and recovered redo).
+`wp_complex_probe` independently executes 108 native cases: every collapsed
+point and ordered endpoint pair in six shapes (ordinary, uneven-length,
+empty-cell, horizontal merge, vertical merge and rectangular merge), across
+18 text/formatting/table commands. Native text ranges over each cell establish
+scope independently of the editor. Raw original/native pairs, getter ranges
+and selected text remain in `Output/range-report.json` and the complex archives.
+Scoped exports remove only out-of-scope test bookmarks, not document content;
+an opaque test resource verifies byte preservation in browser/model exports.
+The matrix retains counterexamples for interior insertion, cross-cell deletion,
+structural normalization and column separator anchors. The gate does not
+replay those commands as supposedly compatible browser operations.
 
 Keep the entire evidence directory (including `Output/range-report.json`,
 `Output/range-errors.json`, the copied probe project, native originals and

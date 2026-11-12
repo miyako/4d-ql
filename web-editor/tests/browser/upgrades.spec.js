@@ -56,7 +56,7 @@ test('named styles, lists, paragraph tools, tables, find and zoom', async ({ pag
   await page.getByRole('button', { name: 'Bulleted list', exact: true }).click();
   await page.getByRole('button', { name: 'Increase indent', exact: true }).click();
   await expect(page.locator('#paper > p')).toHaveCSS('margin-left', '24px');
-  await page.locator('summary').click();
+  await page.locator('.editing-tools summary').click();
   await page.locator('#spacing').selectOption('18');
   await page.getByRole('button', { name: 'Insert table', exact: true }).click();
   await expect(page.locator('#paper table td')).toHaveCount(4);

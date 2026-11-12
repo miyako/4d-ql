@@ -111,9 +111,8 @@ partial-cross-boundary bookmark matrix to the same full-4D gate.
   can also normalize partially cross-cell ranges in command-dependent ways.
   Keep raw serialized offsets authoritative. The editor supports same-cell and
   row-separator bookmarks, collapsed ranges, bookmarks outside tables and ranges
-  enclosing a whole table. Partial cross-cell/table ranges stay read-only.
-  Column insertion remains protected for all bookmarked documents: native
-  collapsed-boundary and row-separator behavior differs from ordinary splices.
+  enclosing a whole table. The broader-range increment below adds scoped interior
+  cross-cell and column support, not arbitrary native-command equivalence.
 - Native `wk list style type` plus `wk margin left` produces flat `li` siblings
   with indentation/marker CSS, sometimes in adjacent `ul`/`ol` groups. Indented
   levels add **no slots** beyond ordinary paragraph separators. Native
@@ -122,12 +121,55 @@ partial-cross-boundary bookmark matrix to the same full-4D gate.
   21.2 importer: `AB<ul><li>CD</li></ul>` becomes `ABCD ` in the parent item.
   The editor does not silently convert such bookmarked structures or paste.
 
-Supported bookmarked tables are native-shaped, unmerged, rectangular direct
-`tr`/`td`/`th` structures with paragraph/list cell content and body paragraphs
-before and after. Other table forms, arbitrary nested HTML lists, newer
+Supported bookmarked tables are native-shaped direct `tr`/`td`/`th` grids
+with paragraph/list cell content and body paragraphs before and after.
+Other table forms, arbitrary nested HTML lists, newer
 multi-level style sheets, unsupported formula forms, floating-object, header/footer,
 section-break or generic `ranges` semantics are not established. Unsupported
 structures/pictures and invalid/surrogate-splitting endpoints remain protected.
+
+### Broader table/range evidence (full 4D F0012102)
+
+`wp_complex_probe` independently repeats every collapsed point and ordered
+endpoint pair for six table shapes and 18 commands (108 cases). It exports
+both archives before/after each command and records native getter ranges,
+selected text and text ranges over native cells. The gate checks raw archive
+pairs separately from normalized getters; `WP Table get cells`/table elements
+must be converted with `WP Text range` before reading text `start`/`end`.
+
+- Inserting one empty column after a chosen column is a descending insertion
+  of one cell terminator per row. A collapsed bookmark exactly at an inserted
+  cell's start has **right affinity**, unlike ordinary text insertion.
+  Nonempty cell-contained ranges retain the original cell, not the new cell.
+  Cell anchors, outside-table ranges and enclosures with following text match
+  this model for ordinary, uneven-length and empty-cell grids.
+- Row-separator anchors are not ordinary insertions: native insertion can
+  remove a nonempty separator bookmark or relocate collapsed points. An
+  enclosing range ending exactly at the table end can exclude the reconstructed
+  final terminator. These anchors block column insertion in the editor.
+- Bookmarks spanning parts of cells **within one table** keep raw pairs through
+  import/export, name management and formatting. Insertions outside the spanning
+  range or at its endpoints match registered splices. Insertion strictly inside
+  can normalize a partial range to a rectangular cell selection; deletion,
+  row/column edits and other structural commands have additional, distinct
+  normalization/deletion behavior. The editor protects those commands instead
+  of generalizing a linear-offset rule. A range entering/leaving only part of
+  a table remains read-only, since even text edits can normalize it.
+- Native horizontal, vertical and rectangular merges serialize positive
+  `colspan`/`rowspan` grids. Merged content is paragraphs inside the surviving
+  physical cell: paragraph separators replace the former cell separators.
+  The tape counts physical cell terminators and one extra terminator for each
+  serialized row, with ordinary paragraph separators inside each cell.
+  Grid coverage must be complete, nonoverlapping and within the serialized
+  rows (at most 1,000 columns). Text/formatting and allowed additions are
+  supported without changing span geometry. Row/column editing of merged
+  grids, nested tables and malformed/irregular spans remain protected.
+
+These are operation-specific capabilities, not a claim that native selections
+are plain text. The combined 997-case gate includes 84 complex model exports and 44
+browser/recovered-redo downloads; supported bookmark names, raw positions,
+native-selected text and original resource bytes are checked. The compact
+`web-editor/tests/fixtures/native-complex.json` oracle derives from this matrix.
 
 ### Bookmark names and management (full 4D F0012102)
 
@@ -237,7 +279,7 @@ The full gate compares 497 formula originals/model/browser/recovery archives
 with independent native source/cache, text, raw bookmark pairs, getter ranges,
 metadata and import/export/reopen results. Formula subtrees and resource bytes
 must remain unchanged in editor downloads; transactions that cross or alter
-an atom roll back. See the [editor's exact limits](../web-editor/README.md#formula-aware-display-unmerged-increment).
+an atom roll back. See the [editor's exact limits](../web-editor/README.md#formula-aware-display-available-on-main).
 
 ## Pictures, text boxes and tables
 

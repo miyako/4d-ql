@@ -91,6 +91,7 @@ document.querySelector('#app').innerHTML = `
         <button id="insert-table" data-i18n="insertTable"></button>
         <button id="add-row" data-i18n="addRow"></button><button id="remove-row" data-i18n="removeRow"></button>
         <button id="add-column" data-i18n="addColumn"></button><button id="remove-column" data-i18n="removeColumn"></button>
+        <p id="table-capability" role="status" hidden></p>
         <button id="insert-image" data-i18n="insertImage"></button>
         <button id="paste-plain" data-i18n="pastePlain"></button>
       </div></details>
@@ -127,6 +128,7 @@ document.querySelector('#app').innerHTML = `
       <p id="recovery-notice" class="notice" data-i18n="recovered" hidden></p>
       <div id="error" class="notice error" role="alert" hidden><strong data-i18n="errorTitle"></strong><p id="error-message"></p><button id="dismiss-error" data-i18n="close"></button></div>
       <div id="readonly-notice" class="notice" hidden></div>
+      <details id="capabilities" class="notice" hidden><summary data-i18n="capabilityTitle"></summary><ul id="capability-list"></ul></details>
       <div id="unsupported-notice" class="notice" data-i18n="unsupportedNotice" hidden></div>
       <div class="paper-surround"><article id="paper" class="paper" data-label="editor"></article></div>
       <footer class="document-footer"><span id="statistics"></span><span id="draft-state" role="status"></span>
@@ -176,7 +178,14 @@ function updateStatus() {
   $('insert-table').disabled = model.readOnly || Boolean(sourceBlock && sourceBlock.parentElement.localName !== 'body');
   $('insert-image').disabled = model.readOnly;
   const cell = active !== null && $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-cell]');
-  for (const id of ['add-row', 'remove-row', 'add-column', 'remove-column']) $(id).disabled = !cell || !editable;
+  for (const id of ['add-row', 'remove-row', 'add-column', 'remove-column']) {
+    $(id).disabled = !cell || !editable;
+    $(id).setAttribute('aria-describedby', 'table-capability');
+  }
+  const tableReasons = cell ? [...new Set(['addRow', 'addColumn'].map(action =>
+    model.tableCapability(Number(cell.dataset.cell), action)).filter(Boolean))] : [];
+  $('table-capability').hidden = !tableReasons.length;
+  $('table-capability').textContent = tableReasons.map(t).join(' ');
   for (const id of ['replace-one', 'replace-all']) $(id).disabled = model.readOnly;
   const blockText = new Map();
   for (const node of model.runs) {
@@ -268,7 +277,14 @@ function render(caret = null) {
   const styleLabels = { Normal: 'normalStyle', Heading_1: 'heading1Style', Heading_2: 'heading2Style', Quote: 'quoteStyle' };
   $('paragraph-style').replaceChildren(...model.styleNames().map(name => new Option(styleLabels[name] ? t(styleLabels[name]) : name.replaceAll('_', ' '), name)));
   $('readonly-notice').hidden = !model.readOnly && !model.hasBookmarks;
-  $('readonly-notice').textContent = t(model.readOnly ? 'bookmarkNotice' : 'bookmarkEditingNotice');
+  $('readonly-notice').textContent = t(model.readOnly ? model.readOnlyReason : 'bookmarkEditingNotice');
+  const capabilities = model.capabilityCodes();
+  $('capabilities').hidden = !capabilities.length;
+  $('capability-list').replaceChildren(...capabilities.map(code => {
+    const item = document.createElement('li');
+    item.textContent = t(code);
+    return item;
+  }));
   $('unsupported-notice').hidden = !$('paper').querySelector('.preserved-object:not([data-image]),.locked-content');
   updateStatus();
   if (caret?.node) focusRun(model.runs.indexOf(caret.node), caret.offset);
