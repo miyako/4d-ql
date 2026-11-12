@@ -4,6 +4,37 @@ A standalone, local-first HTML/CSS/JavaScript editor for ZIP-packaged 4D Write
 Pro `.4wp` documents. It has no dependency on Swift, Quick Look, a backend, or
 the 4D runtime. Files are processed in the browser and are not uploaded.
 
+## Roadmap and status
+
+Status snapshot: `main` at
+[`18691b6` / #38](https://github.com/miyako/4d-ql/pull/38).
+**Available** means merged there; **In progress** is this unmerged increment;
+**Planned** is approved subsequent work, not implemented here;
+**Proposed** is an unscheduled idea requiring further decisions.
+Phase numbers below organize this roadmap, not past PR numbers.
+Phase 4 and later are not in that deployed baseline. The table is not a
+promise of dates or full Write Pro parity.
+
+| Phase | Feature scope | Status |
+| --- | --- | --- |
+| 1. Foundation | Genuine `.4wp` import/export, original XML/resources retained, local processing, six UI languages, themes and responsive UI | Available |
+| 2. Everyday editing | Cross-run text/selections, formatting/styles/lists, basic tables/images, links, sanitized paste, find/replace, counts/zoom, undo/redo, versions and local recovery | Available |
+| 3. Native verification and bookmarks | Full-4D import/export/reopen gate; scoped paragraph/flat-list/inline-object bookmark adjustments; unsupported ranges protected | Available; scoped evidence, not arbitrary compatibility |
+| 4. Bookmarked tables and native list levels | Same-cell text/paste/cut, paragraph/list and inline-object edits; simple table insertion, row edits and column deletion; native indented/mixed-marker lists. Partial cross-cell bookmarks, column insertion and nested HTML stay protected | In progress; this PR only |
+| 5. Bookmark management | List, navigate, create, rename and delete native bookmarks with range validation | Planned; next separate PR |
+| 6. Formula-aware protected display | Source and stored cached values only when actually available; explicit unavailable-value notice; safe surrounding edits, no evaluation | Planned; subsequent separate PR |
+| 7. Broader range/complex-structure safety | Partial cross-cell ranges, column insertion, nested/merged tables and generic ranges only after native research | Proposed |
+| 8. Richer media and objects | More native picture formats, anchored objects and text boxes with preservation-aware controls | Proposed |
+| 9. Document/page structure | Page/section settings, headers/footers, tabs and columns | Proposed |
+| 10. Layout/printing fidelity | Better pagination, print output and object wrapping, with native/browser differences explicit | Proposed |
+| 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
+
+Phases 7 onward are suggestions, not an authorized implementation queue.
+Native formula execution/a 4D backend, real-time collaboration and exact
+full-Write-Pro parity are **not approved features**.
+The [preservation contract](#preservation-contract-and-limits) and
+[native gate](#full-4d-release-gate) define today's concrete limits.
+
 ## Run
 
 Requires Node.js 22.12+ (or Node.js 20.19+).
@@ -27,6 +58,8 @@ tests and builds the application, uploads `web-editor/dist`, and deploys it to
 GitHub Pages on relevant pushes to `main` or a manual run from `main`. Pull
 requests do not publish a demo. Deployment uses the `github-pages` environment
 and GitHub's OIDC authentication, with no deployment secrets.
+Feature descriptions here describe the checked-out code; an unmerged branch
+does not update the deployed demo.
 
 After merging the workflow, select **Settings > Pages > Build and deployment >
 Source: GitHub Actions** in the repository, then run **Publish web editor demo**.
@@ -136,12 +169,36 @@ requests; other images (including native 4DPicture wrappers) and unsupported
 objects have placeholders.
 They are still retained in exported archives.
 
-Named text bookmarks are editable in documents consisting of paragraphs, flat
-lists, ordinary inline formatting/links and supported inline pictures. A central
+Named text bookmarks are editable in documents consisting of paragraphs, native
+indented/mixed-marker lists, simple native-shaped tables, ordinary inline
+formatting/links and supported inline pictures. A central
 transaction maps the original XML to native UTF-16 slots and adjusts bookmark
 metadata for explicit edits, including typing/IME, cut, paste, replace-all,
 paragraph split/join and image insertion/removal/movement. Formatting does not
 shift ranges. Failed or unregistered text/structural changes roll back.
+
+For tables, this includes edits within a cell, paragraph/list changes within
+that cell, table insertion, row insertion/deletion and column deletion.
+Column deletion registers separate, descending cell deletions as one atomic
+transaction. Simple tables must have direct `tr` rows with a consistent number
+of unmerged `td`/`th` cells, paragraph/list cell content, and body paragraphs
+immediately before and after the table. Bookmarks may be collapsed at cell/row
+boundaries, contained in one cell (including its terminator), contained in a
+row's final separator, outside the table, or span the entire table.
+**Partial cross-cell/table bookmarks remain read-only:** native commands can
+normalize their endpoints to different cell/row selections. Adding columns to
+any bookmarked document is explicitly rejected; its native boundary rules are
+not ordinary insertion affinities. Deleting the final row/column and destructive
+text selections across separate cells remain rejected.
+
+Full 4D 21.2 represents native list indentation as flat `li` elements with
+paragraph indentation and marker CSS, sometimes in adjacent `ul`/`ol` groups.
+Those levels are retained through text, paste, split/join, marker and indentation
+edits; only compatible sibling items can be joined. Arbitrarily nested HTML
+lists are different: native 21.2 imports their child text into the parent item,
+including added spaces. Such bookmarked imports and nested-list insertion
+remain protected, not silently flattened or advertised as native multilevel
+list support. Newer 4D multi-level style-sheet semantics are not certified.
 
 **Replacement policy:** replacing a selection replays native **deletion followed
 by insertion**, not a single `WP SET TEXT` replacement (which has different,
@@ -154,10 +211,10 @@ selection removes that bookmark; undo restores it. No bookmark management UI
 or arbitrary native-command equivalence is claimed.
 
 Generic `ranges` metadata, malformed/duplicate/out-of-bounds bookmarks, endpoints
-inside surrogate pairs, and bookmarked documents containing tables, nested lists,
-formulas, section/header/footer/anchored structures, hidden content or unsupported
-pictures remain **read-only**. Inserting a table/nested list into a supported
-bookmarked document is rejected. Unsupported browser input operations (for example
+inside surrogate pairs, and bookmarked documents containing noncanonical tables,
+partial cross-cell/table ranges, nested HTML lists, formulas,
+section/header/footer/anchored structures, hidden content or unsupported
+pictures remain **read-only**. Unsupported browser input operations (for example
 word-delete/autocorrect input types without established mapping) are also rejected,
 not inferred from a whole-run text diff. Standard typing, grapheme deletion and
 IME composition use explicit selection ranges. No bookmark stripping, silent
@@ -220,7 +277,7 @@ differences fail the gate.
 
 The gate first runs isolated native offset and mutation probes, then creates
 genuine browser downloads and model exports, imports them in full 4D, exports
-them through 4D and reopens those exports. Its 206 cases include the original 14:
+them through 4D and reopens those exports. Its 258 cases include the original 14:
 the preloaded brief, a newly formatted document with a hyperlink, image and table,
 and original and browser-exported versions of all six fixtures. It checks text, metadata,
 image/table counts, formula sources and links; sampled first-character
@@ -239,7 +296,17 @@ the independently executed native operations, not just the browser model's
 predictions. The offset fixtures cover Japanese, non-BMP and combining text,
 paragraphs, soft breaks, inline pictures, empty placeholders, flat lists and
 styled runs. `tests/fixtures/native-ranges.json` preserves a compact native oracle;
-regenerate it only from a successful full-4D probe:
+`tests/fixtures/native-structures.json` adds the structural oracle. The structural
+probe executes 32 table/list cases twice: with single-slot/collapsed and
+whole-table bookmarks, and with an additional partial-cross-boundary matrix.
+The gate compares 30 supported model edits/offset exports and 21 real-browser
+downloads with independent native results, plus an unchanged protected boundary
+document. Counterexamples for partial-cross-boundary ranges and column insertion
+remain in the native report; they are not counted as supported editing cases.
+Both raw serialized bookmark pairs and native bookmark names, positions and
+selected text are checked. Native `WP Bookmark range` can normalize cell
+selections, so its reported pair is not substituted for the raw archive pair.
+Regenerate the oracles only from a successful full-4D probe:
 
 ```sh
 cd web-editor
