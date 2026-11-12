@@ -110,7 +110,7 @@ document.querySelector('#app').innerHTML = `
       </section>
       <p id="recovery-notice" class="notice" data-i18n="recovered" hidden></p>
       <div id="error" class="notice error" role="alert" hidden><strong data-i18n="errorTitle"></strong><p id="error-message"></p><button id="dismiss-error" data-i18n="close"></button></div>
-      <div id="readonly-notice" class="notice" data-i18n="bookmarkNotice" hidden></div>
+      <div id="readonly-notice" class="notice" hidden></div>
       <div id="unsupported-notice" class="notice" data-i18n="unsupportedNotice" hidden></div>
       <div class="paper-surround"><article id="paper" class="paper" data-label="editor"></article></div>
       <footer class="document-footer"><span id="statistics"></span><span id="draft-state" role="status"></span>
@@ -245,7 +245,8 @@ function render(caret = null) {
   model.render($('paper'), messages[locale]);
   const styleLabels = { Normal: 'normalStyle', Heading_1: 'heading1Style', Heading_2: 'heading2Style', Quote: 'quoteStyle' };
   $('paragraph-style').replaceChildren(...model.styleNames().map(name => new Option(styleLabels[name] ? t(styleLabels[name]) : name.replaceAll('_', ' '), name)));
-  $('readonly-notice').hidden = !model.readOnly;
+  $('readonly-notice').hidden = !model.readOnly && !model.hasBookmarks;
+  $('readonly-notice').textContent = t(model.readOnly ? 'bookmarkNotice' : 'bookmarkEditingNotice');
   $('unsupported-notice').hidden = !$('paper').querySelector('.preserved-object:not([data-image]),.locked-content');
   updateStatus();
   if (caret?.node) focusRun(model.runs.indexOf(caret.node), caret.offset);
@@ -452,6 +453,7 @@ $('paper').addEventListener('input', event => {
   if (composition || event.inputType === 'insertCompositionText') return;
   if (event.target.dataset.run === undefined) return;
   try {
+    if (model.hasBookmarks) throw new DocumentError('protected');
     if (!event.target.textContent || event.target.textContent === '\u200b') event.target.dataset.empty = '';
     else delete event.target.dataset.empty;
     const last = model.editRun(Number(event.target.dataset.run), event.target.textContent);
@@ -496,6 +498,11 @@ $('paper').addEventListener('keydown', event => {
     return;
   }
   captureSelection();
+  if (model.hasBookmarks && ['Backspace', 'Delete'].includes(event.key) && (event.altKey || event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    showError(new DocumentError('protected'));
+    return;
+  }
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) model.endGroup();
   if (event.key === 'Enter' && !event.isComposing) {
     event.preventDefault();
@@ -524,11 +531,26 @@ $('paper').addEventListener('beforeinput', event => {
   } else if (['insertParagraph', 'insertLineBreak'].includes(event.inputType)) {
     event.preventDefault();
     perform('paragraph', () => model.splitParagraph(currentSelection(), event.inputType === 'insertLineBreak'));
-  } else if (event.inputType === 'insertText' && selection && (selection.startRun !== selection.endRun || model.runs[selection.startRun].data === '\u200b')) {
+  } else if (event.inputType === 'insertText' && selection && (model.hasBookmarks || selection.startRun !== selection.endRun || model.runs[selection.startRun].data === '\u200b')) {
     event.preventDefault();
     perform('typing', () => model.replaceText(selection, event.data || ''));
   } else if (['deleteContentBackward', 'deleteContentForward'].includes(event.inputType) && deleteAtBoundary(event.inputType === 'deleteContentBackward')) {
     event.preventDefault();
+  } else if (model.hasBookmarks) {
+    event.preventDefault();
+    perform('typing', () => {
+      if (!selection || !['deleteContentBackward', 'deleteContentForward'].includes(event.inputType)) throw new DocumentError('protected');
+      const backward = event.inputType === 'deleteContentBackward';
+      const node = model.runs[selection.startRun];
+      const segments = [...new Intl.Segmenter(locale, { granularity: 'grapheme' }).segment(node.data)];
+      const segment = backward ? segments.findLast(item => item.index < selection.start) : segments.find(item => item.index + item.segment.length > selection.end);
+      if (!segment) return;
+      return model.replaceText({
+        ...selection,
+        start: backward ? segment.index : selection.start,
+        end: backward ? selection.end : segment.index + segment.segment.length,
+      }, '');
+    });
   }
 });
 $('paper').addEventListener('compositionstart', () => { composition = currentSelection(); });
@@ -694,9 +716,10 @@ function deleteAtBoundary(backward) {
   }
   const node = model.runs[active];
   if (backward ? selection.start !== 0 : selection.end !== node.length) return false;
-  const otherIndex = active + (backward ? -1 : 1);
-  const other = model.runs[otherIndex];
   const block = node.parentElement.closest('p,li');
+  const neighbors = backward ? model.runs.slice(0, active).reverse() : model.runs.slice(active + 1);
+  const other = neighbors.find(candidate => candidate.length || candidate.parentElement.closest('p,li') !== block);
+  const otherIndex = model.runs.indexOf(other);
   if (other?.parentElement.closest('p,li') === block) {
     const segments = [...new Intl.Segmenter(locale, { granularity: 'grapheme' }).segment(other.data)];
     const range = backward ? {
