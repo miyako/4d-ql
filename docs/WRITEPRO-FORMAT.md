@@ -218,6 +218,45 @@ The body is a flat sequence; sections are counted from section breaks.
 `column-rule-*`. Subsections (`div.sectionNFirst`, `…Left`, `…Right`) mark a
 different first page or left/right pages.
 
+### Document page geometry (full 4D F0012102)
+
+`wp_page_probe`, executed by the web editor's full-4D gate before browser
+exports, establishes these scoped observations. Native-created `.4wp` originals,
+targets, PDFs, getter values and invalid-value results remain in
+`Output/page-report.json` and the page evidence archives.
+
+- A new native document omits `div.section0` entirely: getters return
+  `595pt` × `842pt`, portrait (`0`) and `2.5cm` on all four sides.
+  Nondefault values serialize in `div.section0`, not in an element in the body.
+- Width and height are **base dimensions**, stored as whole points. Setting
+  `210mm` × `297mm` yields `595pt` × `842pt`; `600.125pt` × `800.875pt`
+  yields `600pt` × `801pt`. Margins retain units and fractional precision:
+  `12.345mm 0pt 0.5in 1.25cm` is a four-sided native shorthand.
+- Portrait does not sort dimensions: native `900pt` × `500pt` portrait produces
+  a 900 × 500 PDF MediaBox. Landscape (`1`) swaps the base dimensions without
+  changing the serialized width/height: the same base pair becomes 500 × 900.
+  Thus orientation must not be inferred only from width versus height.
+- Width/height setters on a section raise error 205; paper size is document-level.
+  A section can override orientation and margins. Setting only its left margin
+  serializes all four margin sides. After document defaults change, that
+  explicit group stays intact while absent orientation/margin declarations
+  inherit. Export may omit an explicit value equal to the current default;
+  this does not authorize the editor to flatten or remove existing declarations.
+- Negative widths/margins raise error 204. Native setters accept zero dimensions
+  and margins exceeding the paper. The editor intentionally requires positive
+  paper dimensions (at most 10,000 pt), nonnegative margins and positive text
+  areas in every retained section. This is a conservative supported scope,
+  not a claim that native 4D rejects every other layout.
+
+The page gate compares model and browser Apply/Undo/recovered-Redo downloads
+with independent native mutations of the original documents, native document
+and section getters, native-exported PDF page boxes, and native reexported body
+XML/raw bookmark pairs. Geometry-only editor changes leave original body,
+formula/reference subtrees, bookmark metadata, nongeometry CSS and resource
+bytes unchanged, including protected documents. The preview uses document
+defaults on one continuous surface; section projection and exact pagination
+are not implemented or certified.
+
 Headers and footers follow the body as
 `<div class="section1Header|section3FirstHeader|section1LeftHeader|…Footer" style="visibility: hidden; height: 0">`.
 Their rules hold `margin` (distance from the paper edge, sides, gap to the

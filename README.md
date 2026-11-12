@@ -73,10 +73,16 @@ of the Swift Quick Look runtime; native layout and formula evaluation are not
 provided. Selection-aware formatting, links, images, simple tables/lists,
 find/replace, undo/redo, local versions and reload recovery are included.
 Native bookmarks track supported edits; unsupported ranges and structures stay
-protected. Bookmark management is available on main. This independent unmerged
-increment adds scoped column insertion, interior cross-cell bookmark handling,
-merged-cell text editing and localized capability reasons; destructive or
-unverified cases remain protected. Formula-aware display is available on main via #41.
+protected. Bookmark management and formula-aware display are available on main
+via [#40](https://github.com/miyako/4d-ql/pull/40) and
+[#41](https://github.com/miyako/4d-ql/pull/41). Scoped column insertion,
+interior cross-cell bookmark handling, merged-cell text editing and localized
+capability reasons are available on main via [#42](https://github.com/miyako/4d-ql/pull/42);
+destructive or unverified cases remain protected. This independent unmerged
+increment adds document-level page setup: paper presets/custom dimensions,
+orientation, margins and preference-only measurement units. It is not deployed.
+Sections/breaks, columns/tabs and printing remain planned separate steps;
+header/footer editing, floating objects and automatic pagination remain unimplemented.
 See the editor README for the exact feature boundaries, local data
 limits and full-4D compatibility gate. The Pages demo follows `main`, not
 unmerged feature branches.

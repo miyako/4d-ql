@@ -7,12 +7,12 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`643c520` / #41](https://github.com/miyako/4d-ql/pull/41).
+[`7d82c95` / #42](https://github.com/miyako/4d-ql/pull/42).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
-Phase 7 is pending in this branch, not in that main baseline;
+Page setup (step 1 of the approved next phase) is pending in this branch;
 deployment status is separate. The table is not a
 promise of dates or full Write Pro parity.
 
@@ -24,14 +24,18 @@ promise of dates or full Write Pro parity.
 | 4. Bookmarked tables and native list levels | Same-cell text/paste/cut, paragraph/list and inline-object edits; simple table insertion, row edits and column deletion; native indented/mixed-marker lists. Partial cross-cell bookmarks, column insertion and nested HTML stay protected | Available on main via #39 |
 | 5. Bookmark management | List, navigate/highlight, create from selections/carets, rename and delete native bookmarks; exact names, native range validation and atomic history/recovery | Available on main via #40 |
 | 6. Formula-aware protected display | Source and stored cached values only when actually available; explicit unavailable-value notice; scoped safe surrounding edits, no evaluation | Available on main via #41 |
-| 7. Broader table/range safety | Cell-anchored column insertion; interior cross-cell bookmark management, formatting and guarded additions; grid-validated merged-cell text editing; localized capability reasons | In progress; this independent, unmerged increment. Destructive cross-cell operations, merged structural edits, nested tables and generic ranges remain protected |
-| 8. Richer media and objects | More native picture formats, anchored objects and text boxes with preservation-aware controls | Proposed |
-| 9. Document/page structure | Page/section settings, headers/footers, tabs and columns | Proposed |
-| 10. Layout/printing fidelity | Better pagination, print output and object wrapping, with native/browser differences explicit | Proposed |
+| 7. Broader table/range safety | Cell-anchored column insertion; interior cross-cell bookmark management, formatting and guarded additions; grid-validated merged-cell text editing; localized capability reasons | Available on main via #42; destructive cross-cell operations, merged structural edits, nested tables and generic ranges remain protected |
+| 8.1. Page setup | Document-level paper presets/custom dimensions, orientation, margins and preference-only units; inherited section values retained | In progress; this independent, unmerged increment, not deployed |
+| 8.2. Sections and breaks | Insert/remove page and section breaks; defaults and section-specific settings without flattening inheritance | Planned; separate subsequent PR, not implemented or deployed |
+| 8.3. Columns and tabs | Column count/gap and paragraph tab stops, with explicit preview limits | Planned; separate subsequent PR, not implemented or deployed |
+| 8.4. Preview/output | Better settings projection and browser printing without claiming exact 4D pagination | Planned; separate subsequent PR, not implemented or deployed |
+| 9. Richer media and objects | More native picture formats, anchored objects and text boxes with preservation-aware controls | Proposed; floating objects remain unimplemented |
+| 10. Headers/footers and advanced layout | Header/footer editing, object wrapping and automatic pagination | Later work; unimplemented, not part of the approved four-step increment |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
-Phases 8 onward are unscheduled proposals, not an authorized implementation queue.
-Page/section settings and headers/footers are not part of this increment.
+Only step 8.1 is implemented on this branch. Sections/breaks, columns/tabs and
+printing remain planned, one PR per step. Headers/footers, floating objects and
+automatic pagination are explicitly outside this increment.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
 The [preservation contract](#preservation-contract-and-limits) and
@@ -52,6 +56,45 @@ serve that directory with a static HTTP server. `npm run preview` serves the
 production build locally. Opening `index.html` directly with `file://` is not
 supported. Dependencies are bundled locally, not loaded from a CDN.
 Production builds include their license texts in `THIRD_PARTY_NOTICES.txt`.
+
+## Page setup (in progress)
+
+**Page setup** in the toolbar opens keyboard-accessible document-default
+controls in all six languages and system/light/dark themes. A3, A4, A5,
+Letter, Legal and Tabloid use native whole-point dimensions; custom base
+width/height, portrait/landscape and four margins are also editable. Apply
+commits the entire change as one undo/redo, version and IndexedDB recovery
+transaction. Escape or Close returns focus to the toolbar without applying.
+
+Select mm, cm, in or pt as a local preference. Switching units, opening/closing
+the panel or applying unchanged values does not rewrite native geometry or
+create undo steps. Unchanged imported margin values retain their original
+units/precision. New paper dimensions follow the observed 4D rounding to whole
+points; the resulting oriented point size is displayed **before** Apply.
+Orientation swaps the base dimensions, even for custom width greater than
+height; it does not sort them. There is no silent clamping.
+
+Supported paper dimensions are 1–10,000 pt and margins are nonnegative, at most
+10,000 pt (or equivalent units). Opposing margins must leave a positive text
+area both in document defaults and after retaining section overrides.
+Invalid/nonfinite values and section conflicts produce localized errors with
+no document mutation. These are conservative editor limits, not claims about
+4D's maximum page size; native setters even accept zero-sized paper and margins
+larger than the paper, which this UI deliberately rejects.
+
+Only native `div.section0` geometry is changed. Existing `div.sectionN` overrides,
+unknown declarations, original body/formula/table XML, bookmark metadata and
+archive resources are retained. Geometry-only transactions can change defaults
+even when text edits are protected, but never relax those text/structure guards.
+Unsupported/invalid geometry, nonnative selectors, nested conditional geometry,
+`!important`, inline geometry, subsection geometry and unverified margin
+longhands protect **all paper, orientation and margin controls**, with a
+specific notice; the preference-only unit selector stays usable.
+
+The existing preview surface reflects document-default physical paper width,
+minimum height and margins. It remains a **single continuous surface** and does
+not render section overrides, headers/footers or automatic page boundaries.
+No new printing or section-editing functionality is included.
 
 ## GitHub Pages demo
 
@@ -386,9 +429,9 @@ differences fail the gate. The gate uses the shared fail-fast directory lock
 probes too. A live lock is never removed by another run. A timeout terminates
 only that gate's own process.
 
-The gate first runs isolated native offset and mutation probes, then creates
+The gate first runs isolated native page geometry, offset and mutation probes, then creates
 genuine browser downloads and model exports, imports them in full 4D, exports
-them through 4D and reopens those exports. Its 997 cases include the original 14:
+them through 4D and reopens those exports. Its 1,079 cases include the original 14:
 the preloaded brief, a newly formatted document with a hyperlink, image and table,
 and original and browser-exported versions of all six fixtures. It checks text, metadata,
 image/table counts, formula sources and links; sampled first-character
@@ -396,6 +439,17 @@ formatting is compared with native originals. The new document additionally
 checks the actual first glyph, bold/italic/underline/strikethrough, size,
 highlight and hyperlink, and native decoding of the inserted 48-by-32 image.
 Unsupported bookmarked/read-only cases must also remain byte-identical in browser exports.
+
+The 82 page cases add model exports and genuine browser Apply/Undo/recovered-Redo
+downloads for presets, custom/rotated paper, fractional and zero margins,
+section inheritance, six complex table shapes and all fourteen formula variants.
+Each is compared with a separately imported original mutated by native
+`WP SET ATTRIBUTES`, never an expected result derived from the editor model.
+Native document/section getters, native PDF MediaBox geometry, text, raw bookmark
+metadata, formula/table XML and original resource bytes are checked. The
+original 997 cases remain in the gate. Page probes also retain default,
+orientation, whole-point rounding and native invalid-value observations in
+`Output/page-report.json`, native-created originals/targets and PDFs.
 
 The additional cases cover 165 native delete-then-insert combinations (all
 selection boundaries in a nine-character document, empty/ASCII/non-BMP insertion,

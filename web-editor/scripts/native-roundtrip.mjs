@@ -10,6 +10,7 @@ import { nativeMetadata } from '../src/native-ranges.js';
 import { prepareRangeCases, prepareBookmarkCases } from './native-range-cases.mjs';
 import { prepareFormulaCases, verifyFormulaCase } from './native-formula-cases.mjs';
 import { prepareComplexCases } from './native-complex-cases.mjs';
+import { preparePageCases, verifyPageCase } from './native-page-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtures = resolve(root, '../Tests/FourDFileKitTests/Fixtures/WritePro');
@@ -233,6 +234,7 @@ async function prepare() {
     await prepareBookmarkCases(directory, cases);
     await prepareFormulaCases(directory, cases, browser, server.resolvedUrls.local[0]);
     await prepareComplexCases(directory, cases, browser, server.resolvedUrls.local[0], download);
+    await preparePageCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     assert.deepEqual(browserErrors, [], 'Browser runtime errors');
     await writeFile(manifestPath, JSON.stringify({ cases }, null, 2));
   } finally {
@@ -259,6 +261,7 @@ async function verify() {
     const before = actual.imported;
     const after = actual.reopened;
     if (entry.formula) await verifyFormulaCase(directory, entry, actual);
+    if (entry.page) await verifyPageCase(directory, entry, actual);
     if (entry.resources) {
       const source = unzipSync(await readFile(resolve(directory, 'Input', entry.resources)));
       const edited = unzipSync(await readFile(resolve(directory, 'Input', entry.file)));
@@ -266,7 +269,7 @@ async function verify() {
         if (!/\.x?html$/i.test(name)) assert.deepEqual(edited[name], bytes, `${entry.name}: original resource ${name} changed`);
       }
     }
-    for (const key of ['text', 'metadata', 'bookmarks', 'images', 'imagePixels', 'tables', 'first']) assert.deepEqual(after[key], before[key], `${entry.name}: native re-export changed ${key}`);
+    for (const key of ['page', 'text', 'metadata', 'bookmarks', 'images', 'imagePixels', 'tables', 'first']) assert.deepEqual(after[key], before[key], `${entry.name}: native re-export changed ${key}`);
     if (entry.ranges) {
       assert.equal(before.text, entry.ranges.text, `${entry.name}: text differs from native edit`);
       assert.deepEqual(before.bookmarks, entry.ranges.bookmarks, `${entry.name}: bookmarks differ from native edit`);

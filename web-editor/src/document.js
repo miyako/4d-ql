@@ -1,6 +1,7 @@
 import * as css from 'css-tree';
 import { DocumentError, MAX_ARCHIVE, MAX_EXPANDED, readArchive, writeArchive } from './archive.js';
 import { nativeBody, nativeBoundary, nativeMetadata, spliceBookmarks, writeBookmarks } from './native-ranges.js';
+import { pageFields, pagePoints, validatePageGeometry } from './page-setup.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
@@ -250,6 +251,130 @@ export class WriteProDocument {
     return Object.assign(values, declarations(element.getAttribute('style') || ''));
   }
 
+  pageSetup() {
+    const defaults = { width: '595pt', height: '842pt', orientation: 'portrait',
+      top: '2.5cm', right: '2.5cm', bottom: '2.5cm', left: '2.5cm' };
+    const sections = new Map([[0, {}]]);
+    const locations = [];
+    try {
+      for (const element of this.document.querySelectorAll('head style')) {
+        const ast = css.parse(element.textContent, { positions: true });
+        css.walk(ast, node => {
+          if (node.type !== 'Declaration' || !/^-d4-page-(width|height|orientation|margin(?:-.+)?)$/i.test(node.property)) return;
+          if (node.important || node.property !== node.property.toLowerCase()) throw new DocumentError('pageUnsupported');
+          // A second pass below establishes native scope. Unscoped/nested geometry is protected.
+          locations.push(node);
+        });
+        ast.children.forEach(rule => {
+          if (rule.type !== 'Rule') return;
+          const selector = css.generate(rule.prelude);
+          const match = selector.match(/^div\.section(0|[1-9]\d*)$/);
+          const values = declarations(css.generate(rule.block).slice(1, -1));
+          const geometry = Object.keys(values).filter(key => /^-d4-page-(width|height|orientation|margin(?:-.+)?)$/.test(key));
+          if (!geometry.length) return;
+          if (!match || geometry.some(key => !['-d4-page-width', '-d4-page-height', '-d4-page-orientation', '-d4-page-margin'].includes(key))) throw new DocumentError('pageUnsupported');
+          const index = Number(match[1]);
+          if (!Number.isSafeInteger(index)) throw new DocumentError('pageUnsupported');
+          if (index && geometry.some(key => /width|height/.test(key))) throw new DocumentError('pageUnsupported');
+          const settings = sections.get(index) || {};
+          for (const key of geometry) {
+            const value = values[key];
+            const field = key.slice('-d4-page-'.length);
+            if (field === 'margin') {
+              const sides = value.trim().split(/\s+/);
+              if (!sides.length || sides.length > 4) throw new DocumentError('pageUnsupported');
+              sides.forEach(pagePoints);
+              const [top, right = top, bottom = top, left = right] = sides;
+              Object.assign(settings, { top, right, bottom, left });
+            } else {
+              if (field === 'orientation') {
+                if (!['portrait', 'landscape'].includes(value)) throw new DocumentError('pageUnsupported');
+              } else pagePoints(value);
+              settings[field] = value;
+            }
+          }
+          sections.set(index, settings);
+          rule.block.children.forEach(node => {
+            const position = locations.indexOf(node);
+            if (position !== -1) locations.splice(position, 1);
+          });
+        });
+      }
+      if (locations.length || [...this.document.querySelectorAll('[style]')].some(element =>
+        /-d4-page-(width|height|orientation|margin(?:-[\w-]+)?)\s*:/i.test(element.getAttribute('style')))) throw new DocumentError('pageUnsupported');
+      const geometry = { ...defaults, ...sections.get(0) };
+      validatePageGeometry(geometry);
+      for (const [index, settings] of sections) if (index) validatePageGeometry({ ...geometry, ...settings });
+      return { geometry, sections, reason: null };
+    } catch (error) {
+      if (!(error instanceof DocumentError) && error.name !== 'SyntaxError') throw error;
+      return { geometry: defaults, sections, reason: 'pageUnsupported' };
+    }
+  }
+
+  setPageSetup(changes) {
+    const current = this.pageSetup();
+    if (current.reason) throw new DocumentError(current.reason);
+    if (!changes || Object.keys(changes).some(key => ![...pageFields, 'orientation'].includes(key))) throw new DocumentError('pageInvalid');
+    const next = { ...current.geometry, ...changes };
+    for (const field of pageFields) {
+      pagePoints(next[field]);
+      if (field in changes && ['width', 'height'].includes(field)) next[field] = `${Math.round(pagePoints(next[field]))}pt`;
+    }
+    validatePageGeometry(next);
+    for (const [index, settings] of current.sections) {
+      if (!index) continue;
+      try { validatePageGeometry({ ...next, ...settings }); }
+      catch (error) {
+        if (!(error instanceof DocumentError)) throw error;
+        throw new DocumentError('pageSectionMargins');
+      }
+    }
+    const properties = {};
+    for (const field of ['width', 'height', 'orientation']) {
+      if (next[field] !== current.geometry[field]) properties[`-d4-page-${field}`] = next[field];
+    }
+    if (['top', 'right', 'bottom', 'left'].some(field => next[field] !== current.geometry[field])) {
+      properties['-d4-page-margin'] = ['top', 'right', 'bottom', 'left'].map(field => next[field]).join(' ');
+    }
+    if (!Object.keys(properties).length) return;
+    return this.mutate('pageSetup', () => {
+      let target = null;
+      for (const element of this.document.querySelectorAll('head style')) {
+        const ast = css.parse(element.textContent, { positions: true });
+        ast.children.forEach(rule => {
+          if (rule.type === 'Rule' && css.generate(rule.prelude) === 'div.section0') target = { element, rule };
+        });
+      }
+      if (target) {
+        const { element, rule } = target;
+        const missing = { ...properties };
+        const edits = [];
+        rule.block.children.forEach(node => {
+          if (node.type === 'Declaration' && Object.hasOwn(properties, node.property)) {
+            edits.push([node.value.loc.start.offset, node.value.loc.end.offset, properties[node.property]]);
+            delete missing[node.property];
+          }
+        });
+        let text = element.textContent;
+        const end = rule.block.loc.end.offset - 1;
+        const additions = Object.entries(missing).map(([key, value]) => `${key}:${value}`).join(';');
+        if (additions) {
+          const block = text.slice(rule.block.loc.start.offset + 1, end).trimEnd();
+          edits.push([end, end, `${block && !block.endsWith(';') ? ';' : ''}${additions}`]);
+        }
+        for (const [start, end, value] of edits.sort((a, b) => b[0] - a[0])) text = text.slice(0, start) + value + text.slice(end);
+        element.textContent = text;
+      } else {
+        const style = this.document.createElementNS(XHTML, 'style');
+        style.setAttribute('type', 'text/css');
+        style.textContent = `div.section0 { ${Object.entries(properties).map(([key, value]) => `${key}:${value}`).join(';')} }`;
+        this.document.querySelector('head').append(style);
+      }
+      this.styles = rules(this.document);
+    });
+  }
+
   formula(element) {
     const values = this.values(element);
     if (!Object.keys(values).some(key => /^-d4-ref/.test(key))) return null;
@@ -324,15 +449,20 @@ export class WriteProDocument {
   mutate(label, change, group = null, restore = false) {
     const before = this.serialize();
     try {
-      if (!restore && this.readOnly) throw new DocumentError('protected');
-      const metadata = restore ? { bookmarks: {} } : nativeMetadata(this.document);
+      const geometry = label === 'pageSetup';
+      const bodyBefore = geometry ? this.document.querySelector('body').outerHTML : null;
+      const bookmarksBefore = geometry ? [...this.document.querySelectorAll('meta[name="bookmarks"]')].map(node => node.outerHTML).join('') : null;
+      if (!restore && !geometry && this.readOnly) throw new DocumentError('protected');
+      const metadata = restore || geometry ? { bookmarks: {} } : nativeMetadata(this.document);
       const objects = restore ? [] : this.formulaElements().map(node => ({ node, xml: node.outerHTML }));
-      const tracked = !restore && (this.tracksNativeEdits || label === 'bookmark');
+      const tracked = !restore && !geometry && (this.tracksNativeEdits || label === 'bookmark');
       this.nativeTransaction = tracked ? {
         text: this.nativeView().text,
         bookmarks: metadata.bookmarks, meta: metadata.meta,
       } : null;
       const result = change();
+      if (geometry && (this.document.querySelector('body').outerHTML !== bodyBefore ||
+        [...this.document.querySelectorAll('meta[name="bookmarks"]')].map(node => node.outerHTML).join('') !== bookmarksBefore)) throw new DocumentError('protected');
       if (!restore) {
         const afterObjects = this.formulaElements();
         if (afterObjects.length !== objects.length || objects.some(({ node, xml }, index) =>
@@ -346,8 +476,8 @@ export class WriteProDocument {
           JSON.stringify(nativeMetadata(this.document).bookmarks) !== JSON.stringify(this.nativeTransaction.bookmarks)) throw new DocumentError('protected');
       }
       const after = this.serialize();
-      const hasBookmarks = restore ? this.hasBookmarks : Object.keys(nativeMetadata(this.document).bookmarks).length > 0;
-      if (!restore && !tracked && hasBookmarks) throw new DocumentError('protected');
+      const hasBookmarks = restore || geometry ? this.hasBookmarks : Object.keys(nativeMetadata(this.document).bookmarks).length > 0;
+      if (!restore && !geometry && !tracked && hasBookmarks) throw new DocumentError('protected');
       if (after !== before) {
         parse(after);
         const resources = Object.entries(this.files).reduce((sum, [name, bytes]) => sum + (name === this.entry ? 0 : bytes.length), 0);

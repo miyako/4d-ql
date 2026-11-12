@@ -13,9 +13,21 @@ Else
 	var $case; $result; $doc; $reopened : Object
 	For each ($case; $manifest.cases)
 		$result:=New object("name"; $case.name)
+		If (OB Is defined($case; "page"))
+			var $baseline : Object:=WP Import document($root.file("Input/"+$case.page.source).platformPath)
+			If ($case.page.target#"identity")
+				wp_page_apply($baseline; $case.page.target)
+			End if
+			$result.pageExpected:=wp_web_stats($baseline; False)
+			WP EXPORT DOCUMENT($baseline; $root.file("Output/"+$case.name+"-expected.pdf").platformPath; wk pdf)
+			WP EXPORT DOCUMENT($baseline; $root.file("Output/"+$case.name+"-expected.4wp").platformPath; wk 4wp)
+		End if
 		$doc:=WP Import document($root.file("Input/"+$case.file).platformPath)
 		If ($doc#Null)
 			$result.imported:=wp_web_stats($doc; $case.name="new-document")
+			If (OB Is defined($case; "page"))
+				WP EXPORT DOCUMENT($doc; $root.file("Output/"+$case.name+".pdf").platformPath; wk pdf)
+			End if
 			WP EXPORT DOCUMENT($doc; $root.file("Output/"+$case.name+".4wp").platformPath; wk 4wp)
 			$reopened:=WP Import document($root.file("Output/"+$case.name+".4wp").platformPath)
 			If ($reopened#Null)
