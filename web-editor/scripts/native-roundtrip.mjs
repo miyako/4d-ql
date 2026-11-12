@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { preview } from 'vite';
 import { unzipSync, strFromU8 } from 'fflate';
+import { JSDOM } from 'jsdom';
+import { nativeMetadata } from '../src/native-ranges.js';
 import { prepareRangeCases } from './native-range-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,9 +29,10 @@ async function prepare() {
     page.on('dialog', dialog => dialog.accept());
     await page.goto(server.resolvedUrls.local[0]);
     await page.getByRole('button', { name: 'New document', exact: true }).waitFor();
-    const download = async (name, extra = {}) => {
-      const waiting = page.waitForEvent('download');
-      await page.getByRole('button', { name: 'Download .4wp', exact: true }).click();
+    const download = async (name, extra = {}, source = page) => {
+      const waiting = source.waitForEvent('download');
+      await source.getByRole('button', { name: 'Download .4wp', exact: true }).click();
+      await expect(source.getByRole('alert'), `${name}: export failed`).toBeHidden();
       const file = `${name}.4wp`;
       await (await waiting).saveAs(resolve(directory, 'Input', file));
       cases.push({ name, file, ...extra });
@@ -106,6 +109,47 @@ async function prepare() {
       const native = rangeReport.splices.find(item => item.edit.start === offset + 1 && item.edit.end === offset + 1 && item.edit.text === text);
       await download(`range-browser-typing-${offset}`, { ranges: { text: native.text, bookmarks: native.bookmarks } });
     }
+    for (const kind of [
+      'typing', 'cellStart', 'cellEnd', 'cut', 'splitCell', 'joinCell', 'pasteCell', 'unicodeCell', 'emptyCellTyping',
+      'addRow', 'appendRow', 'removeRow', 'removeLastRow', 'removeColumn', 'removeLastColumn',
+      'insertTable', 'listSplit', 'listJoin', 'listPaste', 'listTyping', 'listCell',
+    ]) {
+      const page = await browser.newPage({ acceptDownloads: true });
+      page.on('dialog', dialog => dialog.accept());
+      await page.goto(server.resolvedUrls.local[0]);
+      const native = rangeReport.structures.find(item => item.name === kind);
+      assert(native, `Missing independent native ${kind} operation`);
+      await page.locator('#new').click();
+      await page.locator('#file').setInputFiles(resolve(directory, `Output/structure-${kind}-original.4wp`));
+      await expect(page.locator('#paper')).toContainText('BEFORE');
+      const rowEdits = { addRow: [0, 'add-row'], appendRow: [2, 'add-row'], removeRow: [0, 'remove-row'], removeLastRow: [2, 'remove-row'], removeColumn: [0, 'remove-column'], removeLastColumn: [1, 'remove-column'] };
+      const target = rowEdits[kind]
+        ? page.locator('#paper td').nth(rowEdits[kind][0]).locator('[contenteditable]').first()
+        : kind === 'emptyCellTyping' ? page.locator('#paper td [contenteditable]').first()
+        : page.locator('#paper [contenteditable]').filter({ hasText: new RegExp(`^${kind === 'insertTable' ? 'BEFORE' : kind === 'joinCell' ? 'B' : kind.startsWith('list') && kind !== 'listCell' ? 'CD' : 'AB'}$`) }).first();
+      const offset = ['cellStart', 'cut', 'joinCell', 'listJoin', 'listCell', 'emptyCellTyping'].includes(kind) || rowEdits[kind] ? 0 : kind === 'cellEnd' ? 2 : kind === 'insertTable' ? 6 : 1;
+      await target.evaluate((element, { offset, cut }) => {
+        element.focus();
+        window.getSelection().setBaseAndExtent(element.firstChild, offset, element.firstChild, cut ? 2 : offset);
+      }, { offset, cut: kind === 'cut' });
+      if (rowEdits[kind] || kind === 'insertTable') {
+        if (await page.locator('details').getAttribute('open') === null) await page.locator('summary').click();
+        await page.locator(`#${rowEdits[kind]?.[1] || 'insert-table'}`).click();
+      } else if (['cut', 'pasteCell', 'listPaste'].includes(kind)) {
+        await page.locator('#paper').evaluate((paper, cut) => {
+          const clipboardData = new DataTransfer();
+          if (!cut) clipboardData.setData('text/html', '<p><b>XY</b></p><p>Z</p>');
+          paper.dispatchEvent(new ClipboardEvent(cut ? 'cut' : 'paste', { clipboardData, bubbles: true, cancelable: true }));
+        }, kind === 'cut');
+      } else if (['splitCell', 'listSplit', 'joinCell', 'listJoin'].includes(kind)) {
+        await page.keyboard.press(kind.endsWith('Split') || kind === 'splitCell' ? 'Enter' : 'Backspace');
+      } else if (kind === 'listCell') await page.locator('#bullets').click();
+      else await page.keyboard.insertText(kind === 'unicodeCell' ? '😀日é' : ['listTyping', 'emptyCellTyping'].includes(kind) ? '😀日' : 'XY');
+      await expect(page.getByRole('alert')).toBeHidden();
+      console.log(`Native browser case: ${kind}`);
+      await download(`structure-browser-${kind}`, { ranges: { text: native.after.text, bookmarks: native.after.bookmarks } }, page);
+      await page.close();
+    }
     await prepareRangeCases(directory, cases);
     await writeFile(manifestPath, JSON.stringify({ cases }, null, 2));
   } finally {
@@ -133,6 +177,14 @@ async function verify() {
     if (entry.ranges) {
       assert.equal(before.text, entry.ranges.text, `${entry.name}: text differs from native edit`);
       assert.deepEqual(before.bookmarks, entry.ranges.bookmarks, `${entry.name}: bookmarks differ from native edit`);
+      if (entry.ranges.serialized) {
+        const files = unzipSync(await readFile(resolve(directory, `Output/${entry.name}.4wp`)));
+        const xml = strFromU8(Object.entries(files).find(([name]) => /\.html$/i.test(name))[1]);
+        const dom = new JSDOM();
+        const doc = new dom.window.DOMParser().parseFromString(xml, 'application/xhtml+xml');
+        assert.deepEqual(nativeMetadata(doc).bookmarks, entry.ranges.serialized, `${entry.name}: serialized native reexport differs`);
+        dom.window.close();
+      }
     }
     for (const key of ['formulas', 'links']) assert.deepEqual(stable(after[key]), stable(before[key]), `${entry.name}: native re-export changed ${key}`);
     if (entry.reference) {

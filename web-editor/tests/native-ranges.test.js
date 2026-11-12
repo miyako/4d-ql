@@ -3,6 +3,7 @@ import { WriteProDocument } from '../src/document.js';
 import { nativeBody, nativeMetadata, spliceBookmarks } from '../src/native-ranges.js';
 import { messages } from '../src/i18n.js';
 import evidence from './fixtures/native-ranges.json';
+import structuralEvidence from './fixtures/native-structures.json';
 
 const initial = { span: [3, 6], point: [4, 4], all: [1, 10] };
 const selection = (startRun, start, endRun = startRun, end = start) => ({ startRun, start, endRun, end });
@@ -14,6 +15,12 @@ const make = (body = '<p>abcdefghi</p>', bookmarks = initial, head = '') => {
   return model;
 };
 const ranges = model => nativeMetadata(model.document).bookmarks;
+const structural = name => {
+  const item = structuralEvidence.structures.find(item => item.name === name);
+  const model = new WriteProDocument(item.xml);
+  render(model);
+  return { model, item, run: text => model.runs.findIndex(node => node.data === text) };
+};
 
 describe('full 4D F0012102 evidence', () => {
   it.each(evidence.offsets)('counts native $name offsets and converts serialized origin zero', item => {
@@ -38,6 +45,90 @@ describe('full 4D F0012102 evidence', () => {
 });
 
 describe('range-safe transactions', () => {
+  it.each([
+    ['addRow', 0, 'addRow'], ['appendRow', 2, 'addRow'],
+    ['removeRow', 0, 'removeRow'], ['removeLastRow', 2, 'removeRow'],
+    ['removeColumn', 0, 'removeColumn'], ['removeLastColumn', 1, 'removeColumn'],
+  ])('matches native %s including collapsed cell/row boundaries and whole-table ranges', (name, cell, action) => {
+    const { model, item } = structural(name);
+    expect(model.readOnly).toBe(false);
+    model.tableEdit(cell, action);
+    expect(ranges(model)).toEqual(item.serialized);
+    const recovered = WriteProDocument.unpack(model.pack());
+    recovered.undo();
+    expect(recovered.serialize()).toBe(model.initial);
+    recovered.undo(true);
+    expect(ranges(recovered)).toEqual(item.serialized);
+  });
+
+  it.each([
+    ['cellStart', 0, 'XY'], ['typing', 1, 'XY'], ['cellEnd', 2, 'XY'],
+    ['cut', 0, ''], ['unicodeCell', 1, '😀日é'],
+  ])('matches native %s inside a cell without changing its neighbors', (name, offset, text) => {
+    const { model, item, run } = structural(name);
+    model.replaceText(selection(run('AB'), offset, run('AB'), name === 'cut' ? 2 : offset), text);
+    expect(ranges(model)).toEqual(item.serialized);
+    expect([...model.document.querySelectorAll('td')].slice(1).map(cell => cell.textContent)).toEqual(['CD', 'EF', 'GH']);
+  });
+
+  it('registers table insertion, split/join and rich paste in a cell', () => {
+    for (const name of ['insertTable', 'splitCell', 'joinCell', 'pasteCell']) {
+      const { model, item, run } = structural(name);
+      if (name === 'insertTable') model.insertTable(0);
+      if (name === 'splitCell') model.splitParagraph(selection(run('AB'), 1));
+      if (name === 'joinCell') model.mergeBoundary(run('B'), true);
+      if (name === 'pasteCell') model.paste(selection(run('AB'), 1), '<p><b>XY</b></p><p>Z</p>', '');
+      expect(ranges(model)).toEqual(item.serialized);
+      expect(WriteProDocument.open(model.export()).readOnly).toBe(false);
+    }
+  });
+
+  it('types non-BMP text into a native empty cell without consuming its terminator', () => {
+    const { model, item, run } = structural('emptyCellTyping');
+    model.replaceText(selection(run('\u200b'), 0), '😀日');
+    expect(ranges(model)).toEqual(item.serialized);
+    expect(model.nativeView().text.length + 1).toBe(item.after.end);
+    expect(model.document.querySelectorAll('td').length).toBe(4);
+  });
+
+  it('preserves native list-level indentation through typing and paragraph changes', () => {
+    for (const name of ['indent', 'listSplit', 'listJoin', 'listTyping', 'listPaste']) {
+      const { model, item, run } = structural(name);
+      if (name === 'indent') model.paragraphProperty(selection(run('CD'), 0), 'margin-left', '48pt');
+      if (name === 'listSplit') model.splitParagraph(selection(run('CD'), 1));
+      if (name === 'listJoin') model.mergeBoundary(run('CD'), true);
+      if (name === 'listTyping') model.replaceText(selection(run('CD'), 1), '😀日');
+      if (name === 'listPaste') model.paste(selection(run('CD'), 1), '<p><b>XY</b></p><p>Z</p>', '');
+      expect(ranges(model)).toEqual(item.serialized);
+      if (name !== 'listJoin') {
+        expect(model.values(model.document.querySelector('ul').lastElementChild).margin).toContain('24pt');
+      }
+    }
+  });
+
+  it('protects partial cross-cell bookmarks and column insertion without losing history', () => {
+    const protectedModel = structural('boundary-table').model;
+    expect(protectedModel.readOnly).toBe(true);
+    expect(() => protectedModel.replaceText(selection(1, 0), 'x')).toThrow('protected');
+    const { model } = structural('table');
+    const before = model.serialize();
+    expect(() => model.tableEdit(0, 'addColumn')).toThrow('bookmarkColumn');
+    expect(model.serialize()).toBe(before);
+    expect(model.undoStack).toEqual([]);
+    expect(() => model.replaceText(selection(1, 1, 2, 1), 'x')).toThrow('structuralSelection');
+    expect(model.serialize()).toBe(before);
+  });
+
+  it('checks multi-cell deletion registrations atomically and rolls back an incorrect span', () => {
+    const { model } = structural('table');
+    const before = model.serialize();
+    expect(() => model.mutate('table', () => model.nativeChange(
+      [{ start: 8, end: 9 }], () => model.document.querySelector('td').remove(),
+    ))).toThrow('protected');
+    expect(model.serialize()).toBe(before);
+    expect(model.undoStack).toEqual([]);
+  });
+
   it('uses the actual insertion point in repeated text, including non-BMP text', () => {
     const model = make('<p>aaaa😀日本</p>', { word: [2, 4], end: [9, 9] });
     model.replaceText(selection(0, 0), 'a');
@@ -134,7 +225,6 @@ describe('range-safe transactions', () => {
     const model = make();
     const before = model.serialize();
     for (const change of [
-      () => model.insertTable(0),
       () => model.paste(selection(0, 2), '<ul><li>A<ul><li>B</li></ul></li></ul>', ''),
       () => model.mutate('edit', () => { model.runs[0].data = 'unregistered'; }),
       () => model.mutate('edit', () => {
@@ -160,7 +250,7 @@ describe('range-safe transactions', () => {
     expect(() => reopened.mutate('edit', () => {})).toThrow('protected');
   });
 
-  it('protects generic ranges, tables, formulas, nested lists and hidden containers', () => {
+  it('protects generic ranges, noncanonical tables, formulas, nested HTML lists and hidden containers', () => {
     for (const body of [
       '<table><tr><td><p>abcdefghi</p></td></tr></table>',
       '<p>a<span style="-d4-ref:formula">bc</span>defghi</p>',

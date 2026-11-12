@@ -20,7 +20,7 @@ export async function prepareRangeCases(directory, cases) {
   const save = async (model, name, expected) => {
     const file = `${name}.4wp`;
     await writeFile(resolve(directory, 'Input', file), model.export());
-    cases.push({ name, file, ranges: { text: expected.text, bookmarks: expected.bookmarks } });
+    cases.push({ name, file, ranges: { text: expected.text, bookmarks: expected.bookmarks, ...(expected.serialized && { serialized: expected.serialized }) } });
   };
   const original = new Uint8Array(await readFile(resolve(directory, 'Output/range-editing.4wp')));
   for (const [index, item] of report.splices.entries()) {
@@ -57,6 +57,68 @@ export async function prepareRangeCases(directory, cases) {
     const expectedPairs = Object.fromEntries(Object.entries(item.after.bookmarks).map(([name, value]) => [name, [value.start, value.end]]));
     assert.deepEqual(nativeMetadata(model.document).bookmarks, expectedPairs, `${item.name}: native range mismatch`);
     await save(model, `range-operation-${item.name}`, item.after);
+  }
+  assert.equal(report.structures.length, 64, 'Native table/list operation coverage');
+  for (const item of report.structures) {
+    const original = new Uint8Array(await readFile(resolve(directory, `Output/structure-${item.name}-original.4wp`)));
+    const model = WriteProDocument.open(original);
+    if (item.name.startsWith('boundary-')) {
+      if (item.name === 'boundary-table') {
+        assert(model.readOnly, 'Partial cross-cell bookmarks must remain protected');
+        assert.deepEqual(model.export(), original, 'Protected cross-cell archive must stay byte-identical');
+        await save(model, 'structure-protected-boundaries', item.before);
+      }
+      continue;
+    }
+    assert(!model.readOnly, `${item.name}: native structure supported`);
+    render(model);
+    const run = text => {
+      const index = model.runs.findIndex(node => node.data === text);
+      assert(index >= 0, `${item.name}: missing run ${text}`);
+      return index;
+    };
+    switch (item.name) {
+      case 'table': case 'nested': case 'indentedList': break;
+      case 'indent': model.paragraphProperty(selection(run('CD'), 0), 'margin-left', '48pt'); break;
+      case 'listSplit': model.splitParagraph(selection(run('CD'), 1)); break;
+      case 'listJoin': model.mergeBoundary(run('CD'), true); break;
+      case 'listToggle': model.toggleList(model.blocks.indexOf(model.runs[run('CD')].parentElement.closest('li')), 'ol'); break;
+      case 'listPaste': model.paste(selection(run('CD'), 1), '<p><b>XY</b></p><p>Z</p>', ''); break;
+      case 'listTyping': model.replaceText(selection(run('CD'), 1), '😀日'); break;
+      case 'addRow': model.tableEdit(0, 'addRow'); break;
+      case 'appendRow': model.tableEdit(2, 'addRow'); break;
+      case 'removeRow': model.tableEdit(0, 'removeRow'); break;
+      case 'removeLastRow': model.tableEdit(2, 'removeRow'); break;
+      case 'removeColumn': model.tableEdit(0, 'removeColumn'); break;
+      case 'removeLastColumn': model.tableEdit(1, 'removeColumn'); break;
+      case 'addColumn': case 'appendColumn':
+        assert.throws(() => model.tableEdit(0, 'addColumn'), /bookmarkColumn/);
+        // Retain native counterexamples without claiming browser equivalence.
+        continue;
+      case 'typing': model.replaceText(selection(run('AB'), 1), 'XY'); break;
+      case 'cellStart': model.replaceText(selection(run('AB'), 0), 'XY'); break;
+      case 'cellEnd': model.replaceText(selection(run('AB'), 2), 'XY'); break;
+      case 'cut': model.replaceText(selection(run('AB'), 0, run('AB'), 2), '', 'cut'); break;
+      case 'splitCell': model.splitParagraph(selection(run('AB'), 1)); break;
+      case 'joinCell': model.mergeBoundary(run('B'), true); break;
+      case 'pasteCell': model.paste(selection(run('AB'), 1), '<p><b>XY</b></p><p>Z</p>', ''); break;
+      case 'listCell': model.toggleList(model.blocks.indexOf(model.runs[run('AB')].parentElement), 'ul'); break;
+      case 'pictureCell': model.insertImage(selection(run('AB'), 1), image, 48, 32, 'checker'); break;
+      case 'unicodeCell': model.replaceText(selection(run('AB'), 1), '😀日é'); break;
+      case 'emptyCellTyping': model.replaceText(selection(run('\u200b'), 0), '😀日'); break;
+      case 'unicodeDelete': {
+        const index = run('A😀日éB');
+        model.replaceText(selection(index, 1, index, 4), '');
+        break;
+      }
+      case 'pictureDelete': model.changeImage(0); break;
+      case 'pictureMove': model.moveImage(0, selection(run('GH'), 1)); break;
+      case 'insertTable': model.insertTable(0); break;
+      default: assert.fail(`Unknown structural operation ${item.name}`);
+    }
+    const native = WriteProDocument.open(new Uint8Array(await readFile(resolve(directory, `Output/structure-${item.name}-native.4wp`))));
+    assert.deepEqual(nativeMetadata(model.document).bookmarks, nativeMetadata(native.document).bookmarks, `${item.name}: serialized offsets differ from native edit`);
+    await save(model, `structure-${item.name}`, { ...item.after, serialized: nativeMetadata(native.document).bookmarks });
   }
   dom.window.close();
 }

@@ -26,7 +26,7 @@
   "offsets": [
     {
       "name": "unicode",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.157Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.162Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,7]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">A&#x1F600;日éB</p></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.723Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.734Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,7]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">A&#x1F600;日éB</p></body></html>",
       "text": "A😀日éB",
       "start": 1,
       "end": 8,
@@ -89,7 +89,7 @@
     },
     {
       "name": "paragraphs",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.166Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.168Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,5]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">AB</p><p class=\"Normal\">CD</p></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.742Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.746Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,5]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">AB</p><p class=\"Normal\">CD</p></body></html>",
       "text": "AB\rCD",
       "start": 1,
       "end": 6,
@@ -142,7 +142,7 @@
     },
     {
       "name": "break",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.170Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.172Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,5]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">AB<br/>CD</p></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.748Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.752Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,5]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">AB<br/>CD</p></body></html>",
       "text": "AB\rCD",
       "start": 1,
       "end": 6,
@@ -195,7 +195,7 @@
     },
     {
       "name": "picture",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.173Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.176Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,5]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">AB<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAASklEQVR4nO3OMQ0AIBBD0VPCjCtM4gBhYOA6kg79Scef9NU9s91Yu93vvgABAhQHch2rHhAgQHkg17HqAQEClAdyHaseECBAcaAH191RiEIeQFYAAAAASUVORK5CYII=\" alt=\"checker\"/>CD</p></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.753Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.757Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,5]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">AB<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAASklEQVR4nO3OMQ0AIBBD0VPCjCtM4gBhYOA6kg79Scef9NU9s91Yu93vvgABAhQHch2rHhAgQHkg17HqAQEClAdyHaseECBAcaAH191RiEIeQFYAAAAASUVORK5CYII=\" alt=\"checker\"/>CD</p></body></html>",
       "text": "AB CD",
       "start": 1,
       "end": 6,
@@ -248,7 +248,7 @@
     },
     {
       "name": "empty",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.177Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.178Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,1]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">​</p><p class=\"Normal\">​</p></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.761Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.769Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,1]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">​</p><p class=\"Normal\">​</p></body></html>",
       "text": "\r",
       "start": 1,
       "end": 2,
@@ -281,7 +281,7 @@
     },
     {
       "name": "singleEmpty",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.179Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.181Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,0],&quot;collapsed&quot;:[0,0],&quot;whole&quot;:[0,0]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">​</p></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.771Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.775Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,0],&quot;collapsed&quot;:[0,0],&quot;whole&quot;:[0,0]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">​</p></body></html>",
       "text": "",
       "start": 1,
       "end": 1,
@@ -309,7 +309,7 @@
     },
     {
       "name": "lists",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.182Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.185Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,5]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }li._p1 { list-style-type:disc }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><ul><li class=\"Normal _p1\">AB</li><li class=\"Normal _p1\">CD</li></ul></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.777Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.783Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,5]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }li._p1 { list-style-type:disc }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><ul><li class=\"Normal _p1\">AB</li><li class=\"Normal _p1\">CD</li></ul></body></html>",
       "text": "AB\rCD",
       "start": 1,
       "end": 6,
@@ -362,7 +362,7 @@
     },
     {
       "name": "styles",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.186Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.192Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,4]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">A<span style=\"-d4-font:'Times New Roman Bold';font-weight:bold\">BC</span>D</p></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.784Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.798Z\" /><meta name=\"bookmarks\" content=\"{&quot;first&quot;:[0,1],&quot;collapsed&quot;:[1,1],&quot;whole&quot;:[0,4]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">A<span style=\"-d4-font:'Times New Roman Bold';font-weight:bold\">BC</span>D</p></body></html>",
       "text": "ABCD",
       "start": 1,
       "end": 5,
@@ -410,7 +410,7 @@
     },
     {
       "name": "placeholder",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.243Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.245Z\" /><meta name=\"bookmarks\" content=\"{&quot;whole&quot;:[0,3]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">​</p><p class=\"Normal\">CD</p></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.873Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.876Z\" /><meta name=\"bookmarks\" content=\"{&quot;whole&quot;:[0,3]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">​</p><p class=\"Normal\">CD</p></body></html>",
       "text": "\rCD",
       "start": 1,
       "end": 4,
@@ -445,7 +445,7 @@
     },
     {
       "name": "literalZeroWidth",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.246Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.247Z\" /><meta name=\"bookmarks\" content=\"{&quot;whole&quot;:[0,2]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">AB</p></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.878Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.881Z\" /><meta name=\"bookmarks\" content=\"{&quot;whole&quot;:[0,2]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><p class=\"Normal\">AB</p></body></html>",
       "text": "AB",
       "start": 1,
       "end": 3,
@@ -475,7 +475,7 @@
     },
     {
       "name": "nestedList",
-      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:07:01.248Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:07:01.250Z\" /><meta name=\"bookmarks\" content=\"{&quot;whole&quot;:[0,8]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }li._p1 { list-style-type:disc }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><ul><li class=\"Normal _p1\">ABCD </li><li class=\"Normal _p1\">EF</li></ul></body></html>",
+      "xml": "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:d4=\"http://www.4D.com\"><head><title>新規4D Write Proドキュメント</title><meta name=\"datetimeCreation\" content=\"2026-11-12T14:56:28.882Z\" /><meta name=\"datetimeModified\" content=\"2026-11-12T14:56:28.884Z\" /><meta name=\"bookmarks\" content=\"{&quot;whole&quot;:[0,8]}\" /><style type=\"text/css\">body { -d4-version:2.20;background-color:#FFFFFF }ul, ol { margin:0;padding:0 }p,li { white-space:pre-wrap;border-width:2pt;margin:0pt;padding:0pt;-d4-list-font:'Times New Roman';-d4-font:'Times New Roman';font-family:'Times New Roman' }li._p1 { list-style-type:disc }p.Normal,li.Normal { white-space:pre-wrap }</style></head><body><ul><li class=\"Normal _p1\">ABCD </li><li class=\"Normal _p1\">EF</li></ul></body></html>",
       "text": "ABCD \rEF",
       "start": 1,
       "end": 9,

@@ -13,6 +13,7 @@ export function nativeBoundary(text, offset) {
 // Both count UTF-16 with an exclusive end. Breaks and pictures occupy one slot.
 export function nativeBody(document, values, imageSource = image => /^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(image.getAttribute('src') || '')) {
   const positions = new Map();
+  const tables = [];
   let text = '';
   let blocks = 0;
   const fail = () => { throw new DocumentError('protected'); };
@@ -50,25 +51,78 @@ export function nativeBody(document, values, imageSource = image => /^data:image
     }
     positions.set(element, { start, end: text.length + 1, offsets });
   };
+  const children = element => [...element.childNodes].filter(child => child.nodeType !== 8 && !(child.nodeType === 3 && !child.data.length));
+  const table = element => {
+    check(element);
+    const rows = children(element);
+    if (!rows.length || rows.some(row => row.localName !== 'tr')) fail();
+    const columns = rows[0].children.length;
+    if (!columns) fail();
+    const start = text.length + 1;
+    const regions = [];
+    const offsets = [start];
+    for (const row of rows) {
+      check(row);
+      const cells = children(row);
+      if (cells.length !== columns || cells.some(cell => !['td', 'th'].includes(cell.localName) ||
+        !['1', null].includes(cell.getAttribute('rowspan')) || !['1', null].includes(cell.getAttribute('colspan')))) fail();
+      const rowStart = text.length + 1;
+      const rowOffsets = [rowStart];
+      // Full 4D counts one terminator per cell and an additional one per row.
+      for (const cell of cells) {
+        const cellStart = text.length + 1;
+        container(cell);
+        text += '\r';
+        positions.set(cell, { ...positions.get(cell), start: cellStart, end: text.length + 1 });
+        regions.push([cellStart, text.length + 1]);
+        rowOffsets.push(text.length + 1);
+      }
+      regions.push([text.length + 1, text.length + 2]);
+      text += '\r';
+      positions.set(row, { start: rowStart, end: text.length + 1, offsets: rowOffsets });
+      offsets.push(text.length + 1);
+    }
+    positions.set(element, { start, end: text.length + 1, offsets });
+    tables.push({ start, end: text.length + 1, regions });
+  };
   const container = element => {
     check(element);
-    if (['ul', 'ol'].includes(element.localName) && !element.children.length) fail();
+    if (element.localName !== 'body' && !element.children.length) fail();
+    const start = text.length + 1;
+    const offsets = [start];
+    let previous = null;
     for (const child of element.childNodes) {
-      if (child.nodeType === 8 || child.nodeType === 3 && !child.data.length) continue;
+      if (child.nodeType === 8 || child.nodeType === 3 && !child.data.length) {
+        offsets.push(text.length + 1);
+        continue;
+      }
       if (child.nodeType !== 1) fail();
-      if (element.localName === 'body' && ['ul', 'ol'].includes(child.localName)) container(child);
-      else if ((element.localName === 'body' && child.localName === 'p') ||
+      if (previous && previous.localName !== 'table') text += '\r';
+      if (['body', 'td', 'th'].includes(element.localName) && ['ul', 'ol'].includes(child.localName)) container(child);
+      else if ((['body', 'td', 'th'].includes(element.localName) && child.localName === 'p') ||
         (['ul', 'ol'].includes(element.localName) && child.localName === 'li')) {
         check(child);
-        if (blocks++) text += '\r';
+        blocks++;
         contents(child);
+      } else if (element.localName === 'body' && child.localName === 'table') {
+        if (!previous || previous.localName !== 'p' || child.nextElementSibling?.localName !== 'p') fail();
+        table(child);
       } else fail();
+      previous = child;
+      offsets.push(text.length + 1);
     }
+    positions.set(element, { start, end: text.length + 1, offsets });
   };
   container(document.querySelector('body'));
   if (!blocks || !text.isWellFormed()) fail();
   return {
     text,
+    supports(bookmarks) {
+      // Partial cross-cell ranges have command-dependent native normalization.
+      return Object.values(bookmarks).every(([first, last]) => first === last || tables.every(table =>
+        last <= table.start || first >= table.end || first <= table.start && last >= table.end ||
+        table.regions.some(([start, end]) => first >= start && last <= end)));
+    },
     point(node, offset) {
       const position = positions.get(node);
       const result = node.nodeType === 3 ? position?.start + textValue(node.data.slice(0, offset)).length : position?.offsets?.[offset];
