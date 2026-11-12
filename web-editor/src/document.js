@@ -5,13 +5,36 @@ const XHTML = 'http://www.w3.org/1999/xhtml';
 const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
 const SAFE_PROPERTIES = /^(color|background-color|font-(family|size|weight|style|variant)|text-(align|decoration|indent|transform|shadow)|line-height|letter-spacing|word-spacing|white-space|direction|vertical-align|list-style-type|border(-(color|style|width|radius|collapse|spacing))?|padding(-(top|right|bottom|left))?|margin(-(top|right|bottom|left))?|width|height|min-height)$/;
 const SAFE_VALUE = /^[#(),.%\w\s'"+/-]+$/u;
-const FORMAT = new Set(['font-weight', 'font-style', 'text-decoration', 'font-size', 'font-family', 'color']);
+const FORMAT = new Set(['font-weight', 'font-style', 'text-decoration', 'font-size', 'font-family', 'color', 'background-color']);
+const INLINE_TAGS = new Set(['span', 'a', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup']);
 const BUILTIN_STYLES = {
   Normal: 'font-family:Arial;font-size:12pt;font-weight:normal;font-style:normal',
   Heading_1: 'font-family:Arial;font-size:24pt;font-weight:bold;margin:16pt 0pt 10pt',
   Heading_2: 'font-family:Arial;font-size:16pt;font-weight:bold;margin:12pt 0pt 8pt',
   Quote: 'font-style:italic;margin:12pt 0pt 12pt 18pt',
 };
+
+function linkURL(value) {
+  if (typeof value !== 'string' || value.length > 2048 || /[\u0000-\u0020]/.test(value)) return null;
+  try {
+    const url = new URL(value);
+    return ['https:', 'http:', 'mailto:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch { return null; }
+}
+
+function validBookmark(value) {
+  if (value === null) return true;
+  const point = saved => saved && Array.isArray(saved.path) && saved.path.length <= 64 &&
+    saved.path.every(index => Number.isInteger(index) && index >= 0 && index < 20000) &&
+    Number.isInteger(saved.offset) && saved.offset >= 0 && saved.offset <= MAX_EXPANDED &&
+    (saved.empty === undefined || typeof saved.empty === 'boolean') && (saved.atEnd === undefined || typeof saved.atEnd === 'boolean');
+  return value && point(value.start) && point(value.end) && typeof value.backward === 'boolean';
+}
+
+// Editor-only cursor slots; these are not 4D bookmark character offsets.
+function selectionLength(node) {
+  return node.nodeType === 3 ? node.length : ['img', 'br'].includes(node.localName) ? 1 : 0;
+}
 
 function base64(bytes) {
   let binary = '';
@@ -49,13 +72,15 @@ function cleanPaste(html, plain, owner) {
         const tag = child.localName.toLowerCase();
         if (['script', 'style', 'iframe', 'object', 'svg', 'math', 'img', 'link', 'meta'].includes(tag)) continue;
         if (tag === 'div' && child.querySelector('p,div,ul,ol,h1,h2,h3')) { copy(child, target, level + 1); continue; }
-        let mapped = { div: 'p', h1: 'p', h2: 'p', h3: 'p', b: 'span', strong: 'span', i: 'span', em: 'span', u: 'span', s: 'span', a: 'span' }[tag] || tag;
+        const href = tag === 'a' ? linkURL(child.getAttribute('href')) : null;
+        let mapped = { div: 'p', h1: 'p', h2: 'p', h3: 'p', b: 'span', strong: 'span', i: 'span', em: 'span', u: 'span', s: 'span', a: href ? 'a' : 'span' }[tag] || tag;
         if (mapped === 'p' && target.localName === 'li') {
           if (target.childNodes.length) target.append(owner.createElementNS(XHTML, 'br'));
           mapped = 'span';
         }
-        if (!['p', 'span', 'br', 'ul', 'ol', 'li', 'sub', 'sup'].includes(mapped)) { copy(child, target, level + 1); continue; }
+        if (!['p', 'span', 'a', 'br', 'ul', 'ol', 'li', 'sub', 'sup'].includes(mapped)) { copy(child, target, level + 1); continue; }
         const element = owner.createElementNS(XHTML, mapped);
+        if (href) element.setAttribute('href', href);
         const styles = declarations(child.getAttribute('style') || '');
         if (['b', 'strong', 'h1', 'h2', 'h3'].includes(tag)) styles['font-weight'] = 'bold';
         if (['i', 'em'].includes(tag)) styles['font-style'] = 'italic';
@@ -145,6 +170,9 @@ export class WriteProDocument {
     this.redoStack = [];
     this.undoLabels = [];
     this.redoLabels = [];
+    this.undoSelections = [];
+    this.redoSelections = [];
+    this.selection = null;
     this.resourceCache = new Map();
     this.refresh();
   }
@@ -208,19 +236,23 @@ export class WriteProDocument {
       this.groupTime = now;
       this.redoStack = [];
       this.redoLabels = [];
+      this.redoSelections = [];
       return;
     }
     this.group = group;
     this.groupTime = now;
     this.undoStack.push(snapshot);
     this.undoLabels.push(label);
+    this.undoSelections.push(this.selection);
     let length = this.undoStack.reduce((sum, item) => sum + item.length, 0);
     while (this.undoStack.length > 1 && (this.undoStack.length > 100 || length > 4 * 1024 * 1024)) {
       length -= this.undoStack.shift().length;
       this.undoLabels.shift();
+      this.undoSelections.shift();
     }
     this.redoStack = [];
     this.redoLabels = [];
+    this.redoSelections = [];
   }
 
   endGroup() { this.group = null; }
@@ -250,10 +282,64 @@ export class WriteProDocument {
     if (!from.length) return;
     this.endGroup();
     const labels = redo ? this.redoLabels : this.undoLabels;
+    const selections = redo ? this.redoSelections : this.undoSelections;
     (redo ? this.undoLabels : this.redoLabels).push(labels.pop() || 'edit');
+    (redo ? this.undoSelections : this.redoSelections).push(this.selection);
     to.push(this.serialize());
     this.document = parse(from.pop());
+    this.selection = selections.pop() || null;
     this.refresh();
+    return this.selection ? { selection: this.selection } : null;
+  }
+
+  rememberSelection(selection) {
+    const point = (index, offset) => {
+      const node = this.runs[index];
+      const block = node.parentElement.closest('p,li');
+      const walker = this.document.createTreeWalker(block, 5);
+      let position = offset;
+      while (walker.nextNode() && walker.currentNode !== node) position += selectionLength(walker.currentNode);
+      const path = [];
+      for (let current = block; current.localName !== 'body'; current = current.parentElement) {
+        path.unshift([...current.parentElement.children].indexOf(current));
+      }
+      return { path, offset: position, empty: !node.length, atEnd: node.length > 0 && offset === node.length };
+    };
+    this.selection = {
+      start: point(selection.startRun, selection.start),
+      end: point(selection.endRun, selection.end), backward: Boolean(selection.backward),
+    };
+    return this.selection;
+  }
+
+  resolveSelection(bookmark) {
+    const point = (saved, forward, preferEmpty = false) => {
+      let block = this.document.querySelector('body');
+      for (const index of saved.path) block = block?.children[index];
+      if (!block || !['p', 'li'].includes(block.localName)) throw new DocumentError('selection');
+      const walker = this.document.createTreeWalker(block, 5);
+      let offset = 0;
+      let last = null;
+      let empty = null;
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const index = this.runs.indexOf(node);
+        if (index >= 0) {
+          if (!node.length && saved.offset === offset) empty = { index, offset: 0 };
+          if (node.length || !last) last = { index, offset: node.length };
+          if (saved.offset < offset + node.length || !forward && node.length && saved.offset === offset + node.length) {
+            return preferEmpty && empty ? empty : { index, offset: Math.max(0, saved.offset - offset) };
+          }
+        }
+        offset += selectionLength(node);
+      }
+      if (!last) throw new DocumentError('selection');
+      return preferEmpty && empty ? empty : last;
+    };
+    const collapsed = bookmark.start.offset === bookmark.end.offset && JSON.stringify(bookmark.start.path) === JSON.stringify(bookmark.end.path);
+    const first = point(bookmark.start, collapsed ? !bookmark.start.atEnd : true, collapsed && bookmark.start.empty);
+    const last = collapsed ? first : point(bookmark.end, false);
+    return { startRun: first.index, start: first.offset, endRun: last.index, end: last.offset, backward: bookmark.backward };
   }
 
   editRun(index, value) {
@@ -336,6 +422,28 @@ export class WriteProDocument {
 
   formatSelection(selection, property, value) {
     if (!FORMAT.has(property) || !SAFE_VALUE.test(value) || /url|expression|var\(/i.test(value)) throw new DocumentError('invalidDocument');
+    return this.transformSelection(selection, property, () => value);
+  }
+
+  decoration(node) {
+    for (let current = node.parentElement; current; current = current.parentElement) {
+      const value = this.values(current)['text-decoration'];
+      if (value !== undefined) return value.match(/\b(?:underline|line-through|overline)\b/g) || [];
+    }
+    return [];
+  }
+
+  decorateSelection(selection, decoration, enabled) {
+    if (!['underline', 'line-through'].includes(decoration)) throw new DocumentError('invalidDocument');
+    return this.transformSelection(selection, 'text-decoration', node => {
+      const values = new Set(this.decoration(node));
+      if (enabled) values.add(decoration);
+      else values.delete(decoration);
+      return [...values].join(' ') || 'none';
+    });
+  }
+
+  transformSelection(selection, property, valueFor, tag = 'span') {
     const range = this.range(selection);
     const pieces = this.runs.filter(node => range.intersectsNode(node)).map(node => ({
       node, start: node === range.startContainer ? range.startOffset : 0,
@@ -344,14 +452,16 @@ export class WriteProDocument {
     if (!pieces.length && range.collapsed && range.startContainer.nodeType === 3 && !range.startContainer.length) {
       pieces.push({ node: range.startContainer, start: 0, end: 0 });
     }
-    return this.mutate('format', () => {
+    return this.mutate(tag === 'a' ? 'link' : 'format', () => {
       let caret;
       for (const { node, start, end } of pieces.reverse()) {
+        const value = valueFor(node);
         const selected = end > start ? node.splitText(start) : node;
         const tail = end > start ? selected.splitText(end - start) : null;
         if (end === start) selected.data = '\u200b';
-        const span = this.document.createElementNS(XHTML, 'span');
-        setProperty(span, property, value);
+        const span = this.document.createElementNS(XHTML, tag);
+        if (tag === 'a') span.setAttribute('href', value);
+        else setProperty(span, property, value);
         selected.replaceWith(span);
         span.append(selected);
         if (node !== selected && !node.data) node.remove();
@@ -359,6 +469,39 @@ export class WriteProDocument {
         caret ??= { node: selected, offset: selected.length };
       }
       return caret;
+    });
+  }
+
+  setLink(selection, value) {
+    const href = linkURL(value);
+    if (!href) throw new DocumentError('linkURL');
+    const range = this.range(selection);
+    const first = this.runs[selection.startRun].parentElement.closest('a');
+    const last = this.runs[selection.endRun].parentElement.closest('a');
+    if (first && first === last) {
+      range.selectNodeContents(first);
+      this.guardRange(range);
+      return this.mutate('link', () => first.setAttribute('href', href));
+    }
+    if (range.collapsed || [...this.document.querySelectorAll('a')].some(anchor => range.intersectsNode(anchor))) throw new DocumentError('linkSelection');
+    return this.transformSelection(selection, null, () => href, 'a');
+  }
+
+  removeLink(selection) {
+    const range = this.range(selection);
+    const anchors = [...this.document.querySelectorAll('a')].filter(anchor => range.intersectsNode(anchor));
+    if (!anchors.length) throw new DocumentError('linkSelection');
+    for (const anchor of anchors) {
+      range.selectNodeContents(anchor);
+      this.guardRange(range);
+    }
+    this.mutate('link', () => {
+      for (const anchor of anchors) {
+        const span = this.document.createElementNS(XHTML, 'span');
+        for (const attribute of anchor.attributes) if (attribute.name !== 'href') span.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value);
+        span.append(...anchor.childNodes);
+        anchor.replaceWith(span);
+      }
     });
   }
 
@@ -398,23 +541,27 @@ export class WriteProDocument {
       first.append(...last.childNodes);
       last.remove();
     }
+    const walker = this.document.createTreeWalker(first, 4);
+    const empty = [];
+    while (walker.nextNode()) if (!walker.currentNode.length) empty.push(walker.currentNode);
+    for (const node of empty) node.remove();
     marker.before(content);
     marker.remove();
   }
 
   replaceText(selection, text, label = 'typing') {
     const range = this.range(selection);
+    const fragment = this.document.createDocumentFragment();
+    let node;
+    text.replace(/\r\n?/g, '\n').split('\n').forEach((line, index) => {
+      if (index) fragment.append(this.document.createElementNS(XHTML, 'br'));
+      node = this.document.createTextNode(line);
+      fragment.append(node);
+    });
     return this.mutate(label, () => {
-      const fragment = this.document.createDocumentFragment();
-      let node;
-      text.replace(/\r\n?/g, '\n').split('\n').forEach((line, index) => {
-        if (index) fragment.append(this.document.createElementNS(XHTML, 'br'));
-        node = this.document.createTextNode(line);
-        fragment.append(node);
-      });
       this.replaceRange(range, fragment);
       return { node, offset: node.length };
-    }, label === 'typing' ? range.startContainer : null);
+    }, label === 'typing' ? node : null);
   }
 
   splitParagraph(selection, lineBreak = false) {
@@ -812,6 +959,7 @@ export class WriteProDocument {
     return {
       xml: this.serialize(), files: this.files, entry: this.entry, original: this.original, initial: this.initial,
       undo: [...this.undoStack], redo: [...this.redoStack], undoLabels: [...this.undoLabels], redoLabels: [...this.redoLabels],
+      selection: this.selection, undoSelections: [...this.undoSelections], redoSelections: [...this.redoSelections],
     };
   }
 
@@ -828,6 +976,13 @@ export class WriteProDocument {
       model[field] = values;
     }
     if ([...model.undoStack, ...model.redoStack].reduce((sum, value) => sum + value.length, 0) > 2 * MAX_EXPANDED) throw new DocumentError('tooLarge');
+    for (const [field, stack] of [['undoSelections', model.undoStack], ['redoSelections', model.redoStack]]) {
+      const values = data[field] ?? stack.map(() => null);
+      if (!Array.isArray(values) || values.length !== stack.length || values.some(value => !validBookmark(value))) throw new DocumentError('invalidDocument');
+      model[field] = values;
+    }
+    if (!validBookmark(data.selection ?? null)) throw new DocumentError('invalidDocument');
+    model.selection = data.selection ?? null;
     return model;
   }
 
@@ -851,7 +1006,12 @@ export class WriteProDocument {
     this.images = [];
     this.cells = [];
     const body = this.document.querySelector('body');
-    const project = (source, target, locked = false, inBlock = false, decoration = '') => {
+    for (const element of body.querySelectorAll('img,br')) {
+      if (this.protected(element) || element.localName === 'img' && !this.imageSource(element) || !element.closest('p,li')) continue;
+      if (element.previousSibling?.nodeType !== 3) element.before(this.document.createTextNode(''));
+      if (element.nextSibling?.nodeType !== 3) element.after(this.document.createTextNode(''));
+    }
+    const project = (source, target, locked = false, inBlock = false, decoration = '', background = '') => {
       for (const child of source.childNodes) {
         if (child.nodeType === 3) {
           if (!inBlock) {
@@ -864,6 +1024,7 @@ export class WriteProDocument {
           run.className = 'text-run';
           run.textContent = child.data;
           if (decoration) run.style.textDecoration = decoration;
+          if (background) run.style.backgroundColor = background;
           if (!locked && !this.readOnly) {
             run.setAttribute('contenteditable', 'plaintext-only');
             run.setAttribute('role', 'textbox');
@@ -916,7 +1077,7 @@ export class WriteProDocument {
         }
         const element = document.createElement(tag === 'a' ? 'span' : tag);
         for (const [property, value] of Object.entries(values)) {
-          if (property !== 'text-decoration' && SAFE_PROPERTIES.test(property) && SAFE_VALUE.test(value) && value.length < 200 &&
+          if (property !== 'text-decoration' && !(property === 'background-color' && INLINE_TAGS.has(tag)) && SAFE_PROPERTIES.test(property) && SAFE_VALUE.test(value) && value.length < 200 &&
             !/url|expression|var\(|!important/i.test(value)) element.style.setProperty(property, value);
         }
         for (const attr of ['rowspan', 'colspan', 'start']) {
@@ -935,7 +1096,9 @@ export class WriteProDocument {
         if (tag === 'a') element.classList.add('inert-link');
         const nextDecoration = values['text-decoration'];
         const safeDecoration = nextDecoration && SAFE_VALUE.test(nextDecoration) && nextDecoration.length < 100;
-        project(child, element, isLocked, inBlock || isBlock, safeDecoration ? nextDecoration : decoration);
+        const nextBackground = INLINE_TAGS.has(tag) && values['background-color'];
+        const safeBackground = nextBackground && SAFE_VALUE.test(nextBackground) && nextBackground.length < 100 && !/url|expression|var\(/i.test(nextBackground);
+        project(child, element, isLocked, inBlock || isBlock, safeDecoration ? nextDecoration : decoration, safeBackground ? nextBackground : background);
         target.append(element);
       }
     };

@@ -12,6 +12,77 @@ function render(result) { const host = document.createElement('div'); result.ren
 const selection = (startRun, start, endRun = startRun, end = start) => ({ startRun, start, endRun, end });
 
 describe('continuous native-XML operations', () => {
+  it('toggles decorations independently and clears inherited inline highlights', () => {
+    const doc = model('<p><span style="-d4-custom:keep;text-decoration:underline;background-color:yellow">Text</span></p>');
+    doc.decorateSelection(selection(0, 0, 0, 4), 'line-through', true);
+    render(doc);
+    expect(doc.decoration(doc.runs[0])).toEqual(['underline', 'line-through']);
+    doc.decorateSelection(selection(0, 0, 0, 4), 'underline', false);
+    render(doc);
+    expect(doc.decoration(doc.runs[0])).toEqual(['line-through']);
+    doc.formatSelection(selection(0, 0, 0, 4), 'background-color', 'transparent');
+    const host = render(doc);
+    expect(host.querySelector('[data-run]').style.backgroundColor).toBe('transparent');
+    expect(host.querySelector('p > span').style.backgroundColor).toBe('');
+    expect(doc.serialize()).toContain('-d4-custom:keep');
+  });
+
+  it('creates safe inert links and removes URLs without flattening native formatting', () => {
+    const doc = model('<p><span style="-d4-custom:keep;font-style:italic">Read more</span></p>');
+    for (const url of ['javascript:alert(1)', 'data:text/html,test', 'https://name:password@example.org', '/relative']) {
+      expect(() => doc.setLink(selection(0, 0, 0, 9), url)).toThrow('linkURL');
+    }
+    doc.setLink(selection(0, 0, 0, 9), 'https://example.org/');
+    const host = render(doc);
+    expect(host.querySelector('a')).toBeNull();
+    expect(host.querySelector('[data-run]').textContent).toBe('Read more');
+    doc.setLink(selection(0, 3), 'mailto:editor@example.org');
+    expect(doc.document.querySelector('a').getAttribute('href')).toBe('mailto:editor@example.org');
+    doc.removeLink(selection(0, 3));
+    expect(doc.document.querySelector('a')).toBeNull();
+    expect(doc.serialize()).toContain('-d4-custom:keep;font-style:italic');
+    doc.paste(selection(0, 9), '<a href="https://example.org/">Safe</a><a href="javascript:alert(1)">Unsafe</a>', '');
+    expect(doc.document.querySelectorAll('a').length).toBe(1);
+    expect(doc.document.querySelector('p').textContent).toBe('Read moreSafeUnsafe');
+    const locked = model('<p><a href="https://example.org/">Safe<span style="-d4-ref:formula">X</span></a></p>');
+    const before = locked.serialize();
+    expect(() => locked.setLink(selection(0, 2), 'https://example.org/changed')).toThrow('protected');
+    expect(() => locked.removeLink(selection(0, 2))).toThrow('protected');
+    expect(locked.serialize()).toBe(before);
+  });
+
+  it('restores persisted backward selections after XML merges adjacent text nodes', () => {
+    const doc = model('<p>Hello world</p>');
+    doc.rememberSelection({ ...selection(0, 6, 0, 11), backward: true });
+    const caret = doc.replaceText(selection(0, 6, 0, 11), 'Reader');
+    render(doc);
+    doc.rememberSelection(selection(doc.runs.indexOf(caret.node), 6));
+    const restored = WriteProDocument.unpack(doc.pack());
+    const undo = restored.undo();
+    render(restored);
+    expect(restored.resolveSelection(undo.selection)).toEqual({ ...selection(0, 6, 0, 11), backward: true });
+    const redo = restored.undo(true);
+    render(restored);
+    expect(restored.resolveSelection(redo.selection)).toEqual({ ...selection(0, 12), backward: false });
+  });
+
+  it('restores empty cursor slots on both sides of inline objects', () => {
+    for (const index of [0, 1]) {
+      const doc = model('<p><img src="data:image/png;base64,AA=="/></p>');
+      doc.rememberSelection(selection(index, 0));
+      doc.editRun(index, 'Caption');
+      render(doc);
+      doc.rememberSelection(selection(index, 7));
+      const restored = WriteProDocument.unpack(doc.pack());
+      const undo = restored.undo();
+      render(restored);
+      expect(restored.resolveSelection(undo.selection)).toEqual({ ...selection(index, 0), backward: false });
+      const redo = restored.undo(true);
+      render(restored);
+      expect(restored.resolveSelection(redo.selection)).toEqual({ ...selection(index, 7), backward: false });
+    }
+  });
+
   it('formats and replaces across character styles, retaining native declarations', () => {
     const doc = model('<p><span style="-d4-custom:keep">Hello </span><span style="font-style:italic">world</span></p>');
     doc.formatSelection(selection(0, 3, 1, 3), 'font-weight', 'bold');
@@ -182,13 +253,13 @@ describe('styles, tables and search', () => {
     const before = doc.serialize();
     expect(doc.runs[0].length).toBe(0);
     expect(doc.dirty).toBe(false);
-    doc.moveImage(0, selection(1, 2));
+    doc.moveImage(0, selection(doc.runs.findIndex(node => node.data === 'After'), 2));
     render(doc);
     expect(doc.document.querySelectorAll('p')[1].querySelector('img')).not.toBeNull();
     doc.undo();
     render(doc);
     expect(doc.serialize()).toBe(before);
-    const caret = doc.deleteInlineBoundary(0, true);
+    const caret = doc.deleteInlineBoundary(doc.runs.findLastIndex(node => node.parentElement.closest('p') === doc.document.querySelector('p')), true);
     expect(caret).not.toBeNull();
     expect(doc.document.querySelector('img')).toBeNull();
     expect(doc.document.querySelectorAll('p')[1].textContent).toBe('After');

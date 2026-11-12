@@ -50,6 +50,9 @@ h2 { font-size: 18px; font-weight: 600; margin: 5px 0 0; overflow-wrap: anywhere
 .toolbar { padding: 10px 16px; border-block: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 5px; align-items: center; background: var(--soft); }
 .toolbar button { padding: 5px 10px; min-width: 37px; border-color: transparent; background: transparent; }
 button[aria-pressed="true"] { background: var(--surface); color: var(--accent); border-color: var(--accent); }
+button[aria-pressed="mixed"] { background: linear-gradient(135deg, var(--surface) 50%, var(--soft) 50%); color: var(--accent); border: 1px dashed var(--accent); }
+.selection-state { color: var(--muted); font-size: 11px; }
+.color-control:has([data-mixed]) { outline: 1px dashed var(--accent); outline-offset: 2px; border-radius: 4px; }
 .toolbar select { max-width: 145px; padding: 6px; font-size: 12px; }
 .toolbar .add-paragraph { font-size: 12px; margin-left: auto; border: 1px solid var(--border); }
 .separator { height: 22px; border-left: 1px solid var(--border); margin: 0 5px; }

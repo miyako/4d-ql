@@ -34,6 +34,7 @@ let findIndex = -1;
 let composition = null;
 let draggedImage = null;
 let draftStatus = null;
+let plainPaste = false;
 const history = new LocalHistory();
 const t = key => messages[locale][key];
 
@@ -65,7 +66,11 @@ document.querySelector('#app').innerHTML = `
         <select id="font" data-label="font"><option>Arial</option><option>Helvetica</option><option>Times New Roman</option><option>Georgia</option><option>Courier New</option></select>
         <select id="size" data-label="size"><option>9</option><option>10</option><option selected>12</option><option>14</option><option>18</option><option>24</option><option>36</option></select>
         <button id="bold" data-label="bold"><b>B</b></button><button id="italic" data-label="italic"><i>I</i></button><button id="underline" data-label="underline"><u>U</u></button>
+        <button id="strike" data-label="strike"><s>S</s></button>
         <label class="color-control"><span data-i18n="color" class="sr-only"></span><input id="color" type="color" value="#327fce" data-label="color"></label>
+        <select id="highlight" data-label="highlight"><option value="transparent" data-i18n="noHighlight"></option><option value="#fff2a8" data-i18n="yellow"></option><option value="#c7edce" data-i18n="green"></option><option value="#d0e7ff" data-i18n="blue"></option><option value="#f6d2e3" data-i18n="pink"></option></select>
+        <button id="link-toggle" data-i18n="link" aria-expanded="false" aria-controls="link-panel"></button>
+        <span id="selection-state" class="selection-state" role="status" hidden></span>
         <span class="separator"></span>
         <button id="left" data-label="left">≡</button><button id="center" data-label="center">☰</button><button id="right" data-label="right">≡</button>
         <button id="paragraph" class="add-paragraph" data-i18n="paragraph"></button>
@@ -82,7 +87,12 @@ document.querySelector('#app').innerHTML = `
         <button id="add-row" data-i18n="addRow"></button><button id="remove-row" data-i18n="removeRow"></button>
         <button id="add-column" data-i18n="addColumn"></button><button id="remove-column" data-i18n="removeColumn"></button>
         <button id="insert-image" data-i18n="insertImage"></button>
+        <button id="paste-plain" data-i18n="pastePlain"></button>
       </div></details>
+      <section id="link-panel" class="tool-panel" hidden>
+        <label><span data-i18n="linkURLLabel"></span><input id="link-url" type="url" maxlength="2048"></label>
+        <button id="apply-link" data-i18n="applyLink"></button><button id="remove-link" data-i18n="removeLink"></button>
+      </section>
       <section id="image-panel" class="tool-panel" hidden>
         <label><span data-i18n="imageWidth"></span><input id="image-width" type="number" min="12" max="1200" step="1"></label>
         <button id="resize-image" data-i18n="resizeImage"></button><button id="remove-image" data-i18n="removeImage"></button>
@@ -101,6 +111,7 @@ document.querySelector('#app').innerHTML = `
       <p id="recovery-notice" class="notice" data-i18n="recovered" hidden></p>
       <div id="error" class="notice error" role="alert" hidden><strong data-i18n="errorTitle"></strong><p id="error-message"></p><button id="dismiss-error" data-i18n="close"></button></div>
       <div id="readonly-notice" class="notice" data-i18n="bookmarkNotice" hidden></div>
+      <div id="unsupported-notice" class="notice" data-i18n="unsupportedNotice" hidden></div>
       <div class="paper-surround"><article id="paper" class="paper" data-label="editor"></article></div>
       <footer class="document-footer"><span id="statistics"></span><span id="draft-state" role="status"></span>
         <label><span data-i18n="zoom"></span><select id="zoom"><option value=".75">75%</option><option value="1" selected>100%</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label><span data-i18n="local"></span></footer>
@@ -137,7 +148,9 @@ function updateStatus() {
     $(id).title = label ? `${t(id)} · ${t(label === 'image' ? 'historyImage' : label)}` : t(id);
   }
   const editable = active !== null && model.runs[active] && !model.protected(model.runs[active].parentElement);
-  for (const id of ['bold', 'italic', 'underline', 'font', 'size', 'color', 'left', 'center', 'right', 'paragraph-style', 'bullets', 'numbering', 'outdent', 'indent', 'spacing', 'line-height']) $(id).disabled = !editable;
+  for (const id of ['bold', 'italic', 'underline', 'strike', 'font', 'size', 'color', 'highlight', 'link-toggle', 'apply-link', 'remove-link', 'left', 'center', 'right', 'paragraph-style', 'bullets', 'numbering', 'outdent', 'indent', 'spacing', 'line-height']) $(id).disabled = !editable;
+  $('paste-plain').disabled = model.readOnly;
+  $('selection-state').hidden = true;
   const block = active !== null ? $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-block]') : null;
   const sourceBlock = block ? model.blocks[Number(block.dataset.block)] : null;
   $('paragraph').disabled = model.readOnly;
@@ -156,31 +169,68 @@ function updateStatus() {
   $('statistics').textContent = `${words.toLocaleString(locale)} ${t('words')} · ${[...text].length.toLocaleString(locale)} ${t('characters')}`;
   const element = active !== null && $('paper').querySelector(`[data-run="${active}"]`);
   if (element && editable) {
-    const computed = getComputedStyle(element);
+    const runs = selection && (selection.startRun !== selection.endRun || selection.start !== selection.end) ?
+      model.runs.map((node, index) => ({ node, index })).filter(({ node, index }) =>
+        index >= selection.startRun && index <= selection.endRun && node.length &&
+        (index !== selection.startRun || selection.start < node.length) &&
+        (index !== selection.endRun || selection.end > 0)).map(({ index }) => $('paper').querySelector(`[data-run="${index}"]`)) : [element];
+    if (!runs.length) runs.push(element);
+    const styles = runs.map(run => getComputedStyle(run));
+    const common = values => values.every(value => value === values[0]) ? values[0] : null;
     const option = (id, value) => {
-      if (![...$(id).options].some(item => item.value === value)) $(id).add(new Option(value, value));
-      $(id).value = value;
+      const key = value ?? '__mixed__';
+      if (![...$(id).options].some(item => item.value === key)) {
+        const item = new Option(value ?? t('mixed'), key);
+        if (value === null) { item.disabled = true; item.dataset.i18n = 'mixed'; }
+        $(id).add(item);
+      }
+      $(id).value = key;
     };
-    option('font', computed.fontFamily.split(',')[0].replace(/^["']|["']$/g, ''));
-    option('size', String(Math.round(parseFloat(computed.fontSize) * .75 * 10) / 10));
-    const rgb = computed.color.match(/\d+/g);
+    option('font', common(styles.map(style => style.fontFamily.split(',')[0].replace(/^["']|["']$/g, ''))));
+    option('size', common(styles.map(style => String(Math.round(parseFloat(style.fontSize) * .75 * 10) / 10))));
+    const color = common(styles.map(style => style.color));
+    const rgb = color?.match(/^rgba?\(([\d.,\s]+)\)$/)?.[1].match(/[\d.]+/g);
     if (rgb?.length >= 3) $('color').value = '#' + rgb.slice(0, 3).map(value => Number(value).toString(16).padStart(2, '0')).join('');
-    for (const [id, pressed] of [['bold', computed.fontWeight === 'bold' || Number(computed.fontWeight) >= 600], ['italic', computed.fontStyle === 'italic'], ['underline', computed.textDecorationLine.includes('underline')]]) {
-      $(id).setAttribute('aria-pressed', String(pressed));
+    $('color').toggleAttribute('data-mixed', color === null);
+    $('color').title = color === null ? `${t('color')} (${t('mixed')})` : t('color');
+    const backgrounds = runs.map(run => {
+      const values = run.style.backgroundColor.match(/[\d.]+/g);
+      if (!values || values[3] === '0') return 'transparent';
+      return '#' + values.slice(0, 3).map(value => Number(value).toString(16).padStart(2, '0')).join('');
+    });
+    option('highlight', common(backgrounds));
+    for (const [id, read] of [
+      ['bold', style => style.fontWeight === 'bold' || Number(style.fontWeight) >= 600],
+      ['italic', style => style.fontStyle === 'italic'],
+      ['underline', style => style.textDecorationLine.includes('underline')],
+      ['strike', style => style.textDecorationLine.includes('line-through')],
+    ]) {
+      const pressed = common(styles.map(read));
+      $(id).setAttribute('aria-pressed', pressed === null ? 'mixed' : String(pressed));
     }
+    const mixed = ['font', 'size', 'highlight'].some(id => $(id).value === '__mixed__') ||
+      color === null || ['bold', 'italic', 'underline', 'strike'].some(id => $(id).getAttribute('aria-pressed') === 'mixed');
+    $('selection-state').hidden = !mixed;
+    $('selection-state').textContent = mixed ? t('mixed') : '';
     if (sourceBlock) {
-      const paragraph = getComputedStyle(element.closest('[data-block]'));
-      $('paragraph-style').value = model.styleNames().find(name => sourceBlock.classList.contains(name)) || '';
-      option('spacing', String(Math.round(parseFloat(paragraph.marginBottom) * .75)));
-      const lineHeight = parseFloat(paragraph.lineHeight) / parseFloat(paragraph.fontSize);
-      if (Number.isFinite(lineHeight)) {
-        const value = `${Math.round(lineHeight * 100)}%`;
-        if (![...$('line-height').options].some(item => item.value === value)) $('line-height').add(new Option(String(Math.round(lineHeight * 100) / 100), value));
-        $('line-height').value = value;
-      } else $('line-height').value = '';
-      for (const alignment of ['left', 'center', 'right']) $(alignment).setAttribute('aria-pressed', String(paragraph.textAlign === alignment));
+      const blocks = [...new Set(runs.map(run => run.closest('[data-block]')))];
+      const paragraphs = blocks.map(block => getComputedStyle(block));
+      option('paragraph-style', common(blocks.map(block => {
+        const source = model.blocks[Number(block.dataset.block)];
+        return model.styleNames().find(name => source.classList.contains(name)) || '';
+      })));
+      option('spacing', common(paragraphs.map(style => String(Math.round(parseFloat(style.marginBottom) * .75)))));
+      option('line-height', common(paragraphs.map(style => {
+        const ratio = parseFloat(style.lineHeight) / parseFloat(style.fontSize);
+        return Number.isFinite(ratio) ? `${Math.round(ratio * 100)}%` : '';
+      })));
+      for (const alignment of ['left', 'center', 'right']) {
+        const state = common(paragraphs.map(style => style.textAlign === alignment));
+        $(alignment).setAttribute('aria-pressed', state === null ? 'mixed' : String(state));
+      }
       for (const [id, kind] of [['bullets', 'ul'], ['numbering', 'ol']]) {
-        $(id).setAttribute('aria-pressed', String(sourceBlock.closest('ul,ol')?.localName === kind));
+        const state = common(blocks.map(block => model.blocks[Number(block.dataset.block)].closest('ul,ol')?.localName === kind));
+        $(id).setAttribute('aria-pressed', state === null ? 'mixed' : String(state));
       }
     }
   }
@@ -190,13 +240,16 @@ function render(caret = null) {
   active = null;
   selection = null;
   selectedImage = null;
+  model.selection = null;
   $('image-panel').hidden = true;
   model.render($('paper'), messages[locale]);
   const styleLabels = { Normal: 'normalStyle', Heading_1: 'heading1Style', Heading_2: 'heading2Style', Quote: 'quoteStyle' };
   $('paragraph-style').replaceChildren(...model.styleNames().map(name => new Option(styleLabels[name] ? t(styleLabels[name]) : name.replaceAll('_', ' '), name)));
   $('readonly-notice').hidden = !model.readOnly;
+  $('unsupported-notice').hidden = !$('paper').querySelector('.preserved-object:not([data-image]),.locked-content');
   updateStatus();
   if (caret?.node) focusRun(model.runs.indexOf(caret.node), caret.offset);
+  else if (caret?.selection) restoreSelection(caret.selection);
   renderHistory();
   refreshFindCount();
 }
@@ -286,7 +339,21 @@ function focusRun(index, offset = null) {
     range.collapse(true);
     window.getSelection().removeAllRanges();
     window.getSelection().addRange(range);
+    captureSelection(true);
   }
+}
+
+function restoreSelection(bookmark) {
+  const saved = model.resolveSelection(bookmark);
+  const first = $('paper').querySelector(`[data-run="${saved.startRun}"]`);
+  const last = $('paper').querySelector(`[data-run="${saved.endRun}"]`);
+  (saved.backward ? last : first).focus();
+  const selection = window.getSelection();
+  const start = [first.firstChild || first, saved.start];
+  const end = [last.firstChild || last, saved.end];
+  selection.setBaseAndExtent(...(saved.backward ? end : start), ...(saved.backward ? start : end));
+  captureSelection();
+  updateStatus();
 }
 
 function addParagraph() {
@@ -297,33 +364,27 @@ function addParagraph() {
 }
 
 function applyFormat(property, value) {
-  try {
-    if (active === null) throw new DocumentError('selection');
+  formatOperation(range => model.formatSelection(range, property, value));
+}
+
+function formatOperation(operation) {
+  perform('format', () => {
     const range = formattingSelection();
-    const caret = model.formatSelection(range, property, value);
-    render(caret);
-    schedulePersist('format');
-  } catch (error) {
-    showError(error);
-  }
+    const bookmark = model.selection;
+    operation(range);
+    return bookmark ? { selection: bookmark } : null;
+  });
 }
 
 function toggleFormat(property, on, off) {
-  const element = $('paper').querySelector(`[data-run="${active}"]`);
-  let enabled = false;
-  for (let current = element; current && current !== $('paper'); current = current.parentElement) {
-    const computed = getComputedStyle(current).getPropertyValue(property);
-    if (property === 'font-weight') {
-      enabled = computed === 'bold' || Number(computed) >= 600;
-      break;
-    }
-    if (computed.includes(on)) { enabled = true; break; }
-    if (property !== 'text-decoration') break;
-  }
-  applyFormat(property, enabled ? off : on);
+  const id = property === 'font-weight' ? 'bold' : property === 'font-style' ? 'italic' : on === 'underline' ? 'underline' : 'strike';
+  const enabled = $(id).getAttribute('aria-pressed') !== 'true';
+  if (property === 'text-decoration') formatOperation(range => model.decorateSelection(range, on, enabled));
+  else applyFormat(property, enabled ? on : off);
 }
 
-function captureSelection() {
+function captureSelection(inputCaret = false) {
+  if (composition) return;
   const selected = window.getSelection();
   if (!selected?.rangeCount || !selected.anchorNode) return;
   const parent = node => node.nodeType === 1 ? node : node.parentElement;
@@ -348,7 +409,13 @@ function captureSelection() {
     startRun: Number(first.dataset.run), endRun: Number(last.dataset.run),
     start: offset(first, browserRange.startContainer, browserRange.startOffset, 0),
     end: offset(last, browserRange.endContainer, browserRange.endOffset, last.textContent.length),
+    backward: !selected.isCollapsed && selected.anchorNode === browserRange.endContainer && selected.anchorOffset === browserRange.endOffset,
   };
+  if (selection.start <= model.runs[selection.startRun].length && selection.end <= model.runs[selection.endRun].length) {
+    const before = model.selection;
+    const after = model.rememberSelection(selection);
+    if (!inputCaret && before && JSON.stringify(before) !== JSON.stringify(after)) model.endGroup();
+  }
 }
 document.addEventListener('selectionchange', () => { captureSelection(); updateStatus(); });
 
@@ -392,6 +459,7 @@ $('paper').addEventListener('input', event => {
       render();
       focusRun(model.runs.indexOf(last));
     }
+    captureSelection(true);
     downloadReady = false;
     updateStatus();
     refreshFindCount();
@@ -403,6 +471,7 @@ $('paper').addEventListener('input', event => {
 });
 $('paper').addEventListener('keydown', event => {
   if (event.isComposing) return;
+  if (event.key.toLowerCase() === 'v') plainPaste = Boolean((event.ctrlKey || event.metaKey) && event.shiftKey);
   if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'a') {
     event.preventDefault();
     const runs = [...$('paper').querySelectorAll('[data-run]')];
@@ -455,7 +524,7 @@ $('paper').addEventListener('beforeinput', event => {
   } else if (['insertParagraph', 'insertLineBreak'].includes(event.inputType)) {
     event.preventDefault();
     perform('paragraph', () => model.splitParagraph(currentSelection(), event.inputType === 'insertLineBreak'));
-  } else if (event.inputType === 'insertText' && selection && selection.startRun !== selection.endRun) {
+  } else if (event.inputType === 'insertText' && selection && (selection.startRun !== selection.endRun || model.runs[selection.startRun].data === '\u200b')) {
     event.preventDefault();
     perform('typing', () => model.replaceText(selection, event.data || ''));
   } else if (['deleteContentBackward', 'deleteContentForward'].includes(event.inputType) && deleteAtBoundary(event.inputType === 'deleteContentBackward')) {
@@ -470,16 +539,20 @@ $('paper').addEventListener('compositionend', event => {
 });
 $('paper').addEventListener('paste', event => {
   event.preventDefault();
+  const plain = plainPaste;
+  plainPaste = false;
   const files = [...event.clipboardData.files];
   if (files.length) {
     try { insertImages(files, currentSelection()); }
     catch (error) { showError(error); }
   }
-  else perform('paste', () => model.paste(currentSelection(), event.clipboardData.getData('text/html'), event.clipboardData.getData('text/plain')));
+  else perform('paste', () => model.paste(currentSelection(), plain ? '' : event.clipboardData.getData('text/html'), event.clipboardData.getData('text/plain')));
 });
+window.addEventListener('keyup', event => { if (event.key.toLowerCase() === 'v') plainPaste = false; });
+window.addEventListener('blur', () => { plainPaste = false; });
 $('paper').addEventListener('cut', event => {
   event.preventDefault();
-  event.clipboardData.setData('text/plain', window.getSelection().toString());
+  event.clipboardData.setData('text/plain', window.getSelection().getRangeAt(0).toString());
   perform('cut', () => model.replaceText(currentSelection(), '', 'cut'));
 });
 document.querySelector('.toolbar').addEventListener('mousedown', event => {
@@ -488,9 +561,11 @@ document.querySelector('.toolbar').addEventListener('mousedown', event => {
 $('bold').onclick = () => toggleFormat('font-weight', 'bold', 'normal');
 $('italic').onclick = () => toggleFormat('font-style', 'italic', 'normal');
 $('underline').onclick = () => toggleFormat('text-decoration', 'underline', 'none');
+$('strike').onclick = () => toggleFormat('text-decoration', 'line-through', 'none');
 $('font').onchange = event => applyFormat('font-family', `'${event.target.value}'`);
 $('size').onchange = event => applyFormat('font-size', `${event.target.value}pt`);
 $('color').onchange = event => applyFormat('color', event.target.value);
+$('highlight').onchange = event => applyFormat('background-color', event.target.value);
 for (const alignment of ['left', 'center', 'right']) {
   $(alignment).onclick = () => {
     try {
@@ -499,8 +574,12 @@ for (const alignment of ['left', 'center', 'right']) {
   };
 }
 $('paragraph').onclick = addParagraph;
-$('undo').onclick = () => perform('undo', () => model.undo());
-$('redo').onclick = () => perform('redo', () => model.undo(true));
+function undoDocument(redo = false) {
+  captureSelection();
+  perform(redo ? 'redo' : 'undo', () => model.undo(redo));
+}
+$('undo').onclick = () => undoDocument();
+$('redo').onclick = () => undoDocument(true);
 $('new').onclick = () => {
   if (!unsaved() || confirm(t('discard'))) replaceDocument(WriteProDocument.create(t('untitled')));
 };
@@ -524,7 +603,7 @@ window.addEventListener('keydown', event => {
   if (['o', 's', 'z', 'b', 'i', 'u', 'f'].includes(key)) event.preventDefault();
   if (key === 'o') $('file').click();
   if (key === 's') download();
-  if (key === 'z') perform(event.shiftKey ? 'redo' : 'undo', () => model.undo(event.shiftKey));
+  if (key === 'z') undoDocument(event.shiftKey);
   if (key === 'b') $('bold').click();
   if (key === 'i') $('italic').click();
   if (key === 'u') $('underline').click();
@@ -576,7 +655,9 @@ function currentSelection() {
   const index = active ?? model.runs.findLastIndex(node => !model.protected(node.parentElement));
   const node = model.runs[index];
   if (!node) throw new DocumentError('selection');
-  return { startRun: index, endRun: index, start: node.length, end: node.length };
+  const range = { startRun: index, endRun: index, start: node.length, end: node.length };
+  model.rememberSelection(range);
+  return range;
 }
 
 function formattingSelection() {
@@ -586,6 +667,7 @@ function formattingSelection() {
 }
 
 function perform(label, operation) {
+  const bookmark = model.selection;
   try {
     const before = model.serialize();
     const fallback = active !== null && model.runs[active] ? {
@@ -599,7 +681,7 @@ function perform(label, operation) {
     }
     if (model.serialize() !== before) { downloadReady = false; schedulePersist(label); }
   } catch (error) {
-    render();
+    render(bookmark ? { selection: bookmark } : null);
     showError(error);
   }
 }
@@ -677,6 +759,19 @@ for (const [id, action] of [['add-row', 'addRow'], ['remove-row', 'removeRow'], 
   });
 }
 $('insert-image').onclick = () => $('image-file').click();
+$('paste-plain').onclick = async () => {
+  try {
+    currentSelection();
+    const target = model.selection;
+    const document = model;
+    const xml = model.serialize();
+    let text;
+    try { text = await navigator.clipboard.readText(); }
+    catch { throw new DocumentError('clipboardError'); }
+    if (model !== document || model.serialize() !== xml) throw new DocumentError('staleClipboard');
+    perform('paste', () => model.paste(model.resolveSelection(target), '', text));
+  } catch (error) { showError(error); }
+};
 $('image-file').onchange = event => {
   try { insertImages([...event.target.files], currentSelection()); }
   catch (error) { showError(error); }
@@ -695,6 +790,23 @@ function togglePanel(button, panel) {
 }
 $('find-toggle').onclick = () => { togglePanel('find-toggle', 'find-panel'); if (!$('find-panel').hidden) $('find-query').focus(); };
 $('history-toggle').onclick = () => { togglePanel('history-toggle', 'history-panel'); renderHistory(); };
+$('link-toggle').onclick = () => {
+  captureSelection();
+  togglePanel('link-toggle', 'link-panel');
+  if (!$('link-panel').hidden) {
+    $('link-url').value = model.runs[active]?.parentElement.closest('a')?.getAttribute('href') || '';
+    $('link-url').focus();
+  }
+};
+for (const [id, operation] of [
+  ['apply-link', range => model.setLink(range, $('link-url').value.trim())],
+  ['remove-link', range => model.removeLink(range)],
+]) $(id).onclick = () => perform('link', () => {
+  const range = currentSelection();
+  const bookmark = model.selection;
+  operation(range);
+  return bookmark ? { selection: bookmark } : null;
+});
 
 function selectMatch(match) {
   const first = $('paper').querySelector(`[data-run="${match.startRun}"]`);
@@ -801,7 +913,7 @@ async function start() {
       model = restored;
       saved = typeof record.saved === 'string' ? record.saved : model.initial;
       versions = record.versions;
-      render();
+      render(model.selection ? { selection: model.selection } : null);
       $('recovery-notice').hidden = false;
       setDraftStatus('draftSaved');
     }

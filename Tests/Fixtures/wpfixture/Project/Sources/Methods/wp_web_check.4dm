@@ -1,0 +1,31 @@
+var wpWebErrors : Collection:=New collection()
+ON ERR CALL("wp_web_error")
+ARRAY TEXT($allowed; 1)
+$allowed{1}:="wp_*"
+SET ALLOWED METHODS($allowed)
+var $root : 4D.Folder:=Folder(Get 4D folder(Database folder); fk platform path)
+var $manifest : Object:=JSON Parse($root.file("Input/cases.json").getText())
+var $report : Object:=New object("version"; Application version(*); "cases"; New collection(); "errors"; wpWebErrors)
+var $compilation : Object:=Compile project()
+If (Not($compilation.success))
+	wpWebErrors.push(New object("message"; "Probe compilation failed"; "details"; $compilation.errors))
+Else
+	var $case; $result; $doc; $reopened : Object
+	For each ($case; $manifest.cases)
+		$result:=New object("name"; $case.name)
+		$doc:=WP Import document($root.file("Input/"+$case.file).platformPath)
+		If ($doc#Null)
+			$result.imported:=wp_web_stats($doc; $case.name="new-document")
+			WP EXPORT DOCUMENT($doc; $root.file("Output/"+$case.name+".4wp").platformPath; wk 4wp)
+			$reopened:=WP Import document($root.file("Output/"+$case.name+".4wp").platformPath)
+			If ($reopened#Null)
+				$result.reopened:=wp_web_stats($reopened; $case.name="new-document")
+			End if
+		End if
+		$report.cases.push($result)
+		wp_log("NATIVE CASE "+$case.name)
+	End for each
+End if
+$root.file("Output/native-report.json").setText(JSON Stringify($report; *))
+ON ERR CALL("")
+QUIT 4D
