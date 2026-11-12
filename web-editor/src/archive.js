@@ -1,7 +1,7 @@
 import { unzipSync, zipSync, strToU8 } from 'fflate';
 
 export const MAX_ARCHIVE = 16 * 1024 * 1024;
-const MAX_EXPANDED = 32 * 1024 * 1024;
+export const MAX_EXPANDED = 32 * 1024 * 1024;
 const MAX_ENTRIES = 512;
 
 export class DocumentError extends Error {
@@ -79,5 +79,10 @@ export function readArchive(bytes) {
 }
 
 export function writeArchive(files, name, xhtml) {
-  return zipSync({ ...files, [name]: strToU8(xhtml) }, { level: 6 });
+  const entries = { ...files, [name]: strToU8(xhtml) };
+  if (Object.keys(entries).length > MAX_ENTRIES ||
+    Object.values(entries).reduce((sum, bytes) => sum + bytes.length, 0) > MAX_EXPANDED) throw new DocumentError('tooLarge');
+  const archive = zipSync(entries, { level: 6 });
+  if (archive.length > MAX_ARCHIVE) throw new DocumentError('tooLarge');
+  return archive;
 }

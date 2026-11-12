@@ -1,3 +1,5 @@
+import { toolMessages } from './tool-messages.js';
+
 export const languages = {
   en: 'English', ja: '日本語', fr: 'Français', de: 'Deutsch', es: 'Español', it: 'Italiano',
 };
@@ -13,9 +15,9 @@ const en = {
   paragraph: 'Add paragraph', editor: 'Document editing area',
   details: 'Document guide', local: 'Your files stay on this device',
   intro: 'Try editing the example brief, open your own 4D Write Pro document, or start with a blank page.',
-  editing: 'Select text within a highlighted run to format it. Without a selection, formatting applies to the whole active run. Enter adds a paragraph; Shift+Enter adds a line break.',
+  editing: 'Select text across formatting runs to edit or format it. Without a selection, formatting applies to the active run. Enter splits a paragraph; Shift+Enter adds a line break. More tools offers tables and images.',
   preservation: 'Original XML, native properties and archive resources are retained. Formulas, protected text, headers, footers and anchored objects cannot be edited here.',
-  limits: 'Experimental editor, not the 4D runtime. Pagination, tabs and native layout are approximate. Formulas are not evaluated. Images without a browser-compatible inline source appear as placeholders. Verify edited downloads in 4D before production use.',
+  limits: 'Experimental editor, not the 4D runtime. Pagination, tabs and native layout are approximate. Formulas are not evaluated. Unsupported images appear as placeholders. Verify edited downloads in 4D before production use.',
   bookmarkNotice: 'Read-only: this document contains bookmarks or character ranges. Editing is disabled to keep their offsets intact. Download preserves the original file.',
   editText: 'Editable text run', preserved: 'Native content · preserved', image: 'Image · preserved',
   ready: 'Ready', changed: 'Unsaved changes', downloaded: 'Download prepared',
@@ -29,7 +31,6 @@ const en = {
   protected: 'This content is protected. Choose an editable text run or a top-level paragraph.',
   unexpected: 'An unexpected error occurred. Your open document has not been replaced.',
   selection: 'Choose an editable text run first.',
-  selectionRange: 'Select text within one run; selections across runs are not supported yet.',
   shortcut: 'Use ⌘/Ctrl+O to open and ⌘/Ctrl+S to download.',
   experimental: 'Experimental', close: 'Close', document: 'Document',
 };
@@ -41,9 +42,9 @@ const ja = {
   font: 'フォント', size: '文字サイズ', color: '文字色', left: '左揃え', center: '中央揃え', right: '右揃え',
   paragraph: '段落を追加', editor: '書類編集領域', details: '書類ガイド', local: 'ファイルはこの端末内で処理されます',
   intro: 'サンプルの企画書を編集するか、お手持ちの4D Write Pro書類を開くか、白紙から始めてください。',
-  editing: '強調表示された文字列内を選択して書式を設定します。選択がない場合は文字列全体に適用します。Enterで段落、Shift+Enterで改行を追加します。',
+  editing: '書式の異なる文字列をまたいで選択・編集できます。選択がない場合は現在の文字列全体に書式を適用します。Enterで段落を分割し、Shift+Enterで改行します。「その他のツール」で表や画像を挿入できます。',
   preservation: '元のXML、ネイティブ属性、アーカイブ内リソースを保持します。フォーミュラ、保護された文字、ヘッダー、フッター、アンカー付きオブジェクトは編集できません。',
-  limits: '実験的なエディターであり、4Dランタイムではありません。改ページ、タブ、レイアウトは近似表示です。フォーミュラは評価しません。ブラウザー対応のインライン画像以外は代替表示です。業務で使う前に4Dで確認してください。',
+  limits: '実験的なエディターであり、4Dランタイムではありません。改ページ、タブ、レイアウトは近似表示です。フォーミュラは評価しません。未対応の画像は代替表示です。業務で使う前に4Dで確認してください。',
   bookmarkNotice: '読み取り専用：ブックマークまたは文字範囲が含まれています。位置を維持するため編集を無効にしています。ダウンロードは元のファイルを保持します。',
   editText: '編集可能な文字列', preserved: 'ネイティブ要素・保持', image: '画像・保持', ready: '準備完了',
   changed: '未保存の変更', downloaded: 'ダウンロードを準備しました', runs: '文字列', resources: 'アーカイブ項目',
@@ -54,7 +55,7 @@ const ja = {
   ambiguousDocument: 'アーカイブにはHTMLまたはXHTML書類が1つだけ必要です。',
   protected: 'この要素は保護されています。編集可能な文字列または本文直下の段落を選択してください。',
   unexpected: '予期しないエラーが発生しました。開いている書類は置き換えていません。',
-  selection: '編集可能な文字列を選択してください。', selectionRange: '1つの文字列内を選択してください。文字列をまたぐ選択には未対応です。',
+  selection: '編集可能な文字列を選択してください。',
   shortcut: '⌘/Ctrl+Oで開き、⌘/Ctrl+Sでダウンロードします。', experimental: '実験版', close: '閉じる', document: '書類',
 };
 
@@ -65,9 +66,9 @@ const fr = {
   font: 'Police', size: 'Taille du texte', color: 'Couleur du texte', left: 'Aligner à gauche', center: 'Centrer', right: 'Aligner à droite',
   paragraph: 'Ajouter un paragraphe', editor: 'Zone de modification du document', details: 'Guide du document',
   local: 'Vos fichiers restent sur cet appareil', intro: 'Modifiez la note d’exemple, ouvrez votre document 4D Write Pro ou commencez avec une page vierge.',
-  editing: 'Sélectionnez du texte dans un segment pour le mettre en forme. Sans sélection, le format s’applique au segment actif entier. Entrée ajoute un paragraphe ; Maj+Entrée un saut de ligne.',
+  editing: 'Sélectionnez du texte entre plusieurs segments pour le modifier ou le formater. Sans sélection, le format s’applique au segment actif. Entrée scinde le paragraphe ; Maj+Entrée insère un saut de ligne. Autres outils propose tableaux et images.',
   preservation: 'Le XML, les propriétés natives et les ressources de l’archive sont conservés. Les formules, le texte protégé, les en-têtes, les pieds de page et les objets ancrés ne sont pas modifiables ici.',
-  limits: 'Éditeur expérimental, sans moteur 4D. Pagination, tabulations et mise en page approximatives. Les formules ne sont pas évaluées. Les images non intégrées ou incompatibles sont remplacées par un repère. Vérifiez les fichiers modifiés dans 4D avant utilisation en production.',
+  limits: 'Éditeur expérimental, sans moteur 4D. Pagination, tabulations et mise en page approximatives. Les formules ne sont pas évaluées. Les images incompatibles sont remplacées par un repère. Vérifiez les fichiers modifiés dans 4D avant utilisation en production.',
   bookmarkNotice: 'Lecture seule : le document contient des signets ou des plages de caractères. La modification est désactivée pour conserver leurs positions. Le téléchargement conserve le fichier original.',
   editText: 'Segment de texte modifiable', preserved: 'Contenu natif · conservé', image: 'Image · conservée',
   ready: 'Prêt', changed: 'Modifications non enregistrées', downloaded: 'Téléchargement préparé', runs: 'segments de texte',
@@ -78,7 +79,7 @@ const fr = {
   ambiguousDocument: 'L’archive doit contenir exactement un document HTML ou XHTML.',
   protected: 'Ce contenu est protégé. Choisissez un segment modifiable ou un paragraphe de premier niveau.',
   unexpected: 'Une erreur inattendue s’est produite. Le document ouvert n’a pas été remplacé.',
-  selection: 'Choisissez d’abord un segment de texte modifiable.', selectionRange: 'Sélectionnez du texte dans un seul segment. Les sélections entre segments ne sont pas encore prises en charge.',
+  selection: 'Choisissez d’abord un segment de texte modifiable.',
   shortcut: '⌘/Ctrl+O pour ouvrir ; ⌘/Ctrl+S pour télécharger.', experimental: 'Expérimental', close: 'Fermer', document: 'Document',
 };
 
@@ -89,7 +90,7 @@ const de = {
   font: 'Schriftart', size: 'Schriftgröße', color: 'Textfarbe', left: 'Linksbündig', center: 'Zentriert', right: 'Rechtsbündig',
   paragraph: 'Absatz hinzufügen', editor: 'Dokumentbearbeitungsbereich', details: 'Dokumenthinweise',
   local: 'Ihre Dateien bleiben auf diesem Gerät', intro: 'Bearbeiten Sie das Beispielkonzept, öffnen Sie Ihr eigenes 4D Write Pro-Dokument oder beginnen Sie mit einer leeren Seite.',
-  editing: 'Markieren Sie Text innerhalb eines Textabschnitts. Ohne Auswahl wird der gesamte aktive Textabschnitt formatiert. Eingabe fügt einen Absatz hinzu, Umschalt+Eingabe einen Zeilenumbruch.',
+  editing: 'Text kann über mehrere Textabschnitte hinweg bearbeitet und formatiert werden. Ohne Auswahl gilt das Format für den aktiven Abschnitt. Eingabe teilt den Absatz, Umschalt+Eingabe fügt einen Zeilenumbruch ein. Weitere Werkzeuge bietet Tabellen und Bilder.',
   preservation: 'Original-XML, native Eigenschaften und Archivressourcen bleiben erhalten. Formeln, geschützter Text, Kopf- und Fußzeilen sowie verankerte Objekte sind hier nicht bearbeitbar.',
   limits: 'Experimenteller Editor ohne 4D-Laufzeit. Seitenumbrüche, Tabulatoren und Layout werden nur angenähert. Formeln werden nicht ausgewertet. Für nicht unterstützte oder externe Bilder erscheinen Platzhalter. Geänderte Dateien vor dem produktiven Einsatz in 4D prüfen.',
   bookmarkNotice: 'Schreibgeschützt: Das Dokument enthält Lesezeichen oder Zeichenbereiche. Zum Erhalt ihrer Positionen ist die Bearbeitung deaktiviert. Der Download erhält die Originaldatei.',
@@ -102,7 +103,7 @@ const de = {
   ambiguousDocument: 'Das Archiv muss genau ein HTML- oder XHTML-Dokument enthalten.',
   protected: 'Dieser Inhalt ist geschützt. Wählen Sie einen bearbeitbaren Textabschnitt oder einen Absatz auf oberster Ebene.',
   unexpected: 'Ein unerwarteter Fehler ist aufgetreten. Das geöffnete Dokument wurde nicht ersetzt.',
-  selection: 'Wählen Sie zuerst einen bearbeitbaren Textabschnitt.', selectionRange: 'Wählen Sie Text innerhalb eines Abschnitts. Abschnittsübergreifende Auswahl wird noch nicht unterstützt.',
+  selection: 'Wählen Sie zuerst einen bearbeitbaren Textabschnitt.',
   shortcut: '⌘/Strg+O zum Öffnen, ⌘/Strg+S zum Herunterladen.', experimental: 'Experimentell', close: 'Schließen', document: 'Dokument',
 };
 
@@ -113,7 +114,7 @@ const es = {
   font: 'Fuente', size: 'Tamaño del texto', color: 'Color del texto', left: 'Alinear a la izquierda', center: 'Centrar', right: 'Alinear a la derecha',
   paragraph: 'Añadir párrafo', editor: 'Área de edición del documento', details: 'Guía del documento',
   local: 'Tus archivos permanecen en este dispositivo', intro: 'Prueba a editar la propuesta de ejemplo, abre tu documento 4D Write Pro o empieza con una página en blanco.',
-  editing: 'Selecciona texto dentro de un segmento para darle formato. Sin selección, se aplica a todo el segmento activo. Intro añade un párrafo; Mayús+Intro, un salto de línea.',
+  editing: 'Selecciona texto entre varios segmentos para editarlo o darle formato. Sin selección, el formato se aplica al segmento activo. Intro divide el párrafo; Mayús+Intro inserta un salto de línea. Más herramientas ofrece tablas e imágenes.',
   preservation: 'Se conservan el XML original, las propiedades nativas y los recursos del archivo. Las fórmulas, el texto protegido, las cabeceras, los pies y los objetos anclados no se pueden editar aquí.',
   limits: 'Editor experimental sin motor 4D. Paginación, tabulaciones y diseño aproximados. No se evalúan fórmulas. Las imágenes externas o incompatibles se muestran como marcadores. Verifica los archivos editados en 4D antes de usarlos en producción.',
   bookmarkNotice: 'Solo lectura: el documento contiene marcadores o rangos de caracteres. La edición está desactivada para conservar sus posiciones. La descarga conserva el archivo original.',
@@ -126,7 +127,7 @@ const es = {
   ambiguousDocument: 'El archivo debe contener exactamente un documento HTML o XHTML.',
   protected: 'Este contenido está protegido. Elige un segmento editable o un párrafo de nivel superior.',
   unexpected: 'Se ha producido un error inesperado. El documento abierto no se ha sustituido.',
-  selection: 'Elige primero un segmento de texto editable.', selectionRange: 'Selecciona texto dentro de un solo segmento. Aún no se admiten selecciones entre segmentos.',
+  selection: 'Elige primero un segmento de texto editable.',
   shortcut: '⌘/Ctrl+O para abrir y ⌘/Ctrl+S para descargar.', experimental: 'Experimental', close: 'Cerrar', document: 'Documento',
 };
 
@@ -137,7 +138,7 @@ const it = {
   font: 'Carattere', size: 'Dimensione del testo', color: 'Colore del testo', left: 'Allinea a sinistra', center: 'Centra', right: 'Allinea a destra',
   paragraph: 'Aggiungi paragrafo', editor: 'Area di modifica del documento', details: 'Guida del documento',
   local: 'I file rimangono su questo dispositivo', intro: 'Prova a modificare la proposta di esempio, apri un tuo documento 4D Write Pro o inizia con una pagina vuota.',
-  editing: 'Seleziona il testo all’interno di un segmento per formattarlo. Senza selezione, il formato si applica all’intero segmento attivo. Invio aggiunge un paragrafo; Maiusc+Invio un’interruzione di riga.',
+  editing: 'Seleziona il testo tra più segmenti per modificarlo o formattarlo. Senza selezione, il formato si applica al segmento attivo. Invio divide il paragrafo; Maiusc+Invio inserisce un’interruzione di riga. Altri strumenti offre tabelle e immagini.',
   preservation: 'XML originale, proprietà native e risorse dell’archivio vengono conservati. Formule, testo protetto, intestazioni, piè di pagina e oggetti ancorati non sono modificabili qui.',
   limits: 'Editor sperimentale, senza runtime 4D. Paginazione, tabulazioni e impaginazione sono approssimative. Le formule non vengono valutate. Le immagini esterne o incompatibili appaiono come segnaposto. Verifica i file modificati in 4D prima dell’uso in produzione.',
   bookmarkNotice: 'Sola lettura: il documento contiene segnalibri o intervalli di caratteri. La modifica è disabilitata per conservarne le posizioni. Il download conserva il file originale.',
@@ -150,11 +151,12 @@ const it = {
   ambiguousDocument: 'L’archivio deve contenere esattamente un documento HTML o XHTML.',
   protected: 'Questo contenuto è protetto. Scegli un segmento modificabile o un paragrafo di primo livello.',
   unexpected: 'Si è verificato un errore imprevisto. Il documento aperto non è stato sostituito.',
-  selection: 'Scegli prima un segmento di testo modificabile.', selectionRange: 'Seleziona il testo all’interno di un solo segmento. Le selezioni tra segmenti non sono ancora supportate.',
+  selection: 'Scegli prima un segmento di testo modificabile.',
   shortcut: '⌘/Ctrl+O per aprire e ⌘/Ctrl+S per scaricare.', experimental: 'Sperimentale', close: 'Chiudi', document: 'Documento',
 };
 
 export const messages = { en, ja, fr, de, es, it };
+for (const language of Object.keys(messages)) Object.assign(messages[language], toolMessages[language]);
 
 export function detectLanguage(preferences = navigator.languages) {
   return preferences.map(value => value.split('-')[0]).find(value => value in messages) || 'en';
