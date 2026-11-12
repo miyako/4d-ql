@@ -7,12 +7,12 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`18691b6` / #38](https://github.com/miyako/4d-ql/pull/38).
+[`81bf932` / #39](https://github.com/miyako/4d-ql/pull/39).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
-Phase 4 and later are not in that deployed baseline. The table is not a
+Phase 5 and later are not in that main baseline; deployment status is separate. The table is not a
 promise of dates or full Write Pro parity.
 
 | Phase | Feature scope | Status |
@@ -20,8 +20,8 @@ promise of dates or full Write Pro parity.
 | 1. Foundation | Genuine `.4wp` import/export, original XML/resources retained, local processing, six UI languages, themes and responsive UI | Available |
 | 2. Everyday editing | Cross-run text/selections, formatting/styles/lists, basic tables/images, links, sanitized paste, find/replace, counts/zoom, undo/redo, versions and local recovery | Available |
 | 3. Native verification and bookmarks | Full-4D import/export/reopen gate; scoped paragraph/flat-list/inline-object bookmark adjustments; unsupported ranges protected | Available; scoped evidence, not arbitrary compatibility |
-| 4. Bookmarked tables and native list levels | Same-cell text/paste/cut, paragraph/list and inline-object edits; simple table insertion, row edits and column deletion; native indented/mixed-marker lists. Partial cross-cell bookmarks, column insertion and nested HTML stay protected | In progress; this PR only |
-| 5. Bookmark management | List, navigate, create, rename and delete native bookmarks with range validation | Planned; next separate PR |
+| 4. Bookmarked tables and native list levels | Same-cell text/paste/cut, paragraph/list and inline-object edits; simple table insertion, row edits and column deletion; native indented/mixed-marker lists. Partial cross-cell bookmarks, column insertion and nested HTML stay protected | Available on main via #39 |
+| 5. Bookmark management | List, navigate/highlight, create from selections/carets, rename and delete native bookmarks; exact names, native range validation and atomic history/recovery | In progress; this unmerged PR only, not main/deployed behavior |
 | 6. Formula-aware protected display | Source and stored cached values only when actually available; explicit unavailable-value notice; safe surrounding edits, no evaluation | Planned; subsequent separate PR |
 | 7. Broader range/complex-structure safety | Partial cross-cell ranges, column insertion, nested/merged tables and generic ranges only after native research | Proposed |
 | 8. Richer media and objects | More native picture formats, anchored objects and text boxes with preservation-aware controls | Proposed |
@@ -117,6 +117,40 @@ Find/replace searches literal text across adjacent formatting runs, with
 optional case sensitivity and a 1,000-match limit. The footer shows
 language-aware word/character counts and document zoom.
 
+### Bookmark management (unmerged increment)
+
+**Bookmarks** opens a keyboard-accessible panel. Select text, an insertion
+point, or supported structural boundaries in the document, then enter a name
+and choose **Create from selection** (Enter also submits). Creation uses the
+original XML projection and native UTF-16 mapping, including empty paragraphs,
+Unicode, inline objects, native lists and scoped simple tables, not DOM
+`textContent` offsets. Partial cross-cell/table ranges remain rejected.
+
+Choose a listed name to navigate and highlight it. The list and status show
+the authoritative zero-based, end-exclusive UTF-16 pair. Text endpoints in
+one cell or ordinary paragraphs restore a text selection/caret. Structural
+or collapsed boundaries get a dashed marker; structural navigation does not
+silently turn into 4D's cell-normalized selection or an editable text range.
+If a native structure cannot be mapped safely, an explicit error retains its
+original metadata. Escape closes the panel and returns focus to its toggle.
+
+**Rename selected** preserves the exact raw pair; **Delete selected** removes
+only that bookmark, never document text or resources. All three mutations
+share the central XML transaction and document-wide undo/redo, versions and
+IndexedDB recovery. They remain disabled for read-only documents; protected
+text cannot acquire a new bookmark. Malformed or duplicate metadata is
+preserved, not silently rewritten.
+
+Full 4D 21.2 strips invalid ASCII name characters and overwrites duplicate
+names. This UI deliberately does neither: empty names, ASCII spaces/controls
+and ASCII punctuation other than `-` and `_` are rejected with a localized
+error. Native-compatible Unicode names are preserved exactly, including
+non-BMP/combining characters and Unicode spacing/punctuation; invalid
+Unicode/XML is rejected. Names are case-sensitive (`ABC` and `abc` can
+coexist), with no trimming or Unicode normalization. An exact duplicate create
+or rename fails without changing either bookmark. Native evidence includes
+1,024-character names; the existing document/archive budget still applies.
+
 Undo/redo is document-wide with grouped typing and selection/caret restoration,
 including recovered undo history. Editor-only cursor bookmarks are separate from
 native 4D bookmark metadata; snapshots retain both text and native ranges atomically.
@@ -207,8 +241,8 @@ shifts it; insertion inside extends it; insertion at its end is excluded. A
 collapsed bookmark stays before insertion at its own position. Deletion shrinks
 overlaps and removes entirely deleted nonempty bookmarks and strictly enclosed
 collapsed bookmarks, as observed in 4D. Thus replacing an entire bookmarked
-selection removes that bookmark; undo restores it. No bookmark management UI
-or arbitrary native-command equivalence is claimed.
+selection removes that bookmark; undo restores it. Bookmark management above
+is this unmerged increment only. Arbitrary native-command equivalence is not claimed.
 
 Generic `ranges` metadata, malformed/duplicate/out-of-bounds bookmarks, endpoints
 inside surrogate pairs, and bookmarked documents containing noncanonical tables,
@@ -277,7 +311,7 @@ differences fail the gate.
 
 The gate first runs isolated native offset and mutation probes, then creates
 genuine browser downloads and model exports, imports them in full 4D, exports
-them through 4D and reopens those exports. Its 258 cases include the original 14:
+them through 4D and reopens those exports. Its 372 cases include the original 14:
 the preloaded brief, a newly formatted document with a hyperlink, image and table,
 and original and browser-exported versions of all six fixtures. It checks text, metadata,
 image/table counts, formula sources and links; sampled first-character
@@ -312,6 +346,18 @@ Regenerate the oracles only from a successful full-4D probe:
 cd web-editor
 node scripts/capture-range-evidence.mjs /absolute/path/to/evidence-directory
 ```
+
+The management increment adds 114 import/export/reopen cases to the previous
+258: 88 exact-name exports, ten model operations and 16 browser downloads
+(including five after undo/redo and IndexedDB reload recovery).
+An independent native probe covers 160 name inputs and 13 management
+operations: empty/invalid/escaped ASCII names, Unicode and case distinctions,
+long names, native duplicate overwrite counterexamples, collapsed selections,
+rename/delete, cell text/terminators, row separators, whole tables and native
+list ranges. The browser intentionally rejects the normalization/overwrite
+counterexamples rather than claiming native command equivalence for them.
+Both browser/model input archives and native reexports are checked against
+native raw serialized pairs, names, getter ranges and selected text.
 
 Keep the entire evidence directory (including `Output/range-report.json`,
 `Output/range-errors.json`, the copied probe project, native originals and

@@ -7,6 +7,76 @@ import { nativeMetadata } from '../src/native-ranges.js';
 
 const selection = (startRun, start, endRun = startRun, end = start) => ({ startRun, start, endRun, end });
 
+export async function prepareBookmarkCases(directory, cases) {
+  const report = JSON.parse(await readFile(resolve(directory, 'Output/range-report.json'), 'utf8'));
+  assert.equal(report.management.names.length, 160, 'Native name matrix missing');
+  assert.equal(report.management.operations.length, 13, 'Native management coverage');
+  const dom = new JSDOM();
+  for (const key of ['document', 'DOMParser', 'XMLSerializer']) globalThis[key] = dom.window[key];
+  const open = async file => WriteProDocument.open(new Uint8Array(await readFile(resolve(directory, 'Output', file))));
+  const render = model => model.render(document.createElement('article'), {});
+  const save = async (model, name, nativeFile, expected) => {
+    const native = await open(nativeFile);
+    const serialized = nativeMetadata(native.document).bookmarks;
+    assert.deepEqual(nativeMetadata(model.document).bookmarks, serialized, `${name}: raw metadata differs from native`);
+    const file = `${name}.4wp`;
+    await writeFile(resolve(directory, 'Input', file), model.export());
+    cases.push({ name, file, ranges: { text: expected.text, bookmarks: expected.bookmarks, serialized } });
+  };
+  const original = 'bookmark-create-original.4wp';
+  for (const [index, item] of report.management.names.entries()) {
+    const model = await open(original);
+    render(model);
+    const names = Object.keys(item.after.bookmarks);
+    if (names.length !== 1 || names[0] !== item.name) {
+      if (!names.length) assert.deepEqual(item.errors.map(error => error.code), [110], 'Expected native empty-name error');
+      else assert.deepEqual(item.errors, [], 'Native normalization errors');
+      assert.throws(() => model.changeBookmark(item.name, { selection: selection(0, 1, 0, 3) }), /bookmarkNameInvalid/, `Native normalization must be rejected: ${JSON.stringify(item.name)}`);
+      continue;
+    }
+    assert.deepEqual(item.errors, [], 'Accepted native name errors');
+    model.changeBookmark(item.name, { selection: selection(0, 1, 0, 3) });
+    await save(model, `bookmark-name-${index}`, item.file, item.after);
+  }
+  for (const item of report.management.operations) {
+    const model = await open(`bookmark-${item.name}-original.4wp`);
+    render(model);
+    if (item.bounds) {
+      const body = model.nativeView();
+      const first = body.locate(item.bounds[0]);
+      const last = body.locate(item.bounds[1], item.bounds[0] === item.bounds[1]);
+      // Creation UI accepts text/caret selections; native-only structural slots
+      // remain navigation evidence rather than a widened browser selection API.
+      if (first.node.nodeType !== 3 || last.node.nodeType !== 3) continue;
+      model.changeBookmark('managed', { selection: selection(model.runs.indexOf(first.node), first.offset, model.runs.indexOf(last.node), last.offset) });
+    } else {
+      model.changeBookmark('日本語😀é', { selection: selection(0, 1, 0, 3) });
+      if (item.name === 'collapsed') model.changeBookmark('point', { selection: selection(0, 3) });
+      if (item.name === 'rename') model.changeBookmark('renamed_日本語😀é', { previous: '日本語😀é' });
+      if (item.name === 'delete') model.changeBookmark('', { previous: '日本語😀é', remove: true });
+      if (item.name === 'case') {
+        model.changeBookmark('ABC', { selection: selection(0, 0, 0, 1) });
+        model.changeBookmark('abc', { selection: selection(0, 4, 0, 6) });
+      }
+      if (item.name === 'duplicate' || item.name === 'renameDuplicate') {
+        if (item.name === 'renameDuplicate') model.changeBookmark('other', { selection: selection(0, 0, 0, 1) });
+        const before = model.serialize();
+        assert.throws(() => item.name === 'duplicate'
+          ? model.changeBookmark('日本語😀é', { selection: selection(0, 4, 0, 6) })
+          : model.changeBookmark('other', { previous: '日本語😀é' }), /bookmarkDuplicate/);
+        assert.equal(model.serialize(), before, 'Duplicates must not overwrite');
+        continue;
+      }
+    }
+    await save(model, `bookmark-model-${item.name}`, `bookmark-${item.name}-native.4wp`, item.after);
+    const packed = WriteProDocument.unpack(model.pack());
+    packed.undo();
+    packed.undo(true);
+    assert.equal(packed.serialize(), model.serialize(), `${item.name}: recovered undo/redo`);
+  }
+  dom.window.close();
+}
+
 export async function prepareRangeCases(directory, cases) {
   assert.deepEqual(JSON.parse(await readFile(resolve(directory, 'Output/range-errors.json'), 'utf8')), [], 'Native probe errors');
   const report = JSON.parse(await readFile(resolve(directory, 'Output/range-report.json'), 'utf8'));

@@ -129,6 +129,36 @@ multi-level style sheets, formula, floating-object, header/footer,
 section-break or generic `ranges` semantics are not established. Unsupported
 structures/pictures and invalid/surrogate-splitting endpoints remain protected.
 
+### Bookmark names and management (full 4D F0012102)
+
+`wp_bookmark_probe`, run by the same full-4D gate, independently checks
+160 name inputs and 13 operations. Native `WP NEW BOOKMARK` removes ASCII
+spaces, controls and punctuation except `-` and `_`; an empty result raises
+error 110. A NUL truncates the native input. Names are case-sensitive:
+`ABC` and `abc` coexist. Japanese, non-BMP characters, combining marks,
+Unicode spacing/punctuation, `__proto__`, `constructor` and a 1,024-character
+name are preserved in native exports. Native creation with an existing
+name overwrites the old range.
+
+There is no native rename command in this version. Native rename can be
+implemented by obtaining the old bookmark range, deleting the name and
+creating the new one; its duplicate target also overwrites. Since the getter
+can normalize table ranges, the editor instead changes only the serialized
+name and retains the original raw pair. Native import/export/reopen verifies
+the resulting metadata. Rename/delete do not change document text.
+
+The editor rejects new names that native 4D would filter/truncate, invalid
+Unicode/XML and exact duplicates. It never silently normalizes, trims or
+overwrites. Compatible Unicode is retained as entered; JSON string encoding
+and XML attribute escaping are performed by the serializers, not by inserting
+raw HTML. Existing malformed/duplicate metadata remains protected.
+
+Collapsed creation works natively and serializes equal endpoints. Native
+cell-text, cell-terminator, row-separator, whole-table and indented-list
+creation is separately probed. Navigation uses the raw pair and the original
+XML-to-native map. It must not pretend that a zero-width/structural slot is a
+visible character, nor replace it with a cell-normalized getter selection.
+
 ## Breaks and sections
 
 | Markup on a paragraph | Meaning |
