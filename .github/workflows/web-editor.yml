@@ -1,0 +1,30 @@
+name: Standalone web editor
+
+on:
+  push:
+    branches: [main]
+    paths: ['web-editor/**', 'Tests/FourDFileKitTests/Fixtures/WritePro/**', '.github/workflows/web-editor.yml']
+  pull_request:
+    paths: ['web-editor/**', 'Tests/FourDFileKitTests/Fixtures/WritePro/**', '.github/workflows/web-editor.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-editor:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-editor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web-editor/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
