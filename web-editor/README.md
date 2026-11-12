@@ -85,8 +85,9 @@ optional case sensitivity and a 1,000-match limit. The footer shows
 language-aware word/character counts and document zoom.
 
 Undo/redo is document-wide with grouped typing and selection/caret restoration,
-including recovered undo history. These editor-only cursor bookmarks do not
-modify native 4D bookmark metadata. History is bounded to 100 snapshots and
+including recovered undo history. Editor-only cursor bookmarks are separate from
+native 4D bookmark metadata; snapshots retain both text and native ranges atomically.
+History is bounded to 100 snapshots and
 approximately 8 MiB of UTF-16 undo history (at least the latest snapshot is
 retained). **History** displays automatic versions and lets you name and
 restore a version; restoration itself is undoable. Local versions are bounded
@@ -135,9 +136,32 @@ requests; other images (including native 4DPicture wrappers) and unsupported
 objects have placeholders.
 They are still retained in exported archives.
 
-Documents with nonempty bookmark/range metadata are **read-only**, because
-changing text without 4D's character-offset semantics could corrupt ranges.
-No bookmark stripping, silent conversion or destructive import mode is offered.
+Named text bookmarks are editable in documents consisting of paragraphs, flat
+lists, ordinary inline formatting/links and supported inline pictures. A central
+transaction maps the original XML to native UTF-16 slots and adjusts bookmark
+metadata for explicit edits, including typing/IME, cut, paste, replace-all,
+paragraph split/join and image insertion/removal/movement. Formatting does not
+shift ranges. Failed or unregistered text/structural changes roll back.
+
+**Replacement policy:** replacing a selection replays native **deletion followed
+by insertion**, not a single `WP SET TEXT` replacement (which has different,
+content-dependent boundary behavior). Insertion at a nonempty bookmark's start
+shifts it; insertion inside extends it; insertion at its end is excluded. A
+collapsed bookmark stays before insertion at its own position. Deletion shrinks
+overlaps and removes entirely deleted nonempty bookmarks and strictly enclosed
+collapsed bookmarks, as observed in 4D. Thus replacing an entire bookmarked
+selection removes that bookmark; undo restores it. No bookmark management UI
+or arbitrary native-command equivalence is claimed.
+
+Generic `ranges` metadata, malformed/duplicate/out-of-bounds bookmarks, endpoints
+inside surrogate pairs, and bookmarked documents containing tables, nested lists,
+formulas, section/header/footer/anchored structures, hidden content or unsupported
+pictures remain **read-only**. Inserting a table/nested list into a supported
+bookmarked document is rejected. Unsupported browser input operations (for example
+word-delete/autocorrect input types without established mapping) are also rejected,
+not inferred from a whole-run text diff. Standard typing, grapheme deletion and
+IME composition use explicit selection ranges. No bookmark stripping, silent
+conversion or destructive import mode is offered.
 
 This is an experimental **document editor**, not a replacement for the
 4D Write Pro engine. It does not evaluate formulas or reproduce native
@@ -170,7 +194,8 @@ npm run test:browser
 
 Tests use the repository's six real `.4wp` fixtures, exercise untouched and
 edited round trips, native resource retention, bookmark/protected-content
-guards, malformed input, localization, continuous editing, tables/images,
+guards and native-offset transformations, malformed input, localization,
+continuous editing, tables/images,
 clipboard sanitization, version restoration, reload recovery and browser
 editing/download workflows.
 The browser suite builds and serves the production bundle, including its CSP.
@@ -193,17 +218,39 @@ project runs, dataless, without opening personal projects or changing fixtures.
 Missing application/report, compilation/native errors, timeouts and semantic
 differences fail the gate.
 
-The gate creates genuine browser downloads, imports them in full 4D, exports
-them through 4D and reopens those exports. Its 14 cases cover the preloaded
-brief, a newly formatted document with a hyperlink, image and table, and original
-and browser-exported versions of all six fixtures. It checks text, metadata,
+The gate first runs isolated native offset and mutation probes, then creates
+genuine browser downloads and model exports, imports them in full 4D, exports
+them through 4D and reopens those exports. Its 206 cases include the original 14:
+the preloaded brief, a newly formatted document with a hyperlink, image and table,
+and original and browser-exported versions of all six fixtures. It checks text, metadata,
 image/table counts, formula sources and links; sampled first-character
 formatting is compared with native originals. The new document additionally
 checks the actual first glyph, bold/italic/underline/strikethrough, size,
 highlight and hyperlink, and native decoding of the inserted 48-by-32 image.
-Bookmarked/read-only cases must also remain byte-identical in browser exports.
+Unsupported bookmarked/read-only cases must also remain byte-identical in browser exports.
 
-Full 4D 21.2 (`F0012102`) passed these 14 cases. Keep `Input/`,
-`Output/native-report.json`, native reexports and `native.log` together as
-evidence. The gate does not evaluate formulas or certify pagination, visual
+The additional cases cover 165 native delete-then-insert combinations (all
+selection boundaries in a nine-character document, empty/ASCII/non-BMP insertion,
+overlapping and collapsed bookmarks at interior/start/end positions), eleven
+native offset fixtures, ten native structural/formatting operations, and six
+real-browser bookmark editing downloads.
+Imported and reopened bookmark names, positions and selected text must equal
+the independently executed native operations, not just the browser model's
+predictions. The offset fixtures cover Japanese, non-BMP and combining text,
+paragraphs, soft breaks, inline pictures, empty placeholders, flat lists and
+styled runs. `tests/fixtures/native-ranges.json` preserves a compact native oracle;
+regenerate it only from a successful full-4D probe:
+
+```sh
+cd web-editor
+node scripts/capture-range-evidence.mjs /absolute/path/to/evidence-directory
+```
+
+Keep the entire evidence directory (including `Output/range-report.json`,
+`Output/range-errors.json`, the copied probe project, native originals and
+reexports, `Input/cases.json`, `Output/native-report.json`, and both native logs)
+outside disposable worktrees. These are scoped observations from full 4D 21.2
+`F0012102`, not certification of arbitrary bookmark or native-layout semantics.
+
+The gate does not evaluate formulas or certify pagination, visual
 fidelity, all character formatting, other 4D versions or untested documents.

@@ -9,18 +9,19 @@ DEST=${1:?Usage: bash scripts/check-web-editor-native.sh NEW_OUTPUT_DIRECTORY}
 mkdir -p "$DEST/Input" "$DEST/Output"
 DEST=$(cd "$DEST" && pwd)
 cp -R "$ROOT/Tests/Fixtures/wpfixture/Project" "$DEST/Project"
-(cd "$ROOT/web-editor" && npm run build && node scripts/native-roundtrip.mjs prepare "$DEST")
-python3 - "$FOURD" "$DEST" <<'PY'
+cp -R "$ROOT/Tests/Fixtures/wpfixture/Resources" "$DEST/Resources"
+run_4d() {
+python3 - "$FOURD" "$DEST" "$1" "$2" <<'PY'
 import pathlib
 import subprocess
 import sys
 
-application, destination = sys.argv[1:]
+application, destination, method, logfile = sys.argv[1:]
 root = pathlib.Path(destination)
-with (root / "native.log").open("w") as log:
+with (root / logfile).open("w") as log:
     process = subprocess.Popen(
         [application, "--project=" + str(root / "Project/wpfixture.4DProject"),
-         "--dataless", "--skip-onstartup", "--startup-method=wp_web_check"],
+         "--dataless", "--skip-onstartup", "--startup-method=" + method],
         stdout=log, stderr=subprocess.STDOUT,
     )
     try:
@@ -36,6 +37,11 @@ with (root / "native.log").open("w") as log:
     if code:
         raise SystemExit(f"Full 4D exited with {code}; inspect native.log. No native pass is claimed.")
 PY
+}
+run_4d wp_range_check range-native.log
+[ -s "$DEST/Output/range-report.json" ] || { echo "Full 4D produced no range report; inspect $DEST/range-native.log." >&2; exit 1; }
+(cd "$ROOT/web-editor" && npm run build && node scripts/native-roundtrip.mjs prepare "$DEST")
+run_4d wp_web_check native.log
 [ -s "$DEST/Output/native-report.json" ] || { echo "Full 4D produced no report; inspect $DEST/native.log. No native pass is claimed." >&2; exit 1; }
 (cd "$ROOT/web-editor" && node scripts/native-roundtrip.mjs verify "$DEST")
 echo "Native evidence retained in $DEST"

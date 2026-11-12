@@ -1,5 +1,6 @@
 import * as css from 'css-tree';
 import { DocumentError, MAX_ARCHIVE, MAX_EXPANDED, readArchive, writeArchive } from './archive.js';
+import { nativeBody, nativeBoundary, nativeMetadata, spliceBookmarks, writeBookmarks } from './native-ranges.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
@@ -199,9 +200,19 @@ export class WriteProDocument {
 
   refresh() {
     this.styles = rules(this.document);
-    this.readOnly = [...this.document.querySelectorAll('meta')].some(meta =>
-      ['bookmarks', 'ranges'].includes((meta.getAttribute('name') || '').toLowerCase()) &&
-      !['', '{}', '[]'].includes((meta.getAttribute('content') || '').trim()));
+    this.readOnly = false;
+    this.hasBookmarks = false;
+    try {
+      const { bookmarks } = nativeMetadata(this.document);
+      this.hasBookmarks = Object.keys(bookmarks).length > 0;
+      if (this.hasBookmarks) {
+        const body = this.nativeView();
+        if (Object.values(bookmarks).some(pair => !pair.every(offset => nativeBoundary(body.text, offset)))) throw new DocumentError('protected');
+      }
+    } catch (error) {
+      if (!(error instanceof DocumentError) || error.code !== 'protected') throw error;
+      this.readOnly = true;
+    }
     this.runs = [];
     this.blocks = [];
     this.images = [];
@@ -257,23 +268,74 @@ export class WriteProDocument {
 
   endGroup() { this.group = null; }
 
-  mutate(label, change, group = null) {
+  mutate(label, change, group = null, restore = false) {
     const before = this.serialize();
     try {
+      if (!restore && this.readOnly) throw new DocumentError('protected');
+      const metadata = restore ? { bookmarks: {} } : nativeMetadata(this.document);
+      const tracked = !restore && Object.keys(metadata.bookmarks).length > 0;
+      this.nativeTransaction = tracked ? {
+        text: this.nativeView().text,
+        bookmarks: metadata.bookmarks, meta: metadata.meta,
+      } : null;
       const result = change();
+      if (tracked) {
+        const body = this.nativeView();
+        if (body.text !== this.nativeTransaction.text ||
+          JSON.stringify(nativeMetadata(this.document).bookmarks) !== JSON.stringify(this.nativeTransaction.bookmarks)) throw new DocumentError('protected');
+      }
       const after = this.serialize();
+      const hasBookmarks = restore ? this.hasBookmarks : Object.keys(nativeMetadata(this.document).bookmarks).length > 0;
+      if (!restore && !tracked && hasBookmarks) throw new DocumentError('protected');
       if (after !== before) {
         parse(after);
         const resources = Object.entries(this.files).reduce((sum, [name, bytes]) => sum + (name === this.entry ? 0 : bytes.length), 0);
         if (new TextEncoder().encode(after).length + resources + 256 > MAX_EXPANDED) throw new DocumentError('tooLarge');
         this.checkpoint(label, group, before);
       }
+      this.hasBookmarks = hasBookmarks;
       return result;
     } catch (error) {
       this.document = parse(before);
       this.refresh();
       throw error;
+    } finally {
+      this.nativeTransaction = null;
+      this.nativeDepth = false;
     }
+  }
+
+  nativeView() {
+    return nativeBody(this.document, element => this.values(element), image => this.imageSource(image));
+  }
+
+  nativeChange(range, change) {
+    const transaction = this.nativeTransaction;
+    if (!transaction || this.nativeDepth) return change();
+    const body = this.nativeView();
+    if (body.text !== transaction.text ||
+      JSON.stringify(nativeMetadata(this.document).bookmarks) !== JSON.stringify(transaction.bookmarks)) throw new DocumentError('protected');
+    const start = range.startContainer ? body.point(range.startContainer, range.startOffset) : range.start;
+    const end = range.endContainer ? body.point(range.endContainer, range.endOffset) : range.end;
+    if (!nativeBoundary(body.text, start) || !nativeBoundary(body.text, end) || end < start) throw new DocumentError('protected');
+    this.nativeDepth = true;
+    let result;
+    try { result = change(); }
+    finally { this.nativeDepth = false; }
+    const after = this.nativeView().text;
+    const length = after.length - body.text.length + end - start;
+    if (!after.isWellFormed() || length < 0 || after.slice(0, start - 1) !== body.text.slice(0, start - 1) ||
+      after.slice(start - 1 + length) !== body.text.slice(end - 1)) throw new DocumentError('protected');
+    transaction.bookmarks = spliceBookmarks(transaction.bookmarks, start, end, length);
+    transaction.text = after;
+    writeBookmarks(transaction.meta, transaction.bookmarks);
+    return result;
+  }
+
+  nativeOffset(node, atEnd = false) {
+    if (!this.nativeTransaction) return 1;
+    const body = this.nativeView();
+    return node ? body.bounds(node)[atEnd ? 'end' : 'start'] : body.text.length + 1;
   }
 
   undo(redo = false) {
@@ -346,7 +408,9 @@ export class WriteProDocument {
     const node = this.runs[index];
     if (!node || this.protected(node.parentElement)) throw new DocumentError('protected');
     if (node.data === value) return;
-    return this.mutate('typing', () => {
+    const range = this.document.createRange();
+    range.selectNodeContents(node);
+    return this.mutate('typing', () => this.nativeChange(range, () => {
       const block = node.parentElement.closest('p,li');
       const emptyParagraph = !value && block && block.textContent === node.data && !block.querySelector('img,br');
       node.data = emptyParagraph ? '\u200b' : value;
@@ -361,7 +425,7 @@ export class WriteProDocument {
         node.replaceWith(fragment);
         return last;
       }
-    }, node);
+    }), node);
   }
 
   formatRun(index, property, value, start = 0, end = null) {
@@ -384,12 +448,15 @@ export class WriteProDocument {
     const after = this.blocks[index];
     if (after && (after.parentElement.localName !== 'body' || this.protected(after))) throw new DocumentError('protected');
     return this.mutate('paragraph', () => {
-      const paragraph = this.document.createElementNS(XHTML, 'p');
-      paragraph.setAttribute('class', 'Normal');
-      paragraph.textContent = '\u200b';
-      if (after) after.after(paragraph);
-      else this.document.querySelector('body').append(paragraph);
-      return { node: paragraph.firstChild, offset: 0 };
+      const offset = this.nativeOffset(after, true);
+      return this.nativeChange({ start: offset, end: offset }, () => {
+        const paragraph = this.document.createElementNS(XHTML, 'p');
+        paragraph.setAttribute('class', 'Normal');
+        paragraph.textContent = '\u200b';
+        if (after) after.after(paragraph);
+        else this.document.querySelector('body').append(paragraph);
+        return { node: paragraph.firstChild, offset: 0 };
+      });
     });
   }
 
@@ -517,6 +584,10 @@ export class WriteProDocument {
   }
 
   replaceRange(range, content) {
+    return this.nativeChange(range, () => this.replaceRangeContents(range, content));
+  }
+
+  replaceRangeContents(range, content) {
     const blockOf = node => (node.nodeType === 1 ? node : node.parentElement).closest('p,li');
     const first = blockOf(range.startContainer);
     const last = blockOf(range.endContainer);
@@ -561,7 +632,7 @@ export class WriteProDocument {
     return this.mutate(label, () => {
       this.replaceRange(range, fragment);
       return { node, offset: node.length };
-    }, label === 'typing' ? node : null);
+    }, label === 'typing' ? this.hasBookmarks ? 'range-typing' : node : null);
   }
 
   splitParagraph(selection, lineBreak = false) {
@@ -574,7 +645,7 @@ export class WriteProDocument {
       this.toggleList(this.blocks.indexOf(block), block.parentElement.localName);
       return { node, offset: 0 };
     }
-    return this.mutate('paragraph', () => {
+    return this.mutate('paragraph', () => this.nativeChange(range, () => {
       const empty = this.document.createTextNode('');
       this.replaceRange(range, empty);
       const tail = this.document.createRange();
@@ -595,7 +666,7 @@ export class WriteProDocument {
       const node = walker.nextNode();
       if (!node) { next.append(this.document.createTextNode('\u200b')); return { node: next.lastChild, offset: 0 }; }
       return { node, offset: 0 };
-    });
+    }));
   }
 
   mergeBoundary(index, backward) {
@@ -608,18 +679,23 @@ export class WriteProDocument {
     return this.mutate('paragraph', () => {
       const first = backward ? other : block;
       const last = backward ? block : other;
-      const marker = this.document.createTextNode('');
-      if (first.textContent === '\u200b' && !first.querySelector('img,br')) first.textContent = '';
-      first.append(marker, ...last.childNodes);
-      last.remove();
-      return { node: marker, offset: 0 };
+      const start = this.nativeOffset(first, true);
+      const end = this.nativeOffset(last);
+      return this.nativeChange({ start, end }, () => {
+        const marker = this.document.createTextNode('');
+        if (first.textContent === '\u200b' && !first.querySelector('img,br')) first.textContent = '';
+        first.append(marker, ...last.childNodes);
+        last.remove();
+        return { node: marker, offset: 0 };
+      });
     });
   }
 
   deleteInlineBoundary(index, backward) {
     const node = this.runs[index];
     const block = node.parentElement.closest('p,li');
-    const other = this.runs[index + (backward ? -1 : 1)];
+    const neighbors = backward ? this.runs.slice(0, index).reverse() : this.runs.slice(index + 1);
+    const other = neighbors.find(candidate => candidate.length || candidate.parentElement.closest('p,li') !== block);
     const sameBlock = other?.parentElement.closest('p,li') === block;
     const gap = this.document.createRange();
     if (backward) {
@@ -634,9 +710,13 @@ export class WriteProDocument {
     if (!object) return null;
     this.guardRange(gap);
     return this.mutate('typing', () => {
-      const caret = this.document.createTextNode('');
-      object.replaceWith(caret);
-      return { node: caret, offset: 0 };
+      const range = this.document.createRange();
+      range.selectNode(object);
+      return this.nativeChange(range, () => {
+        const caret = this.document.createTextNode('');
+        object.replaceWith(caret);
+        return { node: caret, offset: 0 };
+      });
     });
   }
 
@@ -645,7 +725,7 @@ export class WriteProDocument {
     const range = this.range(selection);
     const block = this.runs[selection.startRun].parentElement.closest('p,li');
     this.structureSafe(block);
-    return this.mutate('paste', () => {
+    return this.mutate('paste', () => this.nativeChange(range, () => {
       const marker = this.document.createTextNode('');
       this.replaceRange(range, marker);
       const hasBlocks = [...fragment.children].some(child => ['p', 'ul', 'ol', 'li'].includes(child.localName));
@@ -700,7 +780,7 @@ export class WriteProDocument {
         if (!paragraph.textContent && !paragraph.querySelector('img,br')) paragraph.prepend(this.document.createTextNode('\u200b'));
       }
       return { node: caret, offset: 0 };
-    });
+    }));
   }
 
   styleNames() {
@@ -882,7 +962,11 @@ export class WriteProDocument {
     const ratio = oldWidth && oldHeight ? oldHeight / oldWidth : naturalRatio;
     if (width !== null && (!Number.isFinite(width) || width < 12 || width > 1200 || !Number.isFinite(ratio) || ratio <= 0)) throw new DocumentError('imageSize');
     this.mutate('image', () => {
-      if (width === null) image.remove();
+      if (width === null) {
+        const range = this.document.createRange();
+        range.selectNode(image);
+        this.nativeChange(range, () => image.remove());
+      }
       else {
         setProperty(image, 'width', `${width}pt`);
         setProperty(image, 'height', `${width * ratio}pt`);
@@ -896,7 +980,9 @@ export class WriteProDocument {
     const range = this.range(selection);
     if (!range.collapsed) throw new DocumentError('selection');
     return this.mutate('image', () => {
-      image.remove();
+      const removal = this.document.createRange();
+      removal.selectNode(image);
+      this.nativeChange(removal, () => image.remove());
       const fragment = this.document.createDocumentFragment();
       const node = this.document.createTextNode('');
       fragment.append(image, node);
@@ -952,7 +1038,7 @@ export class WriteProDocument {
 
   restoreVersion(xml) {
     const restored = parse(xml);
-    this.mutate('restore', () => { this.document = restored; this.refresh(); });
+    this.mutate('restore', () => { this.document = restored; this.refresh(); }, null, true);
   }
 
   pack() {

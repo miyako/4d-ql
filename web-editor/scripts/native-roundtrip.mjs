@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { preview } from 'vite';
 import { unzipSync, strFromU8 } from 'fflate';
+import { prepareRangeCases } from './native-range-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtures = resolve(root, '../Tests/FourDFileKitTests/Fixtures/WritePro');
@@ -73,6 +74,39 @@ async function prepare() {
       if (edited) await editable.fill('WEB-CHECK ' + await editable.textContent());
       await download(`${name}-browser`, { reference: `${name}-original`, edited });
     }
+    const rangeReport = JSON.parse(await readFile(resolve(directory, 'Output/range-report.json'), 'utf8'));
+    for (const kind of ['split', 'lineBreak', 'richPaste', 'join']) {
+      const native = rangeReport.operations.find(item => item.name === kind);
+      await page.locator('#file').setInputFiles(resolve(directory, `Output/range-edit-${kind}-original.4wp`));
+      await expect(page.locator('#save-state')).toHaveText('Ready');
+      await expect(page.locator('#paper p').first()).toHaveText(kind === 'join' ? 'abc' : 'abcdefghi');
+      await page.locator('#paper p').nth(kind === 'join' ? 1 : 0).locator('[contenteditable]').first().evaluate((element, offset) => {
+        element.focus();
+        window.getSelection().collapse(element.firstChild, offset);
+      }, kind === 'join' ? 0 : 3);
+      if (kind === 'richPaste') {
+        await page.locator('#paper').evaluate(paper => {
+          const clipboardData = new DataTransfer();
+          clipboardData.setData('text/html', '<p><b>XY</b></p><p>Z</p>');
+          paper.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+        });
+      } else await page.keyboard.press(kind === 'join' ? 'Backspace' : kind === 'lineBreak' ? 'Shift+Enter' : 'Enter');
+      await download(`range-browser-${kind}`, { ranges: { text: native.after.text, bookmarks: native.after.bookmarks } });
+    }
+    for (const [offset, text] of [[0, 'XY'], [3, '😀日']]) {
+      await page.locator('#file').setInputFiles(resolve(directory, 'Output/range-editing.4wp'));
+      await expect(page.locator('#save-state')).toHaveText('Ready');
+      await expect(page.locator('#paper p')).toHaveText('abcdefghi');
+      await page.locator('[contenteditable]').first().evaluate((element, offset) => {
+        element.focus();
+        window.getSelection().collapse(element.firstChild, offset);
+      }, offset);
+      if (offset) await page.keyboard.insertText(text);
+      else await page.keyboard.type(text);
+      const native = rangeReport.splices.find(item => item.edit.start === offset + 1 && item.edit.end === offset + 1 && item.edit.text === text);
+      await download(`range-browser-typing-${offset}`, { ranges: { text: native.text, bookmarks: native.bookmarks } });
+    }
+    await prepareRangeCases(directory, cases);
     await writeFile(manifestPath, JSON.stringify({ cases }, null, 2));
   } finally {
     await browser.close();
@@ -95,12 +129,16 @@ async function verify() {
     assert(actual?.imported && actual?.reopened, `${entry.name}: missing native import/reopen evidence`);
     const before = actual.imported;
     const after = actual.reopened;
-    for (const key of ['text', 'metadata', 'images', 'imagePixels', 'tables', 'first']) assert.deepEqual(after[key], before[key], `${entry.name}: native re-export changed ${key}`);
+    for (const key of ['text', 'metadata', 'bookmarks', 'images', 'imagePixels', 'tables', 'first']) assert.deepEqual(after[key], before[key], `${entry.name}: native re-export changed ${key}`);
+    if (entry.ranges) {
+      assert.equal(before.text, entry.ranges.text, `${entry.name}: text differs from native edit`);
+      assert.deepEqual(before.bookmarks, entry.ranges.bookmarks, `${entry.name}: bookmarks differ from native edit`);
+    }
     for (const key of ['formulas', 'links']) assert.deepEqual(stable(after[key]), stable(before[key]), `${entry.name}: native re-export changed ${key}`);
     if (entry.reference) {
       const baseline = results.get(entry.reference).imported;
       assert.equal(before.text, (entry.edited ? 'WEB-CHECK ' : '') + baseline.text, `${entry.name}: native text differs`);
-      for (const key of ['metadata', 'images', 'tables']) assert.deepEqual(before[key], baseline[key], `${entry.name}: browser changed ${key}`);
+      for (const key of ['metadata', 'bookmarks', 'images', 'tables']) assert.deepEqual(before[key], baseline[key], `${entry.name}: browser changed ${key}`);
       for (const key of ['bold', 'italic', 'underline', 'strike', 'size', 'color', 'background']) assert.deepEqual(before.first[key], baseline.first[key], `${entry.name}: browser changed first-character ${key}`);
       for (const key of ['formulas', 'links']) assert.deepEqual(stable(before[key]), stable(baseline[key]), `${entry.name}: browser changed ${key}`);
       if (!entry.edited) assert.deepEqual(await readFile(resolve(directory, 'Input', entry.file)), await readFile(resolve(directory, 'Input', `${entry.reference}.4wp`)), `${entry.name}: read-only archive changed`);

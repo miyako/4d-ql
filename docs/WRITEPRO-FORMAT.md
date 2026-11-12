@@ -57,6 +57,44 @@ types; numbering counts the item's position in the list. `-d4-list-string-format
 (e.g. `'(#)'`) formats the number and `-d4-list-font` the marker font.
 Markers hang right-aligned before the text start; `margin-left` indents both.
 
+## Bookmark offsets (full 4D F0012102)
+
+`wp_range_check` / `wp_range_probe` establish these observations in the full
+4D 21.2 application, not tool4d. Run the web editor's
+[`check-web-editor-native.sh`](../scripts/check-web-editor-native.sh) gate to
+retain the native reports, original archives and reexports.
+
+- Serialized `head meta[name="bookmarks"]` pairs are **zero-based, end-exclusive
+  UTF-16** offsets. Native `WP Text range` / `WP Bookmark range` objects are
+  **one-based**, also end-exclusive. For example, native `[1,8]` exports as
+  `[0,7]` for `A😀日éB` (seven UTF-16 units, six Unicode scalars).
+- Inline style/link wrappers add no slots. A paragraph separator, `<br/>` and
+  an inline picture each occupy one slot. Flat-list item boundaries count like
+  paragraph boundaries; list markers do not add slots. The body has no counted
+  leading or trailing paragraph delimiter.
+- The HTML importer removes U+200B, including within nonempty text. Empty
+  paragraphs export with a U+200B placeholder but contribute only their
+  separator slots, not a character for that placeholder.
+- Insertion at a nonempty bookmark's start shifts both endpoints; insertion
+  strictly inside extends its end; insertion at its end leaves it unchanged.
+  At a collapsed bookmark's own position, the bookmark remains before insertion.
+- Deletion shifts following ranges and clamps overlapping endpoints. An entirely
+  deleted nonempty bookmark disappears. A collapsed bookmark strictly inside
+  deleted text disappears, but one exactly at either deletion boundary survives.
+
+Native atomic `WP SET TEXT(...; replacement; wk replace)` is **not** generally
+equivalent to deletion followed by insertion, even when text lengths match.
+The web editor explicitly uses the latter, separately probed policy for every
+selection replacement; it does not guess atomic replacement semantics. The
+committed native oracle contains 165 such primitive combinations; each gate run
+independently repeats them and compares native bookmark positions and selected
+text with editor exports after import/export/reopen.
+
+These observations do not establish table, nested-list, formula, floating-object,
+header/footer, section-break or generic `ranges` offsets. Bookmarked documents
+containing those structures, unsupported pictures or invalid/surrogate-splitting
+range endpoints remain read-only in the editor.
+
 ## Breaks and sections
 
 | Markup on a paragraph | Meaning |
