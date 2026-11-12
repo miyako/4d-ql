@@ -257,6 +257,53 @@ bytes unchanged, including protected documents. The preview uses document
 defaults on one continuous surface; section projection and exact pagination
 are not implemented or certified.
 
+### Section/break authoring evidence (full 4D F0012102)
+
+`wp_section_probe` independently creates 27 structural cases before editor
+exports: page (`2`), new-page section (`1`) and continuous section (`5`) breaks
+at body start, interior, before/after a text formula and body end; existing
+inherited/overridden sections; names, first-page headers and section-anchored
+pictures. Explicit section setting/reset observations are recorded separately.
+The source, inserted, ordinary-paragraph and deleted archives plus getter/slot
+reports are retained in `Output/section-report.json` and adjacent files.
+
+- Each inserted break occupies **one UTF-16 slot**, represented by a paragraph
+  boundary in exported flat XHTML. `WP Get text` reports CR, not an extra
+  form-feed or synthetic section atom. All three kinds follow the established
+  native insertion rules for enclosing/collapsed bookmarks; formulas still
+  occupy exactly one slot.
+- Replacing that slot with `wk paragraph break` removes the page/section break
+  while retaining a paragraph boundary and the same bookmark offsets. Deleting
+  the slot instead joins text and shifts ranges. The editor's explicit removal
+  deliberately uses the former semantics.
+- Section identifiers in selectors and header/footer classes are positional
+  indices starting at 1. Native insertion splits the section, retains its old
+  name on the first part, makes the new part unnamed, copies explicit geometry,
+  and shifts later indices. It can copy section/first-page headers and change
+  anchored associations. Native merge can discard the earlier section's name.
+  The editor consequently permits section insertion only in the last section
+  without hidden/subsection/unsupported structures, and merges only when no
+  section-specific declarations or associations would be lost or renumbered.
+- Section orientation and margins inherit from document defaults **by absence**.
+  Native `WP RESET ATTRIBUTES` removes those overrides. A margin setter on one
+  side serializes the four-sided group. The browser edits that group explicitly
+  and removes the entire group on reset, never materializing defaults as a
+  substitute for inheritance. Width/height remain document-only.
+- Geometry/name-only edits retain original body, hidden object XML, unknown
+  section/subsection declarations, bookmarks and resources. The gate compares
+  full native reexports and getters with separately mutated native originals,
+  including section names and header/footer/anchored associations.
+- Seventeen native name export/reimport probes cover Unicode/non-BMP/combining
+  characters, spaces, punctuation and 1,024-unit names. Native names containing
+  quotes can disappear on reimport, backslashes are removed, and surrounding
+  whitespace/control characters are normalized. The editor rejects those new
+  names instead of silently adopting native normalization; unchanged imported
+  names are retained.
+
+The browser shows localized explicit-break markers on its continuous surface.
+It does not render automatic native pagination, section page surfaces or editable
+headers/footers. Columns/tabs and browser-printing improvements are later work.
+
 Headers and footers follow the body as
 `<div class="section1Header|section3FirstHeader|section1LeftHeader|…Footer" style="visibility: hidden; height: 0">`.
 Their rules hold `margin` (distance from the paper edge, sides, gap to the

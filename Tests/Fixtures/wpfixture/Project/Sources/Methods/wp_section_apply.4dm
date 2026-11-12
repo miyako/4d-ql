@@ -1,0 +1,22 @@
+#DECLARE($doc : Object; $edit : Object)
+var $body : Object:=WP Get body($doc)
+var $range; $section : Object
+Case of
+	: ($edit.action="insert")
+		$range:=WP Insert break(WP Text range($body; $edit.point; $edit.point); $edit.type; wk replace)
+	: ($edit.action="remove")
+		$range:=WP Insert break(WP Text range($body; $edit.point; $edit.point+1); wk paragraph break; wk replace)
+	: ($edit.action="settings")
+		$section:=WP Get section($doc; $edit.index)
+		WP SET ATTRIBUTES($section; wk section name; $edit.name; wk page orientation; $edit.orientation; wk page margin top; "12pt"; wk page margin right; "13pt"; wk page margin bottom; "14pt"; wk page margin left; "15pt")
+	: ($edit.action="name")
+		$section:=WP Get section($doc; $edit.index)
+		WP SET ATTRIBUTES($section; wk section name; $edit.name)
+	: ($edit.action="reset")
+		$section:=WP Get section($doc; $edit.index)
+		WP RESET ATTRIBUTES($section; wk page margin; wk page orientation)
+	: ($edit.action="defaults")
+		wp_page_apply($doc; "letterLandscape")
+	: ($edit.action="typing")
+		WP SET TEXT(WP Text range($body; $edit.point; $edit.point); "XY"; wk replace)
+End case

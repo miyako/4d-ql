@@ -2,6 +2,7 @@ import * as css from 'css-tree';
 import { DocumentError, MAX_ARCHIVE, MAX_EXPANDED, readArchive, writeArchive } from './archive.js';
 import { nativeBody, nativeBoundary, nativeMetadata, spliceBookmarks, writeBookmarks } from './native-ranges.js';
 import { pageFields, pagePoints, validatePageGeometry } from './page-setup.js';
+import { paragraphBreak, breakProperties } from './sections.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
@@ -338,40 +339,223 @@ export class WriteProDocument {
       properties['-d4-page-margin'] = ['top', 'right', 'bottom', 'left'].map(field => next[field]).join(' ');
     }
     if (!Object.keys(properties).length) return;
-    return this.mutate('pageSetup', () => {
-      let target = null;
-      for (const element of this.document.querySelectorAll('head style')) {
-        const ast = css.parse(element.textContent, { positions: true });
-        ast.children.forEach(rule => {
-          if (rule.type === 'Rule' && css.generate(rule.prelude) === 'div.section0') target = { element, rule };
-        });
-      }
-      if (target) {
-        const { element, rule } = target;
-        const missing = { ...properties };
-        const edits = [];
+    return this.mutate('pageSetup', () => this.writeSectionSettings(0, properties));
+  }
+
+  writeSectionSettings(index, properties) {
+    const selector = `div.section${index}`;
+    let target = null;
+    const found = new Set();
+    for (const element of this.document.querySelectorAll('head style')) {
+      const ast = css.parse(element.textContent, { positions: true });
+      ast.children.forEach(rule => {
+        if (rule.type === 'Rule' && css.generate(rule.prelude) === selector) target = { element, rule };
+      });
+    }
+    for (const element of this.document.querySelectorAll('head style')) {
+      const ast = css.parse(element.textContent, { positions: true });
+      const edits = [];
+      ast.children.forEach(rule => {
+        if (rule.type !== 'Rule' || css.generate(rule.prelude) !== selector) return;
+        const last = target.element === element && target.rule.loc.start.offset === rule.loc.start.offset;
         rule.block.children.forEach(node => {
-          if (node.type === 'Declaration' && Object.hasOwn(properties, node.property)) {
-            edits.push([node.value.loc.start.offset, node.value.loc.end.offset, properties[node.property]]);
-            delete missing[node.property];
-          }
+          if (node.type !== 'Declaration' || !Object.hasOwn(properties, node.property)) return;
+          if (properties[node.property] !== null && !last) return;
+          found.add(node.property);
+          edits.push(properties[node.property] === null ?
+            [node.loc.start.offset, node.loc.end.offset, ''] :
+            [node.value.loc.start.offset, node.value.loc.end.offset, properties[node.property]]);
         });
-        let text = element.textContent;
-        const end = rule.block.loc.end.offset - 1;
-        const additions = Object.entries(missing).map(([key, value]) => `${key}:${value}`).join(';');
-        if (additions) {
-          const block = text.slice(rule.block.loc.start.offset + 1, end).trimEnd();
-          edits.push([end, end, `${block && !block.endsWith(';') ? ';' : ''}${additions}`]);
-        }
-        for (const [start, end, value] of edits.sort((a, b) => b[0] - a[0])) text = text.slice(0, start) + value + text.slice(end);
-        element.textContent = text;
-      } else {
-        const style = this.document.createElementNS(XHTML, 'style');
-        style.setAttribute('type', 'text/css');
-        style.textContent = `div.section0 { ${Object.entries(properties).map(([key, value]) => `${key}:${value}`).join(';')} }`;
-        this.document.querySelector('head').append(style);
+      });
+      let text = element.textContent;
+      for (const [start, end, value] of edits.sort((a, b) => b[0] - a[0])) text = text.slice(0, start) + value + text.slice(end);
+      if (edits.length) element.textContent = text;
+    }
+    const missing = Object.fromEntries(Object.entries(properties).filter(([key, value]) => value !== null && !found.has(key)));
+    const additions = Object.entries(missing).map(([key, value]) => `${key}:${value}`).join(';');
+    if (!additions) { this.styles = rules(this.document); return; }
+    if (target) {
+      const { element } = target;
+      const ast = css.parse(element.textContent, { positions: true });
+      ast.children.forEach(rule => {
+        if (rule.type === 'Rule' && css.generate(rule.prelude) === selector) target.rule = rule;
+      });
+      const { rule } = target;
+      let text = element.textContent;
+      const end = rule.block.loc.end.offset - 1;
+      const block = text.slice(rule.block.loc.start.offset + 1, end).trimEnd();
+      text = text.slice(0, end) + `${block && !block.endsWith(';') ? ';' : ''}${additions}` + text.slice(end);
+      element.textContent = text;
+    } else {
+      const style = this.document.createElementNS(XHTML, 'style');
+      style.setAttribute('type', 'text/css');
+      style.textContent = `${selector} { ${additions} }`;
+      this.document.querySelector('head').append(style);
+    }
+    this.styles = rules(this.document);
+  }
+
+  sectionLayout() {
+    const body = this.document.querySelector('body');
+    const sections = [{ index: 1, elements: [] }];
+    let reason = null;
+    for (const child of body.children) {
+      const values = this.values(child);
+      if (/section\d.*(Header|Footer)/i.test(child.getAttribute('class') || '') ||
+        Object.keys(values).some(key => /^-d4-anchor/.test(key))) continue;
+      sections.at(-1).elements.push(child);
+      try {
+        if (!['p', 'table', 'ul', 'ol'].includes(child.localName) || values.display === 'none' ||
+          ['hidden', 'collapse'].includes(values.visibility)) throw new DocumentError('sectionUnsupported');
+        const kind = paragraphBreak(values);
+        if (kind && (child.localName !== 'p' || child.nextElementSibling?.localName !== 'p')) throw new DocumentError('sectionUnsupported');
+        if (kind === 'section' || kind === 'continuous') sections.push({ index: sections.length + 1, elements: [] });
+      } catch (error) {
+        if (!(error instanceof DocumentError)) throw error;
+        reason = 'sectionUnsupported';
       }
-      this.styles = rules(this.document);
+    }
+    for (const element of body.querySelectorAll('*')) {
+      if (element.parentElement === body || /section\d.*(Header|Footer)/i.test(element.closest('div')?.getAttribute('class') || '')) continue;
+      const values = this.values(element);
+      if (values['-d4-section-break-after'] || values['page-break-after'] === 'always') reason = 'sectionUnsupported';
+    }
+    return { sections, reason };
+  }
+
+  sectionIndex(element) {
+    return this.sectionLayout().sections.find(section => section.elements.some(child => child === element || child.contains(element)))?.index ?? null;
+  }
+
+  sectionSetup(index) {
+    const layout = this.sectionLayout();
+    const setup = this.pageSetup();
+    const overrides = setup.sections.get(index) || {};
+    let name = '';
+    let reason = layout.reason || setup.reason;
+    if (!Number.isSafeInteger(index) || !layout.sections.some(section => section.index === index)) reason = 'sectionUnsupported';
+    if (reason) return { index, name, geometry: { ...setup.geometry, ...overrides }, overrides, reason };
+    const values = Object.assign({}, ...this.styles.filter(rule => rule.selector === `div.section${index}`).map(rule => rule.values));
+    if (values['-d4-section-name']) {
+      try {
+        const nodes = css.parse(values['-d4-section-name'], { context: 'value' }).children.toArray();
+        if (nodes.length !== 1 || nodes[0].type !== 'String') throw new DocumentError('sectionUnsupported');
+        name = nodes[0].value;
+      } catch (error) {
+        if (!(error instanceof DocumentError) && error.name !== 'SyntaxError') throw error;
+        reason = 'sectionUnsupported';
+      }
+    }
+    for (const element of this.document.querySelectorAll('head style')) {
+      const ast = css.parse(element.textContent);
+      const scoped = new Set();
+      ast.children.forEach(rule => {
+        if (rule.type === 'Rule' && /^div\.section[1-9]\d*$/.test(css.generate(rule.prelude))) {
+          rule.block.children.forEach(node => scoped.add(node));
+        }
+      });
+      css.walk(ast, node => {
+        if (node.type === 'Declaration' && node.property.toLowerCase() === '-d4-section-name' &&
+          (node.property !== '-d4-section-name' || node.important || !scoped.has(node))) reason = 'sectionUnsupported';
+      });
+    }
+    if ([...this.document.querySelectorAll('[style]')].some(element =>
+      /-d4-section-name\s*:/i.test(element.getAttribute('style')))) reason = 'sectionUnsupported';
+    return { index, name, geometry: { ...setup.geometry, ...overrides }, overrides, reason };
+  }
+
+  setSectionSetup(index, changes) {
+    const current = this.sectionSetup(index);
+    if (current.reason) throw new DocumentError(current.reason);
+    if (!changes || Object.keys(changes).some(key => !['orientation', 'margins', 'name'].includes(key))) throw new DocumentError('pageInvalid');
+    const properties = {};
+    const next = { ...current.geometry };
+    const defaults = this.pageSetup().geometry;
+    if (Object.hasOwn(changes, 'orientation')) {
+      if (changes.orientation !== null && !['portrait', 'landscape'].includes(changes.orientation)) throw new DocumentError('pageInvalid');
+      next.orientation = changes.orientation ?? defaults.orientation;
+      if (changes.orientation !== current.overrides.orientation && !(changes.orientation === null && !Object.hasOwn(current.overrides, 'orientation'))) {
+        properties['-d4-page-orientation'] = changes.orientation;
+      }
+    }
+    if (Object.hasOwn(changes, 'margins')) {
+      const sides = ['top', 'right', 'bottom', 'left'];
+      const margins = changes.margins;
+      if (margins !== null && (!margins || Object.keys(margins).length !== 4 || sides.some(side => !Object.hasOwn(margins, side)))) throw new DocumentError('pageInvalid');
+      for (const side of sides) next[side] = margins === null ? defaults[side] : margins[side];
+      if (sides.some(side => next[side] !== current.geometry[side]) || margins === null && Object.hasOwn(current.overrides, 'top') ||
+        margins !== null && !Object.hasOwn(current.overrides, 'top')) {
+        properties['-d4-page-margin'] = margins === null ? null : sides.map(side => next[side]).join(' ');
+      }
+    }
+    validatePageGeometry(next);
+    if (Object.hasOwn(changes, 'name') && changes.name !== current.name) {
+      if (typeof changes.name !== 'string' || changes.name.length > 1024 || !changes.name.isWellFormed() ||
+        changes.name.trim() !== changes.name || /[\u0000-\u001f\u007f\ufffe\uffff'"\\]/u.test(changes.name)) throw new DocumentError('sectionNameInvalid');
+      properties['-d4-section-name'] = css.generate({ type: 'String', value: changes.name });
+    }
+    if (!Object.keys(properties).length) return;
+    return this.mutate('sectionSetup', () => this.writeSectionSettings(index, properties));
+  }
+
+  sectionStructureSafe(block, removing = false) {
+    const layout = this.sectionLayout();
+    if (layout.reason || this.readOnly) throw new DocumentError('sectionProtected');
+    const index = this.sectionIndex(block);
+    if (!index || !removing && index !== layout.sections.length) throw new DocumentError('sectionProtected');
+    if ([...this.document.querySelectorAll('body *')].some(element =>
+      /section\d.*(Header|Footer)/i.test(element.getAttribute('class') || '') ||
+      Object.keys(this.values(element)).some(key => /^-d4-anchor/.test(key)))) throw new DocumentError('sectionProtected');
+    for (const element of this.document.querySelectorAll('head style')) {
+      const ast = css.parse(element.textContent);
+      const scoped = new Set(ast.children.toArray());
+      css.walk(ast, node => {
+        if (node.type === 'Rule' && /\.section[1-9]/i.test(css.generate(node.prelude)) &&
+          (!scoped.has(node) || !/^div\.section[1-9]\d*$/.test(css.generate(node.prelude)))) throw new DocumentError('sectionProtected');
+      });
+    }
+    for (const rule of this.styles) {
+      const match = rule.selector.match(/^div\.section([1-9]\d*)(.*)$/);
+      if (!match) continue;
+      if (removing || match[2] || Number(match[1]) > index ||
+        Number(match[1]) === index && Object.keys(rule.values).some(key =>
+          !['-d4-section-name', '-d4-page-margin', '-d4-page-orientation'].includes(key))) throw new DocumentError('sectionProtected');
+    }
+  }
+
+  insertBreak(selection, kind) {
+    if (!['page', 'section', 'continuous'].includes(kind)) throw new DocumentError('sectionUnsupported');
+    const range = this.range(selection);
+    const block = this.runs[selection.startRun].parentElement.closest('p');
+    if (!range.collapsed || block?.parentElement.localName !== 'body') throw new DocumentError('breakCaret');
+    this.structureSafe(block, true);
+    if (kind !== 'page') this.sectionStructureSafe(block);
+    if (this.nativeView().crossesCells(nativeMetadata(this.document).bookmarks)) throw new DocumentError('bookmarkCrossStructure');
+    const index = this.sectionIndex(block);
+    const settings = kind === 'page' ? null : this.sectionSetup(index);
+    if (settings?.reason) throw new DocumentError(settings.reason);
+    return this.mutate('breakEdit', () => {
+      const result = this.splitRange(range, block);
+      for (const [property, value] of Object.entries(breakProperties[kind])) setProperty(block, property, value);
+      if (settings) {
+        const properties = {};
+        if (Object.hasOwn(settings.overrides, 'orientation')) properties['-d4-page-orientation'] = settings.overrides.orientation;
+        if (Object.hasOwn(settings.overrides, 'top')) properties['-d4-page-margin'] = ['top', 'right', 'bottom', 'left'].map(side => settings.overrides[side]).join(' ');
+        if (Object.keys(properties).length) this.writeSectionSettings(index + 1, properties);
+      }
+      return result;
+    });
+  }
+
+  removeBreak(index) {
+    const block = this.blocks[index];
+    if (!block || block.localName !== 'p' || block.parentElement.localName !== 'body' || this.protected(block)) throw new DocumentError('sectionProtected');
+    const kind = paragraphBreak(this.values(block));
+    if (!kind || block.nextElementSibling?.localName !== 'p') throw new DocumentError('sectionUnsupported');
+    if (kind !== 'page') this.sectionStructureSafe(block, true);
+    if (this.nativeView().crossesCells(nativeMetadata(this.document).bookmarks)) throw new DocumentError('bookmarkCrossStructure');
+    return this.mutate('breakEdit', () => {
+      for (const [property, value] of Object.entries(breakProperties.paragraph)) setProperty(block, property, value);
     });
   }
 
@@ -449,18 +633,29 @@ export class WriteProDocument {
   mutate(label, change, group = null, restore = false) {
     const before = this.serialize();
     try {
-      const geometry = label === 'pageSetup';
+      const geometry = label === 'pageSetup' || label === 'sectionSetup';
+      const breaks = () => [...this.document.querySelectorAll('body p,body li')].flatMap(node => {
+        const values = this.values(node);
+        const signature = ['page-break-after', '-d4-section-break-after', 'break-after'].map(key => values[key] || 'auto');
+        return signature.some(value => !['auto', 'avoid'].includes(value)) ? [{ node, signature: signature.join('|') }] : [];
+      });
+      const breaksBefore = !restore && !geometry && label !== 'breakEdit' ? breaks() : null;
       const bodyBefore = geometry ? this.document.querySelector('body').outerHTML : null;
       const bookmarksBefore = geometry ? [...this.document.querySelectorAll('meta[name="bookmarks"]')].map(node => node.outerHTML).join('') : null;
       if (!restore && !geometry && this.readOnly) throw new DocumentError('protected');
       const metadata = restore || geometry ? { bookmarks: {} } : nativeMetadata(this.document);
       const objects = restore ? [] : this.formulaElements().map(node => ({ node, xml: node.outerHTML }));
-      const tracked = !restore && !geometry && (this.tracksNativeEdits || label === 'bookmark');
+      const tracked = !restore && !geometry && (this.tracksNativeEdits || label === 'bookmark' || label === 'breakEdit');
       this.nativeTransaction = tracked ? {
         text: this.nativeView().text,
         bookmarks: metadata.bookmarks, meta: metadata.meta,
       } : null;
       const result = change();
+      if (breaksBefore) {
+        const afterBreaks = breaks();
+        if (afterBreaks.length !== breaksBefore.length || breaksBefore.some(({ node, signature }, index) =>
+          afterBreaks[index].node !== node || afterBreaks[index].signature !== signature)) throw new DocumentError('protected');
+      }
       if (geometry && (this.document.querySelector('body').outerHTML !== bodyBefore ||
         [...this.document.querySelectorAll('meta[name="bookmarks"]')].map(node => node.outerHTML).join('') !== bookmarksBefore)) throw new DocumentError('protected');
       if (!restore) {
@@ -863,7 +1058,13 @@ export class WriteProDocument {
   structureSafe(block, allowFormulas = false) {
     if (!block || this.protected(block)) throw new DocumentError('protected');
     const values = this.values(block);
-    if (values['-d4-section-break-after'] || values['page-break-after'] === 'always' || values['break-after'] === 'column') {
+    let kind;
+    try { kind = paragraphBreak(values); }
+    catch (error) {
+      if (!(error instanceof DocumentError)) throw error;
+      throw new DocumentError('protected');
+    }
+    if (kind || values['break-after'] === 'column') {
       throw new DocumentError('protected');
     }
     const range = this.document.createRange();
@@ -933,7 +1134,11 @@ export class WriteProDocument {
       this.toggleList(this.blocks.indexOf(block), block.parentElement.localName);
       return { node, offset: 0 };
     }
-    return this.mutate('paragraph', () => this.nativeChange(range, () => {
+    return this.mutate('paragraph', () => this.splitRange(range, block));
+  }
+
+  splitRange(range, block) {
+    return this.nativeChange(range, () => {
       const empty = this.document.createTextNode('');
       this.replaceRange(range, empty);
       const tail = this.document.createRange();
@@ -959,7 +1164,7 @@ export class WriteProDocument {
       const node = walker.nextNode();
       if (!node) { next.append(this.document.createTextNode('\u200b')); return { node: next.lastChild, offset: 0 }; }
       return { node, offset: 0 };
-    }));
+    });
   }
 
   mergeBoundary(index, backward) {
@@ -1573,6 +1778,19 @@ export class WriteProDocument {
         const safeBackground = nextBackground && SAFE_VALUE.test(nextBackground) && nextBackground.length < 100 && !/url|expression|var\(/i.test(nextBackground);
         project(child, element, isLocked, inBlock || isBlock, safeDecoration ? nextDecoration : decoration, safeBackground ? nextBackground : background);
         target.append(element);
+        if (tag === 'p' && child.parentElement === body) {
+          let kind;
+          try { kind = paragraphBreak(values); }
+          catch (error) { if (!(error instanceof DocumentError)) throw error; }
+          if (kind) {
+            const marker = document.createElement('div');
+            marker.className = `explicit-break ${kind === 'continuous' ? 'continuous-break' : ''}`;
+            marker.setAttribute('role', 'separator');
+            marker.setAttribute('aria-label', labels[{ page: 'breakPage', section: 'breakSection', continuous: 'breakContinuous' }[kind]]);
+            marker.textContent = marker.getAttribute('aria-label');
+            target.append(marker);
+          }
+        }
       }
     };
     project(body, host);

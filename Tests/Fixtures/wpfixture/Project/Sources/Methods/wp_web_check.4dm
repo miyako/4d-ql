@@ -13,6 +13,13 @@ Else
 	var $case; $result; $doc; $reopened : Object
 	For each ($case; $manifest.cases)
 		$result:=New object("name"; $case.name)
+		If (OB Is defined($case; "section"))
+			var $sectionBaseline : Object:=WP Import document($root.file("Input/"+$case.section.source).platformPath)
+			wp_section_apply($sectionBaseline; $case.section)
+			$result.sectionExpected:=wp_section_stats($sectionBaseline)
+			$result.sectionWebExpected:=wp_web_stats($sectionBaseline; False)
+			WP EXPORT DOCUMENT($sectionBaseline; $root.file("Output/"+$case.name+"-expected.4wp").platformPath; wk 4wp)
+		End if
 		If (OB Is defined($case; "page"))
 			var $baseline : Object:=WP Import document($root.file("Input/"+$case.page.source).platformPath)
 			If ($case.page.target#"identity")
@@ -24,6 +31,9 @@ Else
 		End if
 		$doc:=WP Import document($root.file("Input/"+$case.file).platformPath)
 		If ($doc#Null)
+			If (OB Is defined($case; "section"))
+				$result.sectionImported:=wp_section_stats($doc)
+			End if
 			$result.imported:=wp_web_stats($doc; $case.name="new-document")
 			If (OB Is defined($case; "page"))
 				WP EXPORT DOCUMENT($doc; $root.file("Output/"+$case.name+".pdf").platformPath; wk pdf)
@@ -31,6 +41,9 @@ Else
 			WP EXPORT DOCUMENT($doc; $root.file("Output/"+$case.name+".4wp").platformPath; wk 4wp)
 			$reopened:=WP Import document($root.file("Output/"+$case.name+".4wp").platformPath)
 			If ($reopened#Null)
+				If (OB Is defined($case; "section"))
+					$result.sectionReopened:=wp_section_stats($reopened)
+				End if
 				$result.reopened:=wp_web_stats($reopened; $case.name="new-document")
 			End if
 		End if

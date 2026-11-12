@@ -82,7 +82,7 @@ no document mutation. These are conservative editor limits, not claims about
 4D's maximum page size; native setters even accept zero-sized paper and margins
 larger than the paper, which this UI deliberately rejects.
 
-Only native `div.section0` geometry is changed. Existing `div.sectionN` overrides,
+In document-default scope, only native `div.section0` geometry is changed. Existing `div.sectionN` overrides,
 unknown declarations, original body/formula/table XML, bookmark metadata and
 archive resources are retained. Geometry-only transactions can change defaults
 even when text edits are protected, but never relax those text/structure guards.
@@ -94,7 +94,53 @@ specific notice; the preference-only unit selector stays usable.
 The existing preview surface reflects document-default physical paper width,
 minimum height and margins. It remains a **single continuous surface** and does
 not render section overrides, headers/footers or automatic page boundaries.
-No new printing or section-editing functionality is included.
+No new printing functionality is included.
+
+## Sections and breaks (in progress, not deployed)
+
+The same **Page setup** panel identifies the active native section and offers
+document-default or numbered section settings. Native sections are inferred
+from the flat body's paragraph break declarations, not invented DOM wrappers.
+Section names are shown in the selector and can be edited without trimming or
+normalization (up to 1,024 UTF-16 units). New names with quotes, backslashes,
+control characters or leading/trailing whitespace are rejected: independent
+native exports/reimports lose or normalize those names. Existing names remain
+preserved when unchanged. Paper dimensions
+remain document-wide. Orientation and the four-margin group can either inherit
+document defaults or have explicit section overrides; checkboxes and status
+labels distinguish those states. Resetting inheritance removes only that
+group's declarations, including duplicates, rather than copying current defaults.
+Other section/subsection declarations, names, headers/footers, anchored objects,
+body XML, formulas, bookmark pairs and archive resources remain authoritative.
+
+**Insert at caret** supports hard page breaks, new-page section breaks and
+continuous section breaks at a collapsed text caret in a supported top-level
+paragraph without an existing break. Start, interior and end boundaries,
+Unicode and positions adjacent to immutable text formulas are covered.
+Section insertion is limited to the last section, with no hidden associations,
+subsection declarations or unsupported settings; it copies the last section's
+explicit orientation/margins into the new unnamed section, as observed natively.
+Existing section indices and names are not renumbered or rewritten.
+Page-break insertion does not add a section.
+
+**Remove selected break** converts the selected explicit break to an ordinary
+paragraph boundary: text is **not joined**, and native offsets do not shift.
+Section merging is supported only without any section-specific declarations or
+hidden/anchored associations. Native probes demonstrate that merging named
+sections can discard names and splitting associated sections can duplicate and
+renumber headers/footers and anchored associations. These cases are explicitly
+protected, not silently simplified. Table/list/nested boundaries, ranged
+selections, malformed/generic ranges, ambiguous section syntax and destructive
+cross-cell cases remain protected. Names/settings can still be changed as
+body-preserving transactions in otherwise text-protected native documents.
+
+Every change uses one document-wide undo/redo, version and recovery transaction.
+Failed actions roll back without a history entry. All six languages, keyboard
+controls, system/light/dark appearance and small screens are supported.
+Page and section break markers are visible, localized separators on the existing
+continuous preview; they are authoring guides, **not automatic or exact native
+pagination**. Section geometry is shown in the controls, not rendered as section
+pages. Headers, footers, columns/tabs and printing are not added by this increment.
 
 ## GitHub Pages demo
 
@@ -364,7 +410,7 @@ equivalence is not claimed.
 Generic `ranges` metadata, malformed/duplicate/out-of-bounds bookmarks, endpoints
 inside surrogate pairs, and bookmarked documents containing invalid/incomplete
 table grids, ranges entering/leaving only part of a table, nested HTML lists, unsupported formula forms,
-section/header/footer/anchored structures, hidden content or unsupported
+unsupported section/header/footer/anchored structures, hidden content or unsupported
 pictures remain **read-only**. Unsupported browser input operations (for example
 word-delete/autocorrect input types without established mapping) are also rejected,
 not inferred from a whole-run text diff. Standard typing, grapheme deletion and
@@ -429,9 +475,9 @@ differences fail the gate. The gate uses the shared fail-fast directory lock
 probes too. A live lock is never removed by another run. A timeout terminates
 only that gate's own process.
 
-The gate first runs isolated native page geometry, offset and mutation probes, then creates
+The gate first runs isolated native section/break, page geometry, offset and mutation probes, then creates
 genuine browser downloads and model exports, imports them in full 4D, exports
-them through 4D and reopens those exports. Its 1,079 cases include the original 14:
+them through 4D and reopens those exports. The previous 1,079 cases include the original 14:
 the preloaded brief, a newly formatted document with a hyperlink, image and table,
 and original and browser-exported versions of all six fixtures. It checks text, metadata,
 image/table counts, formula sources and links; sampled first-character
@@ -450,6 +496,21 @@ metadata, formula/table XML and original resource bytes are checked. The
 original 997 cases remain in the gate. Page probes also retain default,
 orientation, whole-point rounding and native invalid-value observations in
 `Output/page-report.json`, native-created originals/targets and PDFs.
+
+The section increment adds 172 cases, bringing the gate to **1,251
+import/export/reopen cases**. Independently native-created start/interior/end
+page/new-page/continuous break probes with Unicode, formulas and bookmark
+endpoints; ordinary-paragraph replacement and deletion counterexamples;
+existing inherited/overridden sections; names, resets, first-page headers and
+anchored-section associations. `Output/section-report.json` retains all 27
+structural probes, 17 name export/reimport probes and explicit settings/reset
+observations. The cases also exercise typing after breaks and combined landscape
+section overrides with formulas and bookmarks. Model exports and
+real-browser Apply/Undo/recovered-Redo downloads are compared with independent
+native `WP Insert break`, `WP SET ATTRIBUTES` and `WP RESET ATTRIBUTES` edits.
+Native getters, per-slot ranges, raw bookmark pairs, effective section geometry,
+names, header/footer/anchor associations, native-reexported body and stylesheet
+XML, and original resource bytes must agree. Merely opening the ZIP is not a pass.
 
 The additional cases cover 165 native delete-then-insert combinations (all
 selection boundaries in a nine-character document, empty/ASCII/non-BMP insertion,

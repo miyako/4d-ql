@@ -116,6 +116,11 @@ div.preserved-object { display: block; margin-top: 16px; }
 .page-panel input { width: 140px; }
 .page-panel p { line-height: 1.6; overflow-wrap: anywhere; }
 .page-panel label { min-width: 0; }
+.section-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; flex-basis: 100%; }
+.section-controls[hidden] { display: none; }
+.section-controls select, #page-target { max-width: 100%; }
+.paper .explicit-break { border-block: 1px dashed var(--border); margin-block: 24pt; padding-block: 8pt; color: var(--muted); font: 11px/1.5 system-ui, sans-serif; text-align: center; overflow-wrap: anywhere; }
+.paper .continuous-break { margin-block: 8pt; border-bottom: 0; padding-block: 4pt; }
 .paper::highlight(bookmark) { background: #ffe294; color: #222; }
 .paper .bookmark-boundary { outline: 2px dashed #956000; outline-offset: 3px; }
 .paper [data-image][role="button"] { cursor: pointer; border: 1px solid transparent; padding: 0; background: transparent; }

@@ -77,10 +77,40 @@ End for each
 // Explicit overrides and native resets establish inheritance independently.
 $doc:=WP Import document($root.file("Output/section-overridden-7-original.4wp").platformPath)
 $section:=WP Get section($doc; 2)
-WP SET ATTRIBUTES($section; wk section name; "日本語 & \"quoted\""; wk page margin; "12pt 13pt 14pt 15pt"; wk page orientation; wk portrait)
+WP SET ATTRIBUTES($section; wk section name; "日本語 & Section😀"; wk page margin top; "12pt"; wk page margin right; "13pt"; wk page margin bottom; "14pt"; wk page margin left; "15pt"; wk page orientation; wk portrait)
 $report.settings:=wp_section_stats($doc)
 WP EXPORT DOCUMENT($doc; $root.file("Output/section-settings.4wp").platformPath; wk 4wp)
 WP RESET ATTRIBUTES($section; wk page margin; wk page orientation)
 $report.reset:=wp_section_stats($doc)
 WP EXPORT DOCUMENT($doc; $root.file("Output/section-reset.4wp").platformPath; wk 4wp)
+$doc:=WP Import document($root.file("Output/section-overridden-7-original.4wp").platformPath)
+$body:=WP Get body($doc)
+WP INSERT FORMULA($body; Formula("SECTION"); wk append)
+WP SET TEXT($body; "😀"; wk append)
+WP SET ATTRIBUTES($doc; wk page width; "612pt"; wk page height; "792pt"; wk page margin; "30pt")
+$section:=WP Get section($doc; 3)
+WP SET ATTRIBUTES($section; wk page orientation; wk landscape)
+WP NEW BOOKMARK(WP Text range($body; wk start text; wk end text); "whole")
+WP NEW BOOKMARK(WP Text range($body; 9; 9); "point")
+$report.combined:=wp_section_stats($doc)
+WP EXPORT DOCUMENT($doc; $root.file("Output/section-combined.4wp").platformPath; wk 4wp)
+$report.names:=New collection()
+var $longName : Text:=""
+For ($index; 1; 1024)
+	$longName:=$longName+"N"
+End for
+var $names : Collection:=New collection("Plain"; "日本語😀é"; "O'Reilly"; "A\"B"; "A\"B'C"; "slash\\name"; "A;{}<>&\"'B"; ""; " leading "; "line"+Char(10)+"break"; "日本語 & Section😀"; "A;B"; "A{B}"; "A<B>"; "colon:A"; "A.B_-123"; $longName)
+$index:=0
+For each ($name; $names)
+	$index:=$index+1
+	$doc:=WP New()
+	$section:=WP Get section($doc; 1)
+	WP SET ATTRIBUTES($section; wk section name; $name)
+	WP EXPORT DOCUMENT($doc; $root.file("Output/section-name-"+String($index)+".4wp").platformPath; wk 4wp)
+	$doc:=WP Import document($root.file("Output/section-name-"+String($index)+".4wp").platformPath)
+	$section:=WP Get section($doc; 1)
+	var $reopenedName : Text
+	WP GET ATTRIBUTES($section; wk section name; $reopenedName)
+	$report.names.push(New object("name"; $name; "reopened"; $reopenedName; "file"; "section-name-"+String($index)+".4wp"))
+End for each
 $root.file("Output/section-report.json").setText(JSON Stringify($report; *))
