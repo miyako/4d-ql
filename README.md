@@ -66,6 +66,12 @@ section name, which are computed. Pages split only at hard page and section
 breaks, so text is not reflowed onto further pages, and text wrapping around
 anchored objects is not simulated. See [format notes](docs/WRITEPRO-FORMAT.md).
 
+The separate [4WP Studio web app](web-editor/README.md) provides experimental
+browser-based `.4wp` text and formatting editing, with preservation-aware
+import/export, six UI languages and light/dark appearance. It runs independently
+of the Swift Quick Look runtime; native layout and formula evaluation are not
+provided.
+
 4D View Pro previews are static spreadsheet grids and require neither 4D nor
 SpreadJS at preview time. Saved formula results are displayed without executing
 formulas, custom 4D functions or links; formulas without a saved result appear
