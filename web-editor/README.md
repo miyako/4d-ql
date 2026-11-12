@@ -40,7 +40,7 @@ the tab. The browser prompts before abandoning edits that have not been
 downloaded. Download status means the browser received the file, not that it
 has confirmed a disk write.
 
-Appearance supports system/light/dark modes. The document remains white paper
+Appearance uses Write Pro-inspired blue accents in system/light/dark modes. The document remains white paper
 for legibility; dark mode applies to the application chrome. English, Japanese,
 French, German, Spanish and Italian UI strings live in `src/i18n.js`; browser
 language detection and the explicit selector share that catalog. Preferences

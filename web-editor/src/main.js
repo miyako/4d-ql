@@ -48,7 +48,7 @@ document.querySelector('#app').innerHTML = `
         <select id="font" data-label="font"><option>Arial</option><option>Helvetica</option><option>Times New Roman</option><option>Georgia</option><option>Courier New</option></select>
         <select id="size" data-label="size"><option>9</option><option>10</option><option selected>12</option><option>14</option><option>18</option><option>24</option><option>36</option></select>
         <button id="bold" data-label="bold"><b>B</b></button><button id="italic" data-label="italic"><i>I</i></button><button id="underline" data-label="underline"><u>U</u></button>
-        <label class="color-control"><span data-i18n="color" class="sr-only"></span><input id="color" type="color" value="#244c45" data-label="color"></label>
+        <label class="color-control"><span data-i18n="color" class="sr-only"></span><input id="color" type="color" value="#327fce" data-label="color"></label>
         <span class="separator"></span>
         <button id="left" data-label="left">≡</button><button id="center" data-label="center">☰</button><button id="right" data-label="right">≡</button>
         <button id="paragraph" class="add-paragraph" data-i18n="paragraph"></button>
