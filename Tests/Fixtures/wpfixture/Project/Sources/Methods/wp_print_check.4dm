@@ -8,10 +8,12 @@ If ($compilation.success)
 	wp_paged_table_probe
 	wp_paged_column_probe
 	wp_continuous_paged_probe
+	wp_cell_list_probe
 Else
 	wpWebErrors.push(New object("message"; "Probe compilation failed"; "details"; $compilation.errors))
 End if
 var $root : 4D.Folder:=Folder(Get 4D folder(Database folder); fk platform path)
 $root.file("Output/print-errors.json").setText(JSON Stringify(wpWebErrors; *))
+$root.file("Output/cell-list-errors.json").setText(JSON Stringify(wpWebErrors; *))
 ON ERR CALL("")
 QUIT 4D

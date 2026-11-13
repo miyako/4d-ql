@@ -10,13 +10,19 @@ import { nativeTableGrid } from './native-ranges.js';
 
 const bullets = { disc: '\u2022', circle: '\u25cb', square: '\u25a0', 'hollow-square': '\u25a1', diamond: '\u25c6', club: '\u2663', none: '' };
 const numbered = new Set(['decimal', 'decimal-leading-zero', 'lower-alpha', 'upper-alpha', 'lower-latin', 'upper-latin', 'lower-roman', 'upper-roman']);
+const cellListTypes = new Set(['disc', 'circle', 'square', 'hollow-square', 'diamond',
+  'decimal', 'lower-latin', 'upper-latin', 'lower-roman', 'upper-roman']);
 
-export function pageListMarker(values, number, kind) {
+export function pageListMarker(values, number, kind, inCell = false) {
   const type = values['-d4-list-style-type'] || values['list-style-type'] || (kind === 'ol' ? 'decimal' : 'disc');
   if (Object.keys(values).some(key => key.startsWith('-d4-list-') &&
     !['-d4-list-style-type', '-d4-list-string-format-ltr', '-d4-list-font'].includes(key))) throw new DocumentError('pagedShape');
   if (!Number.isSafeInteger(number) || number < 1 || number > 3999) throw new DocumentError('pagedShape');
-  if (Object.hasOwn(bullets, type)) return bullets[type];
+  if (Object.hasOwn(bullets, type)) {
+    if (inCell && type === 'disc') return '\u25cf';
+    if (inCell && type === 'diamond') return '\u2666';
+    return bullets[type];
+  }
   if (!numbered.has(type)) throw new DocumentError('pagedShape');
   let text = String(number);
   if (type === 'decimal-leading-zero') text = text.padStart(2, '0');
@@ -50,6 +56,20 @@ function bodyParagraphs(element) {
   return [...element.children];
 }
 
+function prepareListItem(model, list, item, index, content, first = true) {
+  content.style.listStyleType = 'none';
+  content.style.position = 'relative';
+  if (!first) return;
+  const marker = document.createElement('span');
+  marker.className = 'paged-list-marker';
+  const itemValues = model.values(item);
+  const values = { ...model.values(list), ...itemValues };
+  marker.textContent = pageListMarker(values, Number(list.getAttribute('start') || 1) + index, list.localName, Boolean(list.closest('td,th')));
+  const font = itemValues['-d4-list-font'];
+  if (font && !/url|expression|var\(|[;{}]/i.test(font)) marker.style.fontFamily = font;
+  content.prepend(marker);
+}
+
 function pagedTable(model, element) {
   try {
     if (element.children.length > 1000 || element.querySelectorAll('td,th').length > 10000) throw new DocumentError('pagedTables');
@@ -57,6 +77,7 @@ function pagedTable(model, element) {
     if (grid.merged || grid.rows.length > 1000 || grid.rows.length * grid.columns > 10000 ||
       element.previousElementSibling?.localName !== 'p' || element.nextElementSibling?.localName !== 'p') throw new DocumentError('pagedTables');
     let headers = 0;
+    let markers = 0;
     for (const [index, row] of grid.rows.entries()) {
       const header = model.values(row)['-d4-header'];
       if ((header && header !== 'true' && header !== 'false') ||
@@ -65,8 +86,19 @@ function pagedTable(model, element) {
       for (const cell of row.children) {
         if (!cell.children.length || [...cell.childNodes].some(node => node.nodeType === 3 && node.data.trim())) throw new DocumentError('pagedTables');
         for (const block of cell.children) {
-          if (block.localName !== 'p') throw new DocumentError('pagedTables');
-          bodyParagraphs(block);
+          const items = bodyParagraphs(block);
+          if (block.localName !== 'p') {
+            markers += items.length;
+            if (markers > 10000) throw new DocumentError('pagedTables');
+            const listValues = model.values(block);
+            for (const [index, item] of items.entries()) {
+              const values = { ...listValues, ...model.values(item) };
+              const type = values['-d4-list-style-type'] || values['list-style-type'] || (block.localName === 'ol' ? 'decimal' : 'disc');
+              if (!cellListTypes.has(type) || (values['-d4-list-string-format-ltr'] && !numbered.has(type)) ||
+                /url|expression|var\(|[;{}]/i.test(values['-d4-list-font'] || '')) throw new DocumentError('pagedTables');
+              pageListMarker(values, Number(block.getAttribute('start') || 1) + index, block.localName);
+            }
+          }
         }
       }
     }
@@ -485,6 +517,17 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
           const table = mappings.get(element);
           if (!table || table.localName !== 'table' ||
             table.querySelector('.preserved-object:not(.formula-object):not(.paged-image)')) throw new DocumentError('pagedTables');
+          for (const row of rows) for (const cell of row.children) for (const block of cell.children) {
+            if (block.localName === 'p') continue;
+            const list = mappings.get(block);
+            if (!list || !['ul', 'ol'].includes(list.localName)) throw new DocumentError('pagedTables');
+            list.style.display = 'flow-root';
+            for (const [index, item] of bodyParagraphs(block).entries()) {
+              const content = mappings.get(item);
+              if (!content || content.localName !== 'li') throw new DocumentError('pagedTables');
+              prepareListItem(copy, block, item, index, content);
+            }
+          }
           table.dataset.section = String(section.index);
           for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(table.textContent)) {
             if (segment && ++budget.count > 100000) throw new DocumentError('pagedOverflow');
@@ -506,6 +549,13 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
           for (const node of [table, ...table.querySelectorAll('tr,td,th,p,li,ul,ol')]) {
             const style = getComputedStyle(node);
             if (['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].some(side => parseFloat(style[side]) < 0)) throw new DocumentError('pagedTables');
+          }
+          for (const cell of table.querySelectorAll('td,th')) {
+            if (!cell.querySelector('.paged-list-marker')) continue;
+            const bounds = cell.getBoundingClientRect();
+            if (![...cell.querySelectorAll('.text-run,.preserved-object,.paged-list-marker,img')].every(run =>
+              [...run.getClientRects()].every(rect => rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25 &&
+                rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25))) throw new DocumentError('pagedTables');
           }
           table.style.width = `${width}px`;
           table.style.tableLayout = 'fixed';
@@ -570,17 +620,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
             if (element.localName === 'ol') list.setAttribute('start', String(Number(element.getAttribute('start') || 1) + itemIndex));
             if (itemIndex || !first) list.style.marginTop = '0';
             if (itemIndex !== items.length - 1 || !last) list.style.marginBottom = '0';
-            content.style.listStyleType = 'none';
-            content.style.position = 'relative';
-            if (first) {
-              const marker = document.createElement('span');
-              marker.className = 'paged-list-marker';
-              marker.textContent = pageListMarker({ ...copy.values(element), ...copy.values(item) },
-                Number(element.getAttribute('start') || 1) + itemIndex, element.localName);
-              const font = copy.values(item)['-d4-list-font'];
-              if (font && !/url|expression|var\(|[;{}]/i.test(font)) marker.style.fontFamily = font;
-              content.prepend(marker);
-            }
+            prepareListItem(copy, element, item, itemIndex, content, first);
             list.style.display = 'flow-root';
             list.append(content);
             return list;

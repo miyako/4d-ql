@@ -10,9 +10,10 @@ const expanded = process.argv[3] === '--expanded';
 const tables = process.argv[3] === '--tables';
 const columns = process.argv[3] === '--columns';
 const seams = process.argv[3] === '--seams';
-const paginated = paged || expanded || tables || columns || seams;
-assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded|--tables|--columns|--seams]');
-const prefix = seams ? 'seams-cancel' : columns ? 'columns-cancel' : tables ? 'tables-cancel' : expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
+const cellLists = process.argv[3] === '--cell-lists';
+const paginated = paged || expanded || tables || columns || seams || cellLists;
+assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded|--tables|--columns|--seams|--cell-lists]');
+const prefix = cellLists ? 'cell-lists-cancel' : seams ? 'seams-cancel' : columns ? 'columns-cancel' : tables ? 'tables-cancel' : expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
 const manifest = paginated ? JSON.parse(await readFile(resolve(directory, 'Input/cases.json'), 'utf8')) : null;
 if (paginated) {
   const files = new Set(await readdir(resolve(directory, 'Input')));
@@ -28,15 +29,15 @@ try {
   const page = await browser.newPage({ acceptDownloads: true, locale: 'en-US' });
   const cdp = await browser.newBrowserCDPSession();
   await page.goto(server.resolvedUrls.local[0]);
-  await page.locator('#file').setInputFiles(resolve(directory, seams ? 'Input/continuous-paged-source-overflow.4wp' : columns ? 'Input/paged-column-source-mixed.4wp' : tables ? 'Input/paged-table-source-mixed.4wp' : expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
-  await expect(page.locator('#paper')).toContainText(seams ? 'SEAMSTART' : columns ? 'COLUMNSTART' : tables ? 'TABLESTART' : expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
+  await page.locator('#file').setInputFiles(resolve(directory, cellLists ? 'Input/cell-list-source-mixed.4wp' : seams ? 'Input/continuous-paged-source-overflow.4wp' : columns ? 'Input/paged-column-source-mixed.4wp' : tables ? 'Input/paged-table-source-mixed.4wp' : expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
+  await expect(page.locator('#paper')).toContainText(cellLists ? 'CELLSTART' : seams ? 'SEAMSTART' : columns ? 'COLUMNSTART' : tables ? 'TABLESTART' : expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
   if (paged) await page.locator('#editing-scope').selectOption('section1FirstFooter');
-  if (tables || columns) await page.locator('#editing-scope').selectOption('section1FirstHeader');
+  if (tables || columns || cellLists) await page.locator('#editing-scope').selectOption('section1FirstHeader');
   await page.locator('#paper [contenteditable]').first().evaluate(element => {
     element.focus();
     getSelection().collapse(element.firstChild, 0);
   });
-  if (paginated) await page.locator('#paper [contenteditable]').first().fill(seams ? 'WEBSEAM' : columns ? 'WEBCOLUMN' : tables ? 'WEBTABLE' : expanded ? 'WEBEXPANDED' : 'WEBPAGED');
+  if (paginated) await page.locator('#paper [contenteditable]').first().fill(cellLists ? 'WEBCELL' : seams ? 'WEBSEAM' : columns ? 'WEBCOLUMN' : tables ? 'WEBTABLE' : expanded ? 'WEBEXPANDED' : 'WEBPAGED');
   else await page.keyboard.insertText('EDIT');
   await page.locator('#undo').click();
   await page.locator('#zoom').selectOption('1.5');
@@ -45,7 +46,7 @@ try {
   let pages;
   if (paginated) {
     await page.locator('#paged-panel > summary').click();
-    if (expanded || tables || columns || seams) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
+    if (expanded || tables || columns || seams || cellLists) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
     else await expect(page.locator('#paged-view .browser-page')).toHaveCount(6);
     pages = await page.locator('#paged-view .browser-page').count();
   }
@@ -161,6 +162,9 @@ try {
       if (seams && phase === 'clean-with-redo') assert.deepEqual(sourceAfter,
         await readFile(resolve(directory, 'Input/continuous-paged-source-overflow.4wp')),
         'Actual print Cancel must leave clean continuous-seam source bytes unchanged');
+      if (cellLists && phase === 'clean-with-redo') assert.deepEqual(sourceAfter,
+        await readFile(resolve(directory, 'Input/cell-list-source-mixed.4wp')),
+        'Actual print Cancel must leave clean cell-list source bytes unchanged');
     } else {
       assert.deepEqual(await exportBytes(resolve(directory, `Output/${prefix}-${phase}-after.4wp`)), sourceBefore);
     }
@@ -174,7 +178,9 @@ try {
   if (paginated) {
     for (const [phase, stage] of [['clean-with-redo', 'original'], ['dirty-with-undo', 'edited']]) {
       const name = `${prefix}-${phase}`;
-      manifest.cases.push(seams ? { name, file: `${name}.4wp`,
+      manifest.cases.push(cellLists ? { name, file: `${name}.4wp`,
+        flow: { source: stage === 'original' ? 'cell-list-source-mixed.4wp' : 'cell-list-target-mixed.4wp', action: 'identity' },
+        resources: 'cell-list-source-mixed.4wp', pagedTable: { rows: 26 } } : seams ? { name, file: `${name}.4wp`,
         flow: { source: stage === 'original' ? 'continuous-paged-source-overflow.4wp' : 'continuous-paged-target-overflow.4wp', action: 'identity' },
         resources: 'continuous-paged-source-overflow.4wp' } : columns ? { name, file: `${name}.4wp`,
         flow: { source: stage === 'original' ? 'paged-column-source-mixed.4wp' : 'paged-column-target-mixed.4wp', action: 'identity' },

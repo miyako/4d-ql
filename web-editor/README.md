@@ -37,15 +37,16 @@ promise of dates or full Write Pro parity.
 | 10.4. Expanded browser pagination | Measured paragraph fragments, supported flat native lists and local inline images in read-only paged preview and matching print | Available on main via #54 |
 | 10.5. Paged tables | Measured row-boundary fragments of rectangular paragraph-cell tables, stable columns and repeating native leading header rows in preview and matching print | Available on main via #55 |
 | 10.6. Paged columns | Bounded equal-column, sequential paragraph/list/image flow with explicit column breaks and matching browser print | Available on main via #56 |
-| 10.7. Continuous-section pages | Area-free compatible single-column boundaries share measured pages and matching browser print; unsupported seams retain explicit fallback | In progress; not yet merged or deployed |
-| 10.8. Further layout parity | Area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled, not part of this increment |
+| 10.7. Continuous-section pages | Area-free compatible single-column boundaries share measured pages and matching browser print; unsupported seams retain explicit fallback | Available on main via #57; deployed |
+| 10.8. Paged table-cell lists | Native-evidenced bounded flat cell lists, mixed paragraphs, stable unequal columns and list-bearing leading headers in read-only pages and matching print | In progress; not yet merged or deployed |
+| 10.9. Further layout parity | Area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled, not part of this increment |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
 Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
-on main. The #56 baseline was deployed by successful Pages run
-[`43479804466`](https://github.com/miyako/4d-ql/actions/runs/43479804466)
-at `c767aa67108a708d94c7f4d0560843161189c439`.
-The selected next increment is bounded read-only continuous-section pages; it remains
+on main. The #57 baseline was deployed by successful Pages run
+[`43490891817`](https://github.com/miyako/4d-ql/actions/runs/43490891817)
+at `dbe9f4438bd8130f728118b5376b1f81fdcb2915`.
+The selected next increment is bounded read-only table-cell lists; it remains
 **In progress** until merged. Publication is separately gated by verification,
 review and CI; this status does not imply a deployed release. Arbitrary wrapping and
 automatic native pagination remain unscheduled proposals.
@@ -525,7 +526,7 @@ class-renumbering counterexample are independently preserved in
 `~/.copilot/evidence-backups/4wp-objects-20261113-probes-33ac49fe/`.
 The #52 increment is merged and deployed at the baseline recorded above.
 
-## Paged browser preview (#56 available; continuous-section pages in progress)
+## Paged browser preview (#57 available; table-cell lists in progress)
 
 Open **Paged browser preview** above the continuous editor. It is a separate,
 read-only projection of the whole document, even while authoring a header/footer.
@@ -590,7 +591,7 @@ not shrunk to fake a successful page. Preparation has a ten-second decode deadli
 
 Tables in single-column sections use the shared native grid validator, not a second table-association model.
 Supported tables have direct native `tr`/`td`/`th` grids, body paragraphs immediately
-before and after, and paragraph-only cell contents (including formatting,
+before and after, and paragraph or bounded flat-list cell contents (including formatting,
 Unicode, inert links, line breaks, supported formula cards and safe local inline
 pictures). The whole table is measured at its section's text width once.
 Its measured width and unequal column widths are frozen in disposable `colgroup`
@@ -608,7 +609,7 @@ Only contiguous leading rows with native `-d4-header:true` repeat, based on
 independent full-4D `wk header row count` originals/getters/PDF evidence. A `th`
 element alone does not invent a native header. Each fragment requires at least
 one data row in addition to its headers. Nonleading/invalid/all-header metadata,
-merged/spanning/irregular/nested/data-source tables, lists within cells,
+merged/spanning/irregular/nested/data-source tables, unsupported lists within cells,
 fixed-height structures, negative margins, horizontal overflow, and rows that
 cannot fit with their headers fall back explicitly. Limits are 1,000 rows and
 10,000 cells per table, the existing 1,000-column grid limit, and the shared
@@ -618,6 +619,29 @@ carry-over rows and native row splitting are not claimed.
 Existing body protection for bookmarked documents with unsupported hidden-area
 associations remains in force. Native table recovery evidence edits the safe
 first-header scope rather than weakening those body guards.
+
+The **In progress** cell-list increment admits direct native `ul`/`ol` blocks
+mixed with cell paragraphs. Items are flat inline `li` elements: no nested lists,
+paragraph-wrapped items, reversed lists, per-item `value`, unknown levels or
+custom marker types. Supported native marker types are `disc`, `circle`, `square`,
+`hollow-square`, `diamond`, `decimal`, `lower-latin`, `upper-latin`, `lower-roman`
+and `upper-roman`. Counters are **1-3,999**; a numbered marker's quoted native LTR format may contain
+exactly one `#` and at most 80 characters. There are at most **10,000 list items
+per table**, independently of the row/cell limits. Markers and content must fit
+inside their owning cells within 0.25 CSS px; insufficient indentation or an
+oversized row falls back without clipping, shrinking or splitting cells.
+
+Independent installed-4D originals/getters/PDFs establish that counters continue
+within each native list, not across cells. Explicit item restarts serialize as
+separate `ol start` elements and remain separate; the browser does not infer
+continuation or invent starts. Native cell `disc` and `diamond` markers use
+U+25CF and U+2666. These cell-context glyphs reuse the body marker/counter helper
+without changing existing body-list output. Native list font, bold/color,
+indentation, wrapped items, mixed paragraphs, safe pictures and inert formulas
+are retained in disposable cell content before the whole-table measurement.
+List-bearing leading header rows repeat with their markers and frozen grid.
+Neither viewing nor printing converts the original XML or broadens table
+authoring, native-range/bookmark guards, undo/recovery or formula evaluation.
 
 The available #56 column increment admits **2-4 equal-width, left-to-right columns**,
 with a **0-72 pt gap** and **at least 72 pt of text width in each column** after
@@ -649,7 +673,7 @@ Native PDFs establish equal-column widths and explicit break progression;
 browser PDFs are separately checked against actual measured page/column
 membership, not native automatic wrapping.
 
-The in-progress continuous-section increment admits **area-free single-column
+The available #57 continuous-section increment admits **area-free single-column
 seams with identical effective paper, orientation, margins and column count/gap
 on both sides**. Native `-d4-section-break-after:continuous` continues in the
 current measured body flow, retaining residual capacity instead of creating an
@@ -840,8 +864,8 @@ Each independent backup has a complete `SHA256-MANIFEST.json`. The first complet
 native generation is separately retained and backed up as
 `4wp-columns-20261114-gate-01`; it is not the final augmented-manifest evidence.
 
-Continuous-section increment verification (still **In progress; not merged or
-deployed**): **438 unit tests, 149 production browser tests and 2,409 full-4D
+Continuous-section #57 verification (**Available on main; deployed**):
+**438 unit tests, 149 production browser tests and 2,409 full-4D
 21.2 `F0012102` import/export/reopen cases passed**. Independent native generation
 passed 2,399 cases before final-build regeneration and real Cancel exports.
 All 2,337 #56 definitions remain unchanged by name, with 2,240 unaffected input
@@ -871,6 +895,39 @@ The independently backed-up passing generation
 `4wp-continuous-20261114-gate-01` remain separate; neither is the final release
 evidence. Earlier diagnostic Cancel logs are retained alongside the passing
 `cancel-verified.log` and final native recheck, not presented as passing gates.
+
+Table-cell-list increment verification (**In progress; not merged or deployed**):
+**440 units, 153 production browser tests, 2,486 installed-4D generation cases
+and a final strict 2,498-case import/export/reopen gate passed** under 4D 21.2
+`F0012102`. The exact #58 repair baseline is
+`350b7ed2616b989574b09e61343395a3080a54ac`; its seven test-only resize-readiness
+lines remain intact. Final browser tests used an exclusive, strict/no-reuse
+preview port and independently matched served HTML/JS/CSS bytes and SHA256s.
+All **2,409 #57 native definitions** remain unchanged by name, with **2,240
+unaffected input hashes and 2,761 dependency archives** independently compared.
+The 169 affected baseline definitions were regenerated from final production
+assets, including all ten prior paginated Cancel exports. The 89 new definitions
+cover real cell-list downloads, safe native edit/Undo/recovered-Redo targets and
+the new actual Cancel mode.
+
+All **fourteen** real headed Chromium print-preview Cancel states passed:
+continuous, paged, expanded, tables, columns, seams and cell lists, each clean/Redo
+and dirty/Undo. Full DOM, selection endpoints, scope, zoom, exact original/dirty
+bytes, history and entire IndexedDB records are compared without normalizing
+away changes or freezing timers. Native originals/getters/PDFs and browser PDFs
+establish complete row/cell/list/marker membership, per-cell starts, marker/font
+geometry, wrapped words, first/facing areas and mixed paper geometry. Zero/one/two
+native leading header rows, local pictures, inert formulas, residual seam
+capacity and terminal oversized/unsupported fallback are included.
+
+Final evidence: `~/.copilot/evidence/4wp-cell-lists-20261114-gate-02/`;
+independent byte/SHA-verified backup:
+`~/.copilot/evidence-backups/4wp-cell-lists-20261114-gate-02/`.
+`Source/`, `Build/`, `Validation/`, native/browser/Cancel artifacts, baseline
+comparisons and `reproduction.json` retain exact source/build/commit identities.
+The independently backed-up 2,486-case generation (`gate-01`), passing focused
+native/Cancel proof (`browser-probe-06`) and precommit evidence remain separate.
+No earlier evidence was overwritten or deleted.
 
 ## Layout preview and browser printing (available on main)
 

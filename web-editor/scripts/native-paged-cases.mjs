@@ -7,6 +7,7 @@ import { expect } from '@playwright/test';
 import { inspectPDF } from './native-print-cases.mjs';
 import { prepareColumnCases } from './native-column-cases.mjs';
 import { prepareContinuousCases } from './native-continuous-cases.mjs';
+import { prepareCellListCases } from './native-cell-list-cases.mjs';
 
 export async function preparePagedCases(directory, cases, browser, url, download) {
   const report = JSON.parse(await readFile(resolve(directory, 'Output/paged-report.json'), 'utf8'));
@@ -98,6 +99,7 @@ export async function preparePagedCases(directory, cases, browser, url, download
   await preparePagedTableCases(directory, cases, browser, url, download);
   await prepareColumnCases(directory, cases, browser, url, download);
   await prepareContinuousCases(directory, cases, browser, url, download);
+  await prepareCellListCases(directory, cases, browser, url, download);
 }
 
 async function preparePagedTableCases(directory, cases, browser, url, download) {

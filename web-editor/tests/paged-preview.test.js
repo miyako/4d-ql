@@ -92,7 +92,7 @@ describe('derived paged projection safety and area selection', () => {
       expect(model.pack()).toEqual(before);
     }
     for (const rows of [row() + row('-d4-header:true'), row('-d4-header:true'), row('-d4-header:unknown') + row(),
-      row('', '<ul><li>LIST</li></ul>'), row('', '<table><tr><td><p>NESTED</p></td></tr></table>'),
+      row('', '<ul><li>LIST<ul><li>NESTED</li></ul></li></ul>'), row('', '<table><tr><td><p>NESTED</p></td></tr></table>'),
       '<tr><td colspan="2"><p>MERGED</p></td></tr>' + row(),
       row() + '<tr><td><p>IRREGULAR</p></td></tr>', row('height:900pt')]) {
       const model = new WriteProDocument(source('', table(rows)));
@@ -106,6 +106,43 @@ describe('derived paged projection safety and area selection', () => {
       expect(pagedCapability(model)).toBe(reason);
     }
   }, 15000);
+
+  it('admits bounded mixed flat cell lists without inventing counters or changing live mappings', () => {
+    for (const list of ['<ul><li style="margin-left:24pt;list-style-type:square">A</li><li>B</li></ul>',
+      '<ol start="7"><li>A</li><li>B</li></ol>',
+      '<ol start="7"><li>A</li></ol><ol start="7"><li>B</li></ol>',
+      '<ol start="3999"><li style="list-style-type:upper-roman">A</li></ol>']) {
+      const model = new WriteProDocument(source('', `<p>BEFORE</p><table><tr style="-d4-header:true"><td>${list}</td></tr><tr><td><p>INTRO</p>${list}<p>TAIL</p></td></tr></table><p>AFTER</p>`));
+      model.render(document.createElement('article'), messages.en);
+      const before = model.pack();
+      const mappings = model.projection;
+      expect(pagedCapability(model)).toBeNull();
+      expect(model.pack()).toEqual(before);
+      expect(model.projection).toBe(mappings);
+    }
+    for (const list of ['<ol start="3999"><li>A</li><li>B</li></ol>',
+      '<ol start="0"><li>A</li></ol>', '<ol reversed=""><li>A</li></ol>', '<ol><li value="7">A</li></ol>',
+      '<ul><li style="-d4-list-level:1">A</li></ul>', '<ul><li style="list-style-type:custom">A</li></ul>',
+      '<ol><li style="-d4-list-string-format-ltr:\'##\'">A</li></ol>',
+      '<ul><li style="-d4-list-string-format-ltr:\'(#)\'">A</li></ul>',
+      '<ol><li style="-d4-list-font:url(font)">A</li></ol>',
+      '<ul><li><p>AMBIGUOUS</p></li></ul>']) {
+      const model = new WriteProDocument(source('', `<p>BEFORE</p><table><tr><td>${list}</td></tr></table><p>AFTER</p>`));
+      const before = model.pack();
+      expect(pagedCapability(model)).toBe('pagedTables');
+      expect(model.pack()).toEqual(before);
+    }
+  });
+
+  it('bounds total cell-list markers independently of rows and cells', () => {
+    const model = new WriteProDocument(source('', '<p>BEFORE</p><table><tr><td><p>A</p></td></tr></table><p>AFTER</p>'));
+    const cell = model.document.querySelector('td');
+    const list = count => `<ol>${'<li>A</li>'.repeat(count)}</ol>`;
+    cell.innerHTML = list(3999) + list(3999) + list(2002);
+    expect(pagedCapability(model)).toBeNull();
+    cell.append(cell.firstElementChild.cloneNode(true));
+    expect(pagedCapability(model)).toBe('pagedTables');
+  }, 30000);
 
   it('selects first before facing, uses physical parity, and never borrows missing content', () => {
     const state = {
@@ -166,6 +203,10 @@ describe('derived paged projection safety and area selection', () => {
     expect(pageListMarker({ 'list-style-type': 'lower-roman' }, 49, 'ol')).toBe('xlix.');
     expect(pageListMarker({ '-d4-list-string-format-ltr': "'(#)'" }, 28, 'ol')).toBe('(28)');
     expect(pageListMarker({ '-d4-list-style-type': 'hollow-square' }, 1, 'ul')).toBe('\u25a1');
+    expect(pageListMarker({ 'list-style-type': 'disc' }, 1, 'ul', true)).toBe('\u25cf');
+    expect(pageListMarker({ 'list-style-type': 'diamond' }, 1, 'ul', true)).toBe('\u2666');
+    expect(pageListMarker({ 'list-style-type': 'disc' }, 1, 'ul')).toBe('\u2022');
+    expect(pageListMarker({ 'list-style-type': 'diamond' }, 1, 'ul')).toBe('\u25c6');
     for (const values of [{ '-d4-list-style-type': 'custom' }, { '-d4-list-level': '2' },
       { '-d4-list-string-format-ltr': "'#.#'" }]) expect(() => pageListMarker(values, 1, 'ol')).toThrow();
   });
