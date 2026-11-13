@@ -5,6 +5,26 @@ import FourDFileKit
 @testable import FourDQuickLookUI
 @testable import FourDRender
 
+private final class PreviewMagnificationEvent: NSEvent {
+    private let point: NSPoint
+    private let delta: CGFloat
+    private let eventPhase: NSEvent.Phase
+
+    init(point: NSPoint, delta: CGFloat, phase: NSEvent.Phase) {
+        self.point = point
+        self.delta = delta
+        self.eventPhase = phase
+        super.init()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override var type: NSEvent.EventType { .magnify }
+    override var phase: NSEvent.Phase { eventPhase }
+    override var locationInWindow: NSPoint { point }
+    override var magnification: CGFloat { delta }
+}
+
 @MainActor
 final class PreviewWebViewTests: XCTestCase {
     private var mouseEventNumber = 0
@@ -443,7 +463,6 @@ final class PreviewWebViewTests: XCTestCase {
         XCTAssertFalse(webView.configuration.defaultWebpagePreferences.allowsContentJavaScript)
         XCTAssertFalse(webView.configuration.websiteDataStore.isPersistent)
         XCTAssertFalse(webView.allowsMagnification)
-        XCTAssertTrue(webView.gestureRecognizers.contains { $0 is NSMagnificationGestureRecognizer })
         let values = try XCTUnwrap(evaluate("""
         return {
             presets:document.querySelectorAll('.diagram-zoom-choice').length,
@@ -509,6 +528,49 @@ final class PreviewWebViewTests: XCTestCase {
         XCTAssertEqual(try evaluate("""
         return globalThis.fourdCanvasZoom.magnify(10, 10, 0.5);
         """, in: webView) as? Bool, false)
+    }
+
+    func testMagnificationEventsSurviveResizingAndReattachmentInsideUnflippedRoot() throws {
+        let webView = load()
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 900))
+        webView.frame = root.bounds.insetBy(dx: 20, dy: 30)
+        webView.autoresizingMask = [.width, .height]
+        root.addSubview(webView)
+        let window = NSWindow(contentRect: root.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = root
+        window.orderFront(nil)
+        defer { window.close() }
+
+        for height in [900.0, 760.0, 870.0] {
+            window.contentView = NSView(frame: root.frame)
+            root.setFrameSize(NSSize(width: 900, height: height))
+            window.contentView = root
+            let point = try XCTUnwrap(evaluate("""
+            const viewport = document.querySelector('.diagram-viewport');
+            viewport.scrollIntoView({block:'center'});
+            const rect = viewport.getBoundingClientRect();
+            return {x:rect.left + 100, y:rect.top + 80};
+            """, in: webView) as? [String: Double])
+            let x = try XCTUnwrap(point["x"])
+            let y = try XCTUnwrap(point["y"])
+            let local = NSPoint(x: x, y: webView.isFlipped ? y : webView.bounds.height - y)
+            let location = webView.convert(local, to: nil)
+
+            for (delta, expected) in [(log(1.25), "125%"), (-log(1.25), "100%")] {
+                for (phase, amount) in [(NSEvent.Phase.began, 0.0), (.changed, delta)] {
+                    webView.magnify(with: PreviewMagnificationEvent(point: location, delta: amount, phase: phase))
+                }
+                XCTAssertEqual(try evaluate("""
+                return document.querySelector('.diagram-zoom-controls output').value;
+                """, in: webView) as? String, expected)
+                webView.magnify(with: PreviewMagnificationEvent(point: location, delta: 0, phase: .ended))
+            }
+            try click("button[aria-label=\"Zoom diagram in\"]", in: webView, window: window)
+            XCTAssertEqual(try evaluate("return document.querySelector('.diagram-zoom-controls output').value;",
+                                        in: webView) as? String, "120%")
+            try click("button[aria-label=\"Reset diagram zoom\"]", in: webView, window: window)
+        }
     }
 
     func testSliderButtonsKeyboardResetAndBoundsKeepScrollExtentCorrect() throws {

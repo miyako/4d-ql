@@ -437,6 +437,10 @@ In Finder, authorize the containing project folder in the hosting app so the
 preview service can read this sibling file; without access the embedded layout
 or automatic grid remains available.
 Finder uses a view-based Quick Look extension with an owned `WKWebView`.
+The web view resizes inside an unflipped AppKit root view rather than acting
+as the remote controller's root itself. Native magnification events are handled
+directly, so canvas pinch does not depend on a local gesture recognizer being
+driven when Finder returns to a cached preview.
 Pinch over the diagram for continuous, cursor-centered zoom, use the logarithmic
 slider or +/- buttons, and select 100% to reset. Zoom ranges from 1% to 800%;
 only the SVG and its scrollable extent scale, not the surrounding preview.
@@ -746,8 +750,12 @@ invoking JavaScript or accessibility button actions. It needs an unlocked
 desktop, Automation and Accessibility permission, and the intended extension
 registered as above. Do not use other apps while it runs; native input requires
 Finder to stay in the foreground. It does not synthesize physical trackpad pinch gestures.
-The AppKit regression also checks cached-document reattachment in a non-key
-window; it is not a substitute for this remotely hosted Finder check.
+The AppKit regressions also check cached-document reattachment in a non-key
+window and native magnification event coordinates inside an offset, resized
+child view. They are not a substitute for the remotely hosted Finder check or
+physical trackpad testing. When checking a viewer change manually, verify
+buttons and slider on initial presentation, then pinch before and after a
+file/folder selection round trip.
 
 ## File format notes
 

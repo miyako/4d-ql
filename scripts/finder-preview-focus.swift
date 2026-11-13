@@ -125,11 +125,18 @@ func select(_ url: URL) throws {
     set targetItem to POSIX file \(quoted(url.path)) as alias
     tell application "Finder"
         reveal targetItem
-        set selection to {targetItem}
-        set picked to selection
-        if (count of picked) is not 1 then error "Finder did not select the requested item."
-        if (item 1 of picked as alias) is not targetItem then error "Finder selected a different item."
     end tell
+    repeat 30 times
+        tell application "Finder"
+            set selection to {targetItem}
+            set picked to selection
+        end tell
+        if (count of picked) is 1 then
+            if (item 1 of picked as alias) is targetItem then return
+        end if
+        delay 0.1
+    end repeat
+    error "Finder did not select the requested item."
     """)
 }
 
