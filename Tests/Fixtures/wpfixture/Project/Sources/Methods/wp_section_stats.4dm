@@ -20,7 +20,12 @@ For each ($item; WP Get breaks(WP Get body($doc)))
 End for each
 var $anchorSection; $anchorPage; $anchorLayout : Variant
 For each ($item; WP Get elements($doc; wk type image))
-	WP GET ATTRIBUTES($item; wk anchor section; $anchorSection; wk anchor page; $anchorPage; wk anchor layout; $anchorLayout)
-	$result.associations.push(New object("section"; $anchorSection; "page"; $anchorPage; "layout"; $anchorLayout))
+	WP GET ATTRIBUTES($item; wk anchor layout; $anchorLayout)
+	If ($anchorLayout=wk inline with text)
+		$result.associations.push(New object("layout"; $anchorLayout))
+	Else
+		WP GET ATTRIBUTES($item; wk anchor section; $anchorSection; wk anchor page; $anchorPage)
+		$result.associations.push(New object("section"; $anchorSection; "page"; $anchorPage; "layout"; $anchorLayout))
+	End if
 End for each
 return $result

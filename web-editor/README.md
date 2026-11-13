@@ -7,12 +7,12 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`2c9c47a` / #43](https://github.com/miyako/4d-ql/pull/43).
+[`6f4f37f` / #44](https://github.com/miyako/4d-ql/pull/44).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
-Page setup (step 1 of the approved next phase) is available on main;
+Page setup and sections/breaks (steps 1–2 of the approved phase) are available on main;
 deployment status is separate. The table is not a
 promise of dates or full Write Pro parity.
 
@@ -26,15 +26,15 @@ promise of dates or full Write Pro parity.
 | 6. Formula-aware protected display | Source and stored cached values only when actually available; explicit unavailable-value notice; scoped safe surrounding edits, no evaluation | Available on main via #41 |
 | 7. Broader table/range safety | Cell-anchored column insertion; interior cross-cell bookmark management, formatting and guarded additions; grid-validated merged-cell text editing; localized capability reasons | Available on main via #42; destructive cross-cell operations, merged structural edits, nested tables and generic ranges remain protected |
 | 8.1. Page setup | Document-level paper presets/custom dimensions, orientation, margins and preference-only units; inherited section values retained | Available on main via #43; deployment status is separate |
-| 8.2. Sections and breaks | Insert/remove page and section breaks; defaults and section-specific settings without flattening inheritance | In progress; this independent increment is not merged or deployed |
-| 8.3. Columns and tabs | Column count/gap and paragraph tab stops, with explicit preview limits | Planned; separate subsequent PR, not implemented or deployed |
+| 8.2. Sections and breaks | Insert/remove page and section breaks; defaults and section-specific settings without flattening inheritance | Available on main via #44; deployment status is separate |
+| 8.3. Columns and tabs | Column count/gap and paragraph tab stops, with explicit preview limits | In progress; this independent increment is not merged or deployed |
 | 8.4. Preview/output | Better settings projection and browser printing without claiming exact 4D pagination | Planned; separate subsequent PR, not implemented or deployed |
 | 9. Richer media and objects | More native picture formats, anchored objects and text boxes with preservation-aware controls | Proposed; floating objects remain unimplemented |
 | 10. Headers/footers and advanced layout | Header/footer editing, object wrapping and automatic pagination | Later work; unimplemented, not part of the approved four-step increment |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
-Step 8.1 is available on main. Step 8.2 is in progress on this branch;
-columns/tabs and printing remain planned, one PR per step. Headers/footers,
+Steps 8.1–8.2 are available on main. Step 8.3 is in progress on this branch;
+printing is next, in its own subsequent PR, and is not implemented or deployed. Headers/footers,
 floating objects and automatic pagination are explicitly outside this increment.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
@@ -96,7 +96,7 @@ minimum height and margins. It remains a **single continuous surface** and does
 not render section overrides, headers/footers or automatic page boundaries.
 No new printing functionality is included.
 
-## Sections and breaks (in progress, not deployed)
+## Sections and breaks (available on main)
 
 The same **Page setup** panel identifies the active native section and offers
 document-default or numbered section settings. Native sections are inferred
@@ -140,7 +140,82 @@ controls, system/light/dark appearance and small screens are supported.
 Page and section break markers are visible, localized separators on the existing
 continuous preview; they are authoring guides, **not automatic or exact native
 pagination**. Section geometry is shown in the controls, not rendered as section
-pages. Headers, footers, columns/tabs and printing are not added by this increment.
+pages. Headers, footers and printing are not rendered by section authoring.
+
+## Columns and paragraph tabs (in progress, not deployed)
+
+**Page setup → Text columns** edits document defaults (`div.section0`) or the
+selected numbered section. Count (1–20) and gap (0–10,000 pt, or equivalent
+mm/cm/in values) have independent explicit/inherited states. Checking inheritance
+removes only that declaration, including duplicate overrides; it does not copy
+the current default. Existing column rules and unknown section/subsection
+declarations remain untouched. Gaps must leave a positive column text width in
+every affected section; later paper/margin changes are checked against retained
+column overrides too. Invalid values are rejected, never clamped. These width
+checks are conservative editor limits: native 4D accepts some unusable gaps.
+Ambiguous, inline, conditional or unsupported count/gap declarations disable
+column editing with a localized reason.
+
+Select an editable caret or text, then open **Paragraph tabs**. Changes apply
+to entire selected paragraphs, including partial selections and supported table
+cells. A paragraph reached only at its beginning is excluded. Mixed selections
+are identified; the stop list is their union, while displayed stop/default
+fields initially use the first matching paragraph. **Set stop** adds or replaces
+one absolute position in each selected paragraph; moving a stop to another
+existing position is rejected. **Remove stop** removes only that position and
+preserves other stops and the default interval/type/leader. Default Apply updates
+only fields actually edited, preserving differences between paragraphs.
+No-op Apply and preference-only unit changes retain original values and create
+no history entry, including when both settings panels are open.
+
+The five native alignments are **left, right, center, decimal and bar**. Editable
+leaders are **none, dot, dash and underscore**, for explicit stops and the
+default interval. Positions/intervals must be positive and at most 10,000 pt;
+absolute positions must be distinct and ascending (up to 128 editable stops,
+an editor complexity limit). The final entry in native parallel tab arrays is
+the repeating default interval, not another absolute stop.
+**Reset to native tab defaults** matches native `WP RESET ATTRIBUTES`: no
+absolute stops, a 1.25 cm left-aligned interval and no leader. Unlike section
+inheritance reset, this is **not** a return to the named paragraph style.
+Named/generated styles, unrelated paragraph declarations and existing text
+characters are retained; only the three tab properties are overridden.
+Unsupported custom leaders, malformed arrays/unsupported scopes and ambiguous
+paragraph style combinations are preserved and protect tab editing rather than
+being silently converted. Native quote/backslash leader counterexamples are
+retained in probe evidence; no stable native reexport parity is claimed for them.
+
+**Insert tab character** is keyboard-accessible and inserts an actual U+0009
+through the registered native text transaction. Tab itself remains focus
+navigation. Existing tabs are never replaced with spaces. Formula objects,
+bookmark offsets, table guards, protected boundaries and original resource bytes
+retain their existing safeguards; a selection crossing a protected formula
+remains protected. A caret in a supported paragraph can edit its tab formatting
+without changing the paragraph's immutable formula subtree. Text-protected
+documents remain text-protected; body-preserving column settings can still be
+edited. Existing safe section-split/merge guards are not relaxed for column rules
+or other section declarations.
+
+All controls, errors and capability notices are available in EN/JA/FR/DE/ES/IT,
+system/light/dark appearance and responsive layouts. Each operation is atomic
+for undo/redo, versions and IndexedDB recovery. The continuous browser preview
+balances columns **within each section**, without fixed page heights/native flow.
+Tab spacing uses only the default interval; absolute alignment, decimal/bar stops
+and leaders are saved for native 4D, **not rendered**. Fonts, line wrapping and
+leader placement are not exact native equivalents. No automatic pagination,
+printing, headers/footers or floating-object editing is included.
+
+The full-4D gate adds focused column/tab originals, independent native mutations,
+real browser downloads (including Undo and recovered Redo), effective section and
+paragraph getters, exact native reexport declarations/body checks and raw bookmark
+and resource checks. It covers Unicode, formulas, inline pictures, simple tables,
+named-style/direct-format inheritance, section overrides/resets and hidden
+header associations. Native-generated regression archives live in
+`tests/fixtures/flow/`; regenerate them from a successful full-4D gate's matching
+`Output/layout-*.4wp` files, not from the web model.
+The verified increment passes 388 unit tests, 76 browser tests and 1,532 full-4D
+import/export/reopen cases. Of the latter, 281 are column/tab cases: 109 model
+exports and 172 actual browser downloads. These are scoped attribute/content
+checks in full 4D 21.2 `F0012102`, not arbitrary document or visual-layout parity.
 
 ## GitHub Pages demo
 

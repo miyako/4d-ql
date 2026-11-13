@@ -80,9 +80,11 @@ interior cross-cell bookmark handling, merged-cell text editing and localized
 capability reasons are available on main via [#42](https://github.com/miyako/4d-ql/pull/42);
 destructive or unverified cases remain protected. Document-level page setup
 is available on main via [#43](https://github.com/miyako/4d-ql/pull/43).
-This independent unmerged increment adds scoped page/section breaks and
-section-specific names, orientation, margins and explicit inheritance controls.
-It is not deployed. Columns/tabs and printing remain planned separate steps;
+Scoped page/section breaks and section-specific names, orientation, margins
+and inheritance are available on main via [#44](https://github.com/miyako/4d-ql/pull/44).
+This independent unmerged increment adds section/default column count and gap,
+paragraph tab stops and real tab entry, with explicit continuous-preview limits.
+It is not deployed. Browser printing is the next separate step, not implemented here;
 header/footer editing, floating objects and automatic pagination remain unimplemented.
 See the editor README for the exact feature boundaries, local data
 limits and full-4D compatibility gate. The Pages demo follows `main`, not

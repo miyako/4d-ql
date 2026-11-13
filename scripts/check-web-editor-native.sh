@@ -46,6 +46,21 @@ with (root / logfile).open("w") as log:
         raise SystemExit(f"Full 4D exited with {code}; inspect native.log. No native pass is claimed.")
 PY
 }
+run_4d wp_layout_check layout-native.log
+[ -s "$DEST/Output/layout-report.json" ] || { echo "Full 4D produced no layout report; inspect $DEST/layout-native.log." >&2; exit 1; }
+python3 - "$DEST" <<'PY'
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1]) / "Output"
+errors = json.loads((root / "layout-errors.json").read_text())
+if errors:
+    raise SystemExit("Native column/tab probe failed: " + json.dumps(errors, ensure_ascii=False))
+report = json.loads((root / "layout-report.json").read_text())
+if report.get("version") != "F0012102" or len(report.get("cases", [])) != 49:
+    raise SystemExit("Missing column/tab cases or unexpected full-4D version; no native pass is claimed.")
+PY
 run_4d wp_section_check section-native.log
 [ -s "$DEST/Output/section-report.json" ] || { echo "Full 4D produced no section report; inspect $DEST/section-native.log." >&2; exit 1; }
 python3 - "$DEST" <<'PY'
