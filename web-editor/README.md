@@ -43,8 +43,8 @@ on main. The #53 baseline was deployed by successful Pages run
 [`43454334458`](https://github.com/miyako/4d-ql/actions/runs/43454334458)
 at `4912d311fc8b043a76e1a4583f3e564d8ad3871d`.
 The selected next increment is paragraph splitting, supported lists and inline images in paged browser preview; it remains
-**In progress** until merged. Publication is separately gated; this increment
-does not push, open a PR, merge or deploy itself. Arbitrary wrapping and
+**In progress** until merged. Publication is separately gated by verification,
+review and CI; this status does not imply a deployed release. Arbitrary wrapping and
 automatic native pagination remain unscheduled proposals.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
