@@ -7,6 +7,139 @@ import { paragraphBreak } from './sections.js';
 import { areaLabel } from './header-messages.js';
 import { headerContentReason } from './headers-footers.js';
 
+const bullets = { disc: '\u2022', circle: '\u25cb', square: '\u25a0', 'hollow-square': '\u25a1', diamond: '\u25c6', club: '\u2663', none: '' };
+const numbered = new Set(['decimal', 'decimal-leading-zero', 'lower-alpha', 'upper-alpha', 'lower-latin', 'upper-latin', 'lower-roman', 'upper-roman']);
+
+export function pageListMarker(values, number, kind) {
+  const type = values['-d4-list-style-type'] || values['list-style-type'] || (kind === 'ol' ? 'decimal' : 'disc');
+  if (Object.keys(values).some(key => key.startsWith('-d4-list-') &&
+    !['-d4-list-style-type', '-d4-list-string-format-ltr', '-d4-list-font'].includes(key))) throw new DocumentError('pagedShape');
+  if (!Number.isSafeInteger(number) || number < 1 || number > 3999) throw new DocumentError('pagedShape');
+  if (Object.hasOwn(bullets, type)) return bullets[type];
+  if (!numbered.has(type)) throw new DocumentError('pagedShape');
+  let text = String(number);
+  if (type === 'decimal-leading-zero') text = text.padStart(2, '0');
+  if (/alpha|latin/.test(type)) {
+    text = '';
+    for (let n = number; n > 0; n = Math.floor((n - 1) / 26)) text = String.fromCharCode(97 + (n - 1) % 26) + text;
+  }
+  if (/roman/.test(type)) {
+    text = '';
+    let n = number;
+    for (const [value, symbol] of [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'],
+      [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']]) {
+      while (n >= value) { text += symbol; n -= value; }
+    }
+  }
+  if (type.startsWith('upper-')) text = text.toUpperCase();
+  const format = values['-d4-list-string-format-ltr'];
+  if (!format) return `${text}.`;
+  if (!/^(['"])[^'"\\\r\n]{0,80}\1$/.test(format) || format.slice(1, -1).split('#').length !== 2) throw new DocumentError('pagedShape');
+  return format.slice(1, -1).replace('#', text);
+}
+
+function bodyParagraphs(element) {
+  if (element.localName === 'p') return [element];
+  if (!['ul', 'ol'].includes(element.localName) || !element.children.length ||
+    [...element.childNodes].some(node => node.nodeType === 3 && node.data.trim()) ||
+    [...element.children].some(item => item.localName !== 'li' || item.querySelector('p,li,ul,ol,table'))) throw new DocumentError('pagedShape');
+  const start = element.getAttribute('start') || '1';
+  if (!/^[1-9]\d{0,3}$/.test(start) || element.hasAttribute('reversed') ||
+    [...element.children].some(item => item.hasAttribute('value'))) throw new DocumentError('pagedShape');
+  return [...element.children];
+}
+
+function inlineImage(model, source) {
+  const info = model.imageInfo(source);
+  const values = model.values(source);
+  if (!info.src || Object.keys(values).some(key => /^-d4-(anchor|ref)/.test(key)) ||
+    !['scaledtofit', 'proportional', 'proportionalcentered', 'truncated', 'truncatedcentered']
+      .includes((values['-d4-img-display-mode'] || 'scaledToFit').toLowerCase())) throw new DocumentError('pagedShape');
+  for (const property of ['width', 'height']) {
+    if (values[property] && (pagePoints(values[property]) <= 0 || pagePoints(values[property]) > 10000)) throw new DocumentError('pagedShape');
+  }
+  return info;
+}
+
+export async function preparePagedProjection(model, labels) {
+  const copy = new WriteProDocument(model.serialize(), model.files, model.entry);
+  const reason = pagedCapability(copy);
+  if (reason) throw new DocumentError(reason);
+  const decoded = new Map();
+  const deadline = performance.now() + 10000;
+  for (const source of copy.document.querySelectorAll('body img')) {
+    const info = inlineImage(copy, source);
+    if (decoded.has(info.src)) continue;
+    const image = new Image();
+    image.src = info.src;
+    let timer;
+    try {
+      await Promise.race([image.decode(), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new DocumentError('pagedUnavailable')), Math.max(0, deadline - performance.now()));
+      })]);
+      if (!image.naturalWidth || !image.naturalHeight) throw new DocumentError('pagedShape');
+      decoded.set(info.src, { width: image.naturalWidth, height: image.naturalHeight });
+      if ([...decoded.values()].reduce((sum, size) => sum + size.width * size.height, 0) > 80_000_000) throw new DocumentError('pagedShape');
+    } catch (error) {
+      if (error instanceof DocumentError) throw error;
+      throw new DocumentError('pagedShape');
+    } finally { clearTimeout(timer); }
+  }
+  return createPagedProjection(copy, labels, decoded);
+}
+
+function lineBoundaries(paragraph, budget) {
+  const points = [{ node: paragraph, offset: 0 }];
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  let bottom = -Infinity;
+  const visit = node => {
+    if (node.nodeType === 3) {
+      for (const { index, segment } of segmenter.segment(node.data)) {
+        if (++budget.count > 100000) throw new DocumentError('pagedOverflow');
+        const range = document.createRange();
+        range.setStart(node, index);
+        range.setEnd(node, index + segment.length);
+        const rect = range.getBoundingClientRect();
+        if (rect.height && rect.top >= bottom - .25 && bottom !== -Infinity) points.push({ node, offset: index });
+        if (rect.height) bottom = Math.max(bottom, rect.bottom);
+      }
+    } else if (node.nodeType === 1 && (node.localName === 'br' || node.classList.contains('preserved-object'))) {
+      const rect = node.getBoundingClientRect();
+      if (rect.height && rect.top >= bottom - .25 && bottom !== -Infinity) {
+        points.push({ node: node.parentNode, offset: [...node.parentNode.childNodes].indexOf(node) });
+      }
+      if (rect.height) bottom = Math.max(bottom, rect.bottom);
+    } else for (const child of node.childNodes) visit(child);
+  };
+  for (const child of paragraph.childNodes) visit(child);
+  points.push({ node: paragraph, offset: paragraph.childNodes.length });
+  return points;
+}
+
+function paragraphFragment(paragraph, start, end, first, last) {
+  const range = document.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  const fragment = paragraph.cloneNode(false);
+  fragment.append(range.cloneContents());
+  if (!first) {
+    fragment.style.marginTop = '0';
+    fragment.style.textIndent = '0';
+  }
+  if (!last) fragment.style.marginBottom = '0';
+  return fragment;
+}
+
+function makeInert(root) {
+  for (const element of root.querySelectorAll('*')) {
+    if (['p', 'li'].includes(element.localName) || element.classList.contains('text-run')) element.style.whiteSpace = 'break-spaces';
+    for (const attribute of [...element.attributes]) {
+      if (['contenteditable', 'tabindex', 'role', 'spellcheck'].includes(attribute.name) ||
+        attribute.name.startsWith('data-') && !['data-page', 'data-section', 'data-area'].includes(attribute.name)) element.removeAttribute(attribute.name);
+    }
+  }
+}
+
 function firstRight(model) {
   let value = true;
   for (const style of model.document.querySelectorAll('head style')) {
@@ -53,13 +186,17 @@ export function pagedCapability(model) {
       if (paper.width - paper.margins[1] - paper.margins[3] < 72 ||
         paper.height - paper.margins[0] - paper.margins[2] < 72) return 'pagedSettings';
       for (const element of section.elements) {
-        const values = model.values(element);
-        if (element.localName !== 'p' || element.querySelector('img,table,ul,ol') ||
-          ['width', 'height', 'min-height'].some(key => values[key]) ||
-          paragraphBreak(values) === 'continuous') return 'pagedShape';
-        for (const child of element.querySelectorAll('*')) {
-          const formula = model.formula(child);
-          if (formula && !formula.supported) return 'pagedShape';
+        for (const [index, paragraph] of bodyParagraphs(element).entries()) {
+          const values = model.values(paragraph);
+          if (paragraph.querySelector('table,ul,ol') || ['width', 'height', 'min-height'].some(key => values[key]) ||
+            paragraphBreak(values) === 'continuous' || paragraph.localName === 'li' && paragraphBreak(values)) return 'pagedShape';
+          if (paragraph.localName === 'li') pageListMarker({ ...model.values(element), ...values },
+            Number(element.getAttribute('start') || 1) + index, element.localName);
+          for (const child of paragraph.querySelectorAll('*')) {
+            const formula = model.formula(child);
+            if (formula && !formula.supported) return 'pagedShape';
+            if (child.localName === 'img') inlineImage(model, child);
+          }
         }
       }
     }
@@ -70,12 +207,12 @@ export function pagedCapability(model) {
     }
   } catch (error) {
     if (!(error instanceof DocumentError) && error.name !== 'SyntaxError') throw error;
-    return 'pagedSettings';
+    return error.code === 'pagedShape' || error.code === 'pagedOverflow' ? error.code : 'pagedSettings';
   }
   return null;
 }
 
-export function createPagedProjection(model, labels) {
+export function createPagedProjection(model, labels, decoded = new Map()) {
   // All rendering, scope changes and measurement belong to a disposable model.
   const copy = new WriteProDocument(model.serialize(), model.files, model.entry);
   const reason = pagedCapability(copy);
@@ -93,14 +230,37 @@ export function createPagedProjection(model, labels) {
   const rules = [];
   const used = new Set();
   let pageNumber = 0;
+  const budget = { count: 0 };
   try {
     copy.render(rendered, labels);
+    makeInert(rendered);
     const mappings = copy.projection;
+    for (const source of copy.document.querySelectorAll('body img')) {
+      const info = inlineImage(copy, source);
+      const dimensions = decoded.get(info.src);
+      if (!dimensions) throw new DocumentError('pagedUnavailable');
+      const badge = mappings.get(source);
+      const image = badge?.querySelector('img');
+      if (!image) throw new DocumentError('pagedShape');
+      const values = copy.values(source);
+      let width = values.width ? pagePoints(values.width) : null;
+      let height = values.height ? pagePoints(values.height) : null;
+      width ??= height ? height * dimensions.width / dimensions.height : dimensions.width * .75;
+      height ??= width * dimensions.height / dimensions.width;
+      image.style.width = `${width}pt`;
+      image.style.height = `${height}pt`;
+      image.style.setProperty('--paged-image-height', `${height}pt`);
+      image.style.maxWidth = 'none';
+      image.style.maxHeight = 'none';
+      image.loading = 'eager';
+      badge.classList.add('paged-image');
+    }
     const areaContent = new Map();
     for (const area of state.areas) {
       const content = document.createElement('div');
       copy.setScope(area.name);
       copy.render(content, labels);
+      makeInert(content);
       content.removeAttribute('style');
       content.className = 'page-area';
       areaContent.set(area.name, content);
@@ -155,28 +315,78 @@ export function createPagedProjection(model, labels) {
       };
       newPage();
       for (const element of section.elements) {
-        const paragraph = mappings.get(element);
-        if (!paragraph || paragraph.localName !== 'p' ||
-          paragraph.querySelector('.preserved-object:not(.formula-object)')) throw new DocumentError('pagedShape');
-        flow.append(paragraph);
-        if (['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].some(side =>
-          parseFloat(getComputedStyle(paragraph)[side]) < 0)) throw new DocumentError('pagedShape');
-        const fits = () => {
-          const bounds = flow.getBoundingClientRect();
-          const last = paragraph.getBoundingClientRect();
-          const margin = parseFloat(getComputedStyle(paragraph).marginBottom) || 0;
-          return last.bottom + margin <= bounds.bottom + .25 && flow.scrollWidth <= flow.clientWidth + 1 &&
-            [...paragraph.querySelectorAll('.text-run,.formula-object')].every(run =>
-              [...run.getClientRects()].every(rect => rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25 &&
-                rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25));
-        };
-        if (!flow.getBoundingClientRect().height) throw new DocumentError('pagedUnavailable');
-        if (!fits()) {
-          paragraph.remove();
-          if (!flow.children.length) throw new DocumentError('pagedOverflow');
-          newPage();
-          flow.append(paragraph);
-          if (!fits()) throw new DocumentError('pagedOverflow');
+        const items = bodyParagraphs(element);
+        for (const [itemIndex, item] of items.entries()) {
+          const paragraph = mappings.get(item);
+          if (!paragraph || !['p', 'li'].includes(paragraph.localName) ||
+            paragraph.querySelector('.preserved-object:not(.formula-object):not(.paged-image)')) throw new DocumentError('pagedShape');
+          const wrap = (content, first = true, last = true) => {
+            if (item.localName === 'p') return content;
+            const list = mappings.get(element).cloneNode(false);
+            if (element.localName === 'ol') list.setAttribute('start', String(Number(element.getAttribute('start') || 1) + itemIndex));
+            if (itemIndex || !first) list.style.marginTop = '0';
+            if (itemIndex !== items.length - 1 || !last) list.style.marginBottom = '0';
+            content.style.listStyleType = 'none';
+            content.style.position = 'relative';
+            if (first) {
+              const marker = document.createElement('span');
+              marker.className = 'paged-list-marker';
+              marker.textContent = pageListMarker({ ...copy.values(element), ...copy.values(item) },
+                Number(element.getAttribute('start') || 1) + itemIndex, element.localName);
+              const font = copy.values(item)['-d4-list-font'];
+              if (font && !/url|expression|var\(|[;{}]/i.test(font)) marker.style.fontFamily = font;
+              content.prepend(marker);
+            }
+            list.style.display = 'flow-root';
+            list.append(content);
+            return list;
+          };
+          let block = wrap(paragraph);
+          flow.append(block);
+          if (['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].some(side =>
+            parseFloat(getComputedStyle(paragraph)[side]) < 0 || parseFloat(getComputedStyle(block)[side]) < 0)) throw new DocumentError('pagedShape');
+          const fits = candidate => {
+            const bounds = flow.getBoundingClientRect();
+            const last = candidate.getBoundingClientRect();
+            const margin = parseFloat(getComputedStyle(candidate).marginBottom) || 0;
+            return last.top >= bounds.top - .25 && last.bottom + margin <= bounds.bottom + .25 && flow.scrollWidth <= flow.clientWidth + 1 &&
+              [...candidate.querySelectorAll('.text-run,.preserved-object,.paged-list-marker,img')].every(run =>
+                [...run.getClientRects()].every(rect => rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25 &&
+                  rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25));
+          };
+          if (!flow.getBoundingClientRect().height) throw new DocumentError('pagedUnavailable');
+          if (!fits(block)) {
+            // Cut only at measured visual lines, keeping graphemes and inline atoms intact.
+            paragraph.querySelector(':scope > .paged-list-marker')?.remove();
+            const points = lineBoundaries(paragraph, budget);
+            block.remove();
+            let start = 0;
+            while (start < points.length - 1) {
+              let low = start + 1;
+              let high = points.length - 1;
+              let best = start;
+              while (low <= high) {
+                const end = Math.floor((low + high) / 2);
+                block = wrap(paragraphFragment(paragraph, points[start], points[end], start === 0, end === points.length - 1),
+                  start === 0, end === points.length - 1);
+                flow.append(block);
+                const fit = fits(block);
+                block.remove();
+                if (fit) { best = end; low = end + 1; } else high = end - 1;
+              }
+              if (best === start) {
+                if (!flow.children.length) throw new DocumentError('pagedOverflow');
+                newPage();
+                continue;
+              }
+              block = wrap(paragraphFragment(paragraph, points[start], points[best], start === 0, best === points.length - 1),
+                start === 0, best === points.length - 1);
+              flow.append(block);
+              if (!fits(block)) throw new DocumentError('pagedOverflow');
+              start = best;
+              if (start < points.length - 1) newPage();
+            }
+          }
         }
         if (paragraphBreak(copy.values(element)) === 'page' && element !== section.elements.at(-1)) newPage();
       }
@@ -206,13 +416,7 @@ export function createPagedProjection(model, labels) {
         content.scrollHeight > content.clientHeight + 1 ||
         flow.scrollWidth > flow.clientWidth + 1) throw new DocumentError('pagedAreas');
     }
-    for (const element of root.querySelectorAll('*')) {
-      for (const attribute of [...element.attributes]) {
-        if (['contenteditable', 'tabindex', 'role', 'spellcheck'].includes(attribute.name) ||
-          attribute.name.startsWith('data-') && !['data-page', 'data-section', 'data-area'].includes(attribute.name)) element.removeAttribute(attribute.name);
-      }
-      if (element.localName === 'span' && element.classList.contains('text-run')) element.style.whiteSpace = 'pre-wrap';
-    }
+    makeInert(root);
     root.remove();
     return { root, rules: rules.join('\n'), pages: pageNumber };
   } finally {

@@ -4,6 +4,7 @@ var $compilation : Object:=Compile project()
 If ($compilation.success)
 	wp_print_probe
 	wp_paged_probe
+	wp_expanded_paged_probe
 Else
 	wpWebErrors.push(New object("message"; "Probe compilation failed"; "details"; $compilation.errors))
 End if

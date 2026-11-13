@@ -7,7 +7,7 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`5ac3606` / #52](https://github.com/miyako/4d-ql/pull/52).
+[`4912d31` / #53](https://github.com/miyako/4d-ql/pull/53).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
@@ -33,17 +33,18 @@ promise of dates or full Write Pro parity.
 | 9.1. Header/footer variants and positioning | Section-local first-page and paired left/right toggles with native copying/removal semantics; four native area margins | Available on main via #50 |
 | 10.1. Advanced images and text boxes | Bounded native picture decoding, isolated anchored-picture/text-box views, scoped box text/formatting and object size/offset editing | Available on main via #51 |
 | 10.2. Object lifecycle and stored placement | Guarded picture/text-box creation and deletion; native section/page targets, alignment and front/behind/square-wrap metadata | Available on merged main via #52 |
-| 10.3. Paged browser preview | Best-effort, read-only single-column paragraph pages and repeating supported first/facing/default headers/footers; matching browser print projection and explicit continuous fallback | In progress; this local increment is not merged or deployed |
-| 10.4. Further layout parity | Arbitrary object wrapping/layers and automatic native-equivalent pagination | Proposed; unscheduled, not part of this increment |
+| 10.3. Paged browser preview | Best-effort, read-only single-column paragraph pages and repeating supported first/facing/default headers/footers; matching browser print projection and explicit continuous fallback | Available on merged main via #53 |
+| 10.4. Expanded browser pagination | Measured paragraph fragments, supported flat native lists and local inline images in read-only paged preview and matching print | In progress; this local increment is not merged or deployed |
+| 10.5. Further layout parity | Arbitrary object wrapping/layers and automatic native-equivalent pagination | Proposed; unscheduled, not part of this increment |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
 Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
-on main. The #52 baseline was deployed by successful Pages run
-[`43442485955`](https://github.com/miyako/4d-ql/actions/runs/43442485955)
-at `5ac3606fedf12592552ce3f0bc4d6cf4f4812396`.
-The selected next increment is paged browser preview and repeated supported headers/footers; it remains
-**In progress** until merged. Publication is separately gated; this increment
-does not push, open a PR, merge or deploy itself. Arbitrary wrapping and
+on main. The #53 baseline was deployed by successful Pages run
+[`43454334458`](https://github.com/miyako/4d-ql/actions/runs/43454334458)
+at `4912d311fc8b043a76e1a4583f3e564d8ad3871d`.
+The selected next increment is paragraph splitting, supported lists and inline images in paged browser preview; it remains
+**In progress** until merged. Publication is separately gated by verification,
+review and CI; this status does not imply a deployed release. Arbitrary wrapping and
 automatic native pagination remain unscheduled proposals.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
@@ -521,7 +522,7 @@ class-renumbering counterexample are independently preserved in
 `~/.copilot/evidence-backups/4wp-objects-20261113-probes-33ac49fe/`.
 The #52 increment is merged and deployed at the baseline recorded above.
 
-## Paged browser preview (in progress)
+## Paged browser preview (#53 available; expanded pagination in progress)
 
 Open **Paged browser preview** above the continuous editor. It is a separate,
 read-only projection of the whole document, even while authoring a header/footer.
@@ -532,13 +533,19 @@ is keyboard accessible. All six languages, themes and mobile overflow handling
 are retained. Resize and font readiness rebuild a disposable projection; zoom
 scales the finished view without changing measured pagination.
 
-Supported body shape: **single-column, top-level paragraphs**, including inline
+Supported body shape: **single-column, top-level paragraphs and flat lists**, including inline
 formatting, inert links, line breaks, Unicode and supported immutable text
-formula cards. Whole paragraphs flow to the next browser page when their
-measured rectangles exceed the available height. They are never split. Explicit
+formula cards and locally decoded inline images. Whole paragraphs that fit stay
+intact; longer paragraphs/list items split only at measured visual line
+boundaries, never within grapheme clusters, images or formula cards. Fragments
+retain inline wrappers/formatting and every source character, including whitespace.
+The paged projection uses `break-spaces` so preserved spaces wrap within the text
+band instead of hanging outside it. First/last fragments retain the paragraph's
+outer spacing; continuation fragments do not repeat its first-line indent or list
+marker. Explicit
 page breaks and new-page section breaks force page boundaries; each section uses
 its effective orientation and margins with the document-wide base paper size.
-Each paragraph appears exactly once in body reading order. These are **browser
+Each paragraph's content appears exactly once in body reading order. These are **browser
 page counts**, not native counts or native line positions.
 
 First-page areas take priority on the first browser page **of each section**.
@@ -559,13 +566,32 @@ Stored areas never selected on the resulting pages remain accessible in their
 editing scopes and appear **once on labeled appendix sheets** in preview and print,
 so unused default/variant text is not silently excluded from output.
 
-Continuous sections, multiple columns, tables, lists, inline pictures, anchored
+Native lists remain **flat sibling items**, with their own stored indentation,
+not invented nested HTML. Numbering follows the original group's `start` and
+item position, including mixed bullet/numbered items. Supported markers are
+disc/circle/square/hollow-square/diamond/club/none, decimal/leading-zero,
+Latin alphabetic and Roman numerals. A quoted native LTR format with exactly
+one `#` is supported; marker fonts remain local font-family choices. Starts
+and resulting counters are limited to 1–3,999. Nested lists, per-item `value`,
+reversed lists, custom/unknown markers and unverified native level/RTL-format
+properties fall back explicitly.
+
+Inline pictures reuse the existing inert local raster/native-container/resource
+decoder and its admission budgets. Successful browser decoding precedes layout;
+authored point dimensions are retained, a missing dimension uses the decoded
+aspect ratio, and absent dimensions use decoded pixel size at 96 dpi.
+Images and supported formula cards are indivisible atoms. No external media is
+fetched, original picture bytes are never rewritten, and oversized images are
+not shrunk to fake a successful page. Preparation has a ten-second decode deadline.
+
+Continuous sections, multiple columns, tables, unsupported lists/images, anchored
 objects, ambiguous associations/settings, fixed-size body paragraphs and
 unsupported paragraph content use the existing continuous view/print mode.
-Oversized paragraphs, unsafe area bands, oversized unused appendix areas and
-more than 500 browser sheets (body plus appendices) also fall
-back. Localized notices explain the reason; no partial paged view, split/clipped
-block, fabricated fallback text or archive mutation is returned. The fallback
+Unsplittable oversized lines/atoms, unsafe area bands, oversized unused appendix
+areas, more than 500 browser sheets (body plus appendices) or more than 100,000
+graphemes measured for splitting also fall
+back. Localized notices explain the reason; no partial paged view, clipped
+content, fabricated fallback text or archive mutation is returned. The fallback
 does not certify unsupported native structures; their established preservation
 notices and isolated editing scopes remain in force.
 
@@ -575,6 +601,10 @@ Print command render the same derived fixed pages using named zero-margin
 continuous print projection is unchanged. An open unsupported preview prints
 that continuous projection with its explicit localized fallback reason and
 labeled area appendices. Use 100% scale and disable browser-added headers/footers.
+Print clones the ready, unscaled paged projection rather than measuring a second
+layout with print-only image rules. A native browser Print command before image
+preparation finishes uses the explicit continuous fallback; it never prints a
+success-shaped incomplete paged document.
 There is no server, 4D backend, native layout engine, arbitrary object wrapping
 or evaluated page-number substitution.
 
@@ -586,7 +616,7 @@ mixed orientation and missing areas. Native PDFs establish multi-section
 first-page reset and physical facing parity; they are content/geometry oracles,
 not a claim of browser/native line-layout equivalence.
 
-Verification: **432 unit tests, 130 browser tests and 2,266 full-4D 21.2
+Merged #53 verification: **432 unit tests, 130 browser tests and 2,266 full-4D 21.2
 `F0012102` import/export/reopen cases passed**. All 2,240 merged #52 case
 definitions, including the earlier 2,060, remain unchanged when compared by
 case name; no requirement depends on manifest ordering. The existing complete
@@ -597,7 +627,7 @@ and dirty/Undo states against the independent native footer targets. All 2,266
 inputs then passed the complete native import/export/reopen verifier. Reused
 baseline inputs were independently byte/SHA-checked against the complete gate.
 
-Final evidence: `~/.copilot/evidence/4wp-paged-20261113-gate-04/`;
+Merged #53 evidence: `~/.copilot/evidence/4wp-paged-20261113-gate-04/`;
 independent byte/SHA-verified backup:
 `~/.copilot/evidence-backups/4wp-paged-20261113-gate-04-410e05a3/`.
 `reproduction.json` records final build hashes, unchanged baseline input hashes
@@ -610,6 +640,38 @@ independently preserved in
 the preceding verified build is preserved in
 `~/.copilot/evidence-backups/4wp-paged-20261113-gate-03-410e05a3/`;
 the first, failed probe attempt is retained separately without a pass claim.
+
+Expanded increment verification: **433 unit tests, 137 browser tests and 2,283
+full-4D 21.2 `F0012102` import/export/reopen cases passed**. All 2,266 #53
+case definitions remain unchanged, compared by name. The 17 added cases are
+15 actual original/after-layout/edited/Undo/recovered-Redo browser downloads
+against three independent native originals/edit targets, plus two real headed
+Chromium Cancel downloads for the long paragraph/picture/formula document.
+The existing `--paged` Cancel gate was also repeated without replacing its
+baseline definitions.
+
+The complete generation gate passed 2,279 cases before the four Cancel
+captures. The final production build regenerated all 39 paged/expanded browser
+inputs, independently retaining the SHA-256 of the other 2,240 inputs, and the
+augmented 2,283-case manifest then passed the full native import/export/reopen
+verifier. Measured fragment bounds, exact text/whitespace, styled runs, per-page
+PDF token membership, list starts/levels/markers and image decode/size/failure
+are covered. Each native long-content reference is **three native pages versus
+four browser pages**, explicitly not native pagination parity. Real Cancel
+preserves the editor/paged DOM, selection, zoom, history and complete IndexedDB
+recovery record in both clean/Redo and dirty/Undo states.
+
+Final expanded evidence: `~/.copilot/evidence/4wp-expanded-20261114-gate-02/`;
+independent byte/SHA-verified backup:
+`~/.copilot/evidence-backups/4wp-expanded-20261114-gate-02/`.
+`reproduction.json` records the baseline, final build hashes, verification counts
+and definition/input comparisons. Full native originals/targets/reexports,
+native/browser PDFs, structured unit/browser results and actual Cancel captures
+remain outside the disposable worktree. The complete first generation gate is
+separately backed up at `~/.copilot/evidence-backups/4wp-expanded-20261114-gate-01/`;
+the final-export snapshot before native ownership was released remains labeled
+`~/.copilot/evidence-backups/4wp-expanded-20261114-gate-02-pending/`, without a
+final-pass claim. Each backup has its own `SHA256-MANIFEST.json`.
 
 ## Layout preview and browser printing (available on main)
 
@@ -689,7 +751,7 @@ Their 29 browser PDF sheets retain the checked content and paper geometry
 parity**. Real headed Chromium Cancel is also checked with complete recovery
 snapshots, not only simulated print events.
 
-For the paged increment, run
+For merged #53, run
 `node scripts/check-print-cancel.mjs /absolute/path/to/native-evidence --paged`
 once after the gate. It opens the actual headed Chromium print preview with
 the paged view active, compares the paged/editor DOM, selection, zoom and
@@ -697,6 +759,11 @@ complete recovery record across Cancel, and appends two captured downloads to
 `Input/cases.json`. Re-run the complete native import/export/reopen verifier
 after importing this augmented manifest in full 4D. The default command retains
 its continuous-print behavior; `--paged` outputs use separate names.
+For expanded pagination, also run the command with `--expanded`: it uses the
+independent long paragraph/inline-picture/formula original and edit target,
+captures actual Cancel downloads in clean/Redo and dirty/Undo states and retains
+the complete paged/editor/selection/IndexedDB comparison. Its separate
+`expanded-cancel-*` names do not replace any baseline case definitions.
 
 ## GitHub Pages demo
 

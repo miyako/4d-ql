@@ -12,7 +12,7 @@ import { createPrintProjection, printCapability } from './printing.js';
 import { areaLabel } from './header-messages.js';
 import { areaSides } from './headers-footers.js';
 import { objectFields, objectScope } from './objects.js';
-import { createPagedProjection } from './paged-preview.js';
+import { createPagedProjection, preparePagedProjection } from './paged-preview.js';
 
 let locale = detectLanguage();
 let theme = 'system';
@@ -1013,6 +1013,7 @@ let printing = false;
 let printRoot = null;
 let pagedGeneration = 0;
 let pagedProjection = null;
+let pagedReady = Promise.resolve();
 function refreshPagedPreview() {
   const generation = ++pagedGeneration;
   pagedProjection = null;
@@ -1020,15 +1021,18 @@ function refreshPagedPreview() {
   $('paged-surround').hidden = true;
   if (!$('paged-panel').open) return;
   $('paged-status').textContent = t('pagedLoading');
-  document.fonts.ready.then(() => {
+  pagedReady = document.fonts.ready.then(async () => {
     if (generation !== pagedGeneration || !$('paged-panel').open) return;
     try {
-      pagedProjection = createPagedProjection(model, messages[locale]);
+      const projection = await preparePagedProjection(model, messages[locale]);
+      if (generation !== pagedGeneration || !$('paged-panel').open) return;
+      pagedProjection = projection;
       $('paged-view').append(pagedProjection.root);
       pagedProjection.root.style.zoom = $('zoom').value;
       $('paged-surround').hidden = false;
       $('paged-status').textContent = `${pagedProjection.pages} · ${t('pagedSheet')}`;
     } catch (error) {
+      if (generation !== pagedGeneration || !$('paged-panel').open) return;
       if (!(error instanceof DocumentError)) console.error('Paged preview preparation failed', error);
       $('paged-status').textContent = t(error instanceof DocumentError ? error.code : 'pagedUnavailable');
     }
@@ -1051,7 +1055,8 @@ function preparePrint() {
   if (composition) throw new DocumentError('printFailed');
   let projection;
   if ($('paged-panel').open) {
-    try { projection = createPagedProjection(model, messages[locale]); }
+    try { projection = pagedProjection ? { ...pagedProjection, root: pagedProjection.root.cloneNode(true) } :
+      createPagedProjection(model, messages[locale]); }
     catch (error) {
       if (!(error instanceof DocumentError)) throw error;
       projection = createPrintProjection(model, messages[locale]);
@@ -1062,6 +1067,7 @@ function preparePrint() {
     }
   } else projection = createPrintProjection(model, messages[locale]);
   projection.root.id = 'print-document';
+  projection.root.style.zoom = '1';
   printRoot?.remove();
   printRoot = projection.root;
   document.body.append(printRoot);
@@ -1086,6 +1092,7 @@ $('print-open').onclick = async () => {
   printing = true;
   try {
     const printRevision = revision;
+    await pagedReady;
     const root = preparePrint();
     await document.fonts.ready;
     await Promise.all([...root.querySelectorAll('img')].map(image => image.decode()));
