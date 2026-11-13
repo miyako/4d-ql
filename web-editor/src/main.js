@@ -11,6 +11,7 @@ import { tabTypes, tabLeaders, defaultTab } from './flow-settings.js';
 import { createPrintProjection, printCapability } from './printing.js';
 import { areaLabel } from './header-messages.js';
 import { areaSides } from './headers-footers.js';
+import { objectFields, objectScope } from './objects.js';
 
 let locale = detectLanguage();
 let theme = 'system';
@@ -22,6 +23,8 @@ let columnDraft = null;
 let columnChanges = {};
 let headerDraft = null;
 let headerChanges = {};
+let objectDraft = null;
+let objectChanges = {};
 let tabDraft = null;
 let tabDefaultDraft = null;
 let tabDefaultChanges = {};
@@ -102,6 +105,16 @@ document.querySelector('#app').innerHTML = `
             <button data-i18n="headerPositionApply"></button>
           </form>
         </details>
+      </section>
+      <section id="object-panel" class="object-panel" aria-labelledby="object-heading" hidden>
+        <h3 id="object-heading" data-i18n="objects"></h3>
+        <p data-i18n="objectHelp"></p><p id="object-state" role="status"></p>
+        <details><summary data-i18n="objectMetadata"></summary><pre id="object-metadata"></pre></details>
+        <label><span data-i18n="pageUnits"></span><select id="object-units"><option>mm</option><option>cm</option><option>in</option><option>pt</option></select></label>
+        <form id="object-form" novalidate>
+          ${Object.keys(objectFields).map(field => `<label><span data-i18n="object${field[0].toUpperCase() + field.slice(1)}"></span><input id="object-${field}" data-label="object${field[0].toUpperCase() + field.slice(1)}" type="number" step="any" min="0" placeholder="auto"><span class="object-unit" aria-hidden="true"></span></label>`).join('')}
+          <button data-i18n="objectApply"></button>
+        </form>
       </section>
       <div class="toolbar" role="toolbar" aria-label="Text formatting">
         <button id="undo" data-label="undo">↶</button><button id="redo" data-label="redo">↷</button>
@@ -431,15 +444,17 @@ function renderScopes() {
   const state = model.headerAreas();
   const previous = $('header-section').value;
   $('editing-scope').replaceChildren(new Option(t('bodyScope'), 'body'),
-    ...state.areas.map(area => new Option(areaLabel(area, messages[locale]), area.name)));
+    ...state.areas.map(area => new Option(areaLabel(area, messages[locale]), area.name)),
+    ...model.storedObjects().map(item => new Option(`${t(item.kind)} · ${item.id}`, item.name)));
   $('editing-scope').value = model.scope;
   $('header-section').replaceChildren(...state.sections.map(section => new Option(`${t('headerSection')} ${section.index}`, section.index)));
   const area = state.areas.find(area => area.name === model.scope);
   $('header-section').value = String(state.sections.some(section => String(section.index) === previous) ? previous : area?.section ?? 1);
-  const reason = state.reason || (model.scope !== 'body' ? model.headerReason() : null);
+  const reason = objectScope(model.scope) ? model.objectState().reason : state.reason || (model.scope !== 'body' ? model.headerReason() : null);
   $('scope-protection').hidden = !reason;
   $('scope-protection').textContent = reason ? t(reason) : '';
-  $('scope-state').textContent = area ? areaLabel(area, messages[locale]) : t('bodyScope');
+  const object = model.objectState();
+  $('scope-state').textContent = object.item ? `${t(object.item.kind)} · ${object.item.id}` : area ? areaLabel(area, messages[locale]) : t('bodyScope');
   $('header-create').disabled = Boolean(state.reason || state.variants.some(name => name.match(/^section(\d+)/)[1] === $('header-section').value) || state.areas.some(item =>
     item.section === Number($('header-section').value) && (item.variant || item.kind === $('header-kind').value)));
   $('header-remove').disabled = !area || Boolean(area.variant || reason ||
@@ -460,7 +475,36 @@ function renderScopes() {
   $('header-position-state').textContent = position.reason ? t(position.reason) : areaLabel(position.area, messages[locale]);
   for (const control of $('header-position-form').querySelectorAll('input,button')) control.disabled = Boolean(position.reason);
   headerInputs();
+  $('object-panel').hidden = !objectScope(model.scope);
+  objectDraft = object.item ? { ...object.geometry } : null;
+  objectChanges = {};
+  $('object-state').textContent = object.geometryReason ? t(object.geometryReason) : t('objectGeometry');
+  $('object-metadata').textContent = JSON.stringify(Object.fromEntries(Object.entries(object.values).filter(([key]) =>
+    key.startsWith('-d4-anchor-') || key === '-d4-img-display-mode')), null, 2);
+  for (const control of $('object-form').querySelectorAll('input,button')) control.disabled = Boolean(object.geometryReason);
+  objectInputs();
 }
+
+function objectInputs() {
+  $('object-units').value = pageUnit;
+  for (const element of document.querySelectorAll('.object-unit')) element.textContent = pageUnit;
+  for (const field of Object.keys(objectFields)) {
+    const value = objectDraft?.[field];
+    try { $('object-' + field).value = value && value !== 'auto' ? pageDisplay(value, pageUnit) : ''; }
+    catch (error) {
+      if (!(error instanceof DocumentError)) throw error;
+      $('object-' + field).value = '';
+    }
+  }
+}
+for (const field of Object.keys(objectFields)) $('object-' + field).oninput = event => {
+  objectChanges[field] = objectDraft[field] = `${event.target.value}${pageUnit}`;
+};
+$('object-form').onsubmit = event => {
+  event.preventDefault();
+  if (Object.keys(objectChanges).length) perform('objectGeometry', () => model.setObjectGeometry(objectChanges));
+};
+$('object-units').onchange = event => changeUnits(event.target.value);
 
 function headerInputs() {
   $('header-units').value = pageUnit;
@@ -699,6 +743,10 @@ $('paper').addEventListener('focusin', event => {
   }
 });
 $('paper').addEventListener('pointerdown', clearBookmarkHighlight);
+$('paper').addEventListener('mediaerror', () => {
+  if (objectScope(model.scope)) renderScopes();
+  updateStatus();
+});
 $('paper').addEventListener('focusout', event => { if ($('bookmarks-panel').contains(event.relatedTarget)) captureSelection(); });
 $('bookmarks-panel').addEventListener('pointerdown', () => captureSelection());
 $('paper').addEventListener('click', event => {
@@ -1384,6 +1432,7 @@ $('tab-default-type').onchange = event => { tabDefaultChanges.type = tabDefaultD
 $('tab-default-leader').onchange = event => { tabDefaultChanges.leader = tabDefaultDraft.leader = event.target.value; };
 function changeUnits(unit) {
   try {
+    if (objectDraft) for (const value of Object.values(objectDraft)) if (value !== 'auto') pagePoints(value);
     if (headerDraft) for (const side of areaSides) pagePoints(headerDraft[side]);
     if (pageDraft) for (const field of pageFields) pagePoints(pageDraft[field]);
     if (columnDraft) pagePoints(columnDraft.gap);
@@ -1397,8 +1446,9 @@ function changeUnits(unit) {
     if (pageDraft) pageInputs();
     if (columnDraft) columnInputs();
     headerInputs();
+    objectInputs();
   } catch (error) {
-    $('page-units').value = $('tab-units').value = $('header-units').value = pageUnit;
+    $('page-units').value = $('tab-units').value = $('header-units').value = $('object-units').value = pageUnit;
     showError(error);
   }
 }

@@ -148,9 +148,9 @@ export function validateAreaPosition(values, geometry) {
     pagePoints(values.top) + pagePoints(values.bottom) >= height) throw new DocumentError('headerPositionInvalid');
 }
 
-export function headerContentReason(model, root) {
-  if (root && (!root.textContent.isWellFormed() || Object.keys(model.values(root)).some(key => /^-d4-(anchor|ref|protected)/.test(key)) ||
-    model.values(root).display === 'none')) return 'headerUnsupported';
+export function headerContentReason(model, root, object = false) {
+  if (root && (!root.textContent.isWellFormed() || !object && (Object.keys(model.values(root)).some(key => /^-d4-(anchor|ref|protected)/.test(key)) ||
+    model.values(root).display === 'none'))) return 'headerUnsupported';
   if (!root || !root.children.length || [...root.childNodes].some(node =>
     node.nodeType === 3 && node.data.trim() || node.nodeType === 1 && node.localName !== 'p')) return 'headerUnsupported';
   const check = element => {

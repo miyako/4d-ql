@@ -6,8 +6,7 @@ const file = bytes => ({ size: bytes.length, arrayBuffer: async () => bytes.buff
 describe('image admission before browser decoding', () => {
   it('rejects file and pixel budgets before decoding or reading oversized files', async () => {
     await expect(readImage({ size: 8 * 1024 * 1024 + 1 })).rejects.toThrow('imageSize');
-    const png = new Uint8Array(24);
-    png.set([137, 80, 78, 71]);
+    const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=='), char => char.charCodeAt(0));
     const view = new DataView(png.buffer);
     view.setUint32(16, 10000);
     view.setUint32(20, 10000);

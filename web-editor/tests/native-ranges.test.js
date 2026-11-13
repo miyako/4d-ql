@@ -270,7 +270,7 @@ describe('range-safe transactions', () => {
 
   it('handles inline images, movement and adjacent empty cursor slots', () => {
     const model = make();
-    model.insertImage(selection(0, 3), 'data:image/png;base64,AA==', 48, 32, 'Test');
+    model.insertImage(selection(0, 3), 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 48, 32, 'Test');
     expect(ranges(model)).toEqual({ span: [3, 7], point: [4, 4], all: [1, 11] });
     render(model);
     const index = model.runs.findIndex(node => node.data === 'defghi');

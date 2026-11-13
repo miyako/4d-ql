@@ -6,6 +6,8 @@ import { paragraphBreak, breakProperties } from './sections.js';
 import { validateColumns, parseTabs, tabDeclarations, tabProperties, defaultTab } from './flow-settings.js';
 import { projectLayout } from './layout-preview.js';
 import { areaClass, headerAreas, headerContentReason, outsideArea, removeAreaRules, variantPlan, areaRules, areaPosition, areaSides, validateAreaPosition } from './headers-footers.js';
+import { mediaSource } from './media-source.js';
+import { storedObjects, objectState, objectScope, objectFields, outsideObject, validateObjectGeometry, setTextBoxGeometry } from './objects.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
@@ -40,20 +42,6 @@ function validBookmark(value) {
 // Editor-only cursor slots; these are not 4D bookmark character offsets.
 function selectionLength(node) {
   return node.nodeType === 3 ? node.length : ['img', 'br'].includes(node.localName) ? 1 : 0;
-}
-
-function base64(bytes) {
-  let binary = '';
-  for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
-  return btoa(binary);
-}
-
-function rasterType(bytes) {
-  if (bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71) return 'png';
-  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'jpeg';
-  if (bytes[0] === 71 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 56) return 'gif';
-  if (String.fromCharCode(...bytes.subarray(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP') return 'webp';
-  return null;
 }
 
 function cleanPaste(html, plain, owner) {
@@ -250,16 +238,36 @@ export class WriteProDocument {
   get dirty() { return this.serialize() !== this.initial; }
   get scopeRoot() {
     return this.scope === 'body' ? this.document.querySelector('body') :
+      objectScope(this.scope) ? this.storedObjects().find(item => item.name === this.scope)?.element || null :
       [...this.document.querySelectorAll('body > div')].find(element => element.getAttribute('class') === this.scope) || null;
   }
   get editingReadOnly() { return this.scope === 'body' ? this.readOnly : Boolean(this.headerReason()); }
+  storedObjects() { return storedObjects(this); }
+  objectState(name = this.scope) { return objectState(this, name); }
+  setObjectGeometry(changes) {
+    const state = this.objectState();
+    if (state.geometryReason) throw new DocumentError(state.geometryReason);
+    validateObjectGeometry(changes);
+    if (Object.entries(changes).every(([key, value]) => value === state.geometry[key])) return;
+    this.mutate('objectGeometry', () => {
+      if (state.item.kind === 'textBox') {
+        setTextBoxGeometry(this.document, state.item.element, changes);
+        this.refresh();
+      } else for (const [field, value] of Object.entries(changes)) setProperty(state.item.element, objectFields[field], value);
+    });
+  }
   headerAreas() { return headerAreas(this); }
   headerReason() {
+    if (objectScope(this.scope)) {
+      const state = this.objectState();
+      return state.reason || (state.item?.kind !== 'textBox' ? 'objectProtected' : null);
+    }
     const { areas, reason } = this.headerAreas();
     return reason || headerContentReason(this, areas.find(area => area.name === this.scope)?.element);
   }
   setScope(scope) {
-    if (scope !== 'body' && !this.headerAreas().areas.some(area => area.name === scope)) throw new DocumentError('headerAssociation');
+    if (typeof scope !== 'string' || scope !== 'body' &&
+      !(objectScope(scope) ? this.storedObjects().some(item => item.name === scope) : this.headerAreas().areas.some(area => area.name === scope))) throw new DocumentError('headerAssociation');
     this.scope = scope;
     this.selection = null;
     this.endGroup();
@@ -841,6 +849,7 @@ export class WriteProDocument {
   get tracksNativeEdits() { return this.hasBookmarks || this.formulaTracking; }
 
   protected(element, allowFormulas = false) {
+    if (element?.localName === 'img' && this.imageInfo(element).wrapped) return true;
     const scoped = this.scope !== 'body';
     const root = scoped ? this.scopeRoot : null;
     if (scoped && (!root?.contains(element) || this.headerReason())) return true;
@@ -892,9 +901,13 @@ export class WriteProDocument {
       const structure = structureArea !== null;
       if (structure && !(variant ? structureNames.every(name => /^section[1-9]\d*(First|Left|Right)(Header|Footer)?$/.test(name)) :
         label === 'headerSetup' && areaClass.test(structureArea))) throw new DocumentError('headerAssociation');
-      const header = !restore && !structure && label !== 'headerPosition' && this.scope !== 'body';
+      const objectGeometry = !restore && label === 'objectGeometry';
+      const object = !restore && objectScope(this.scope) && !structure && label !== 'headerPosition';
+      if (objectGeometry && (!object || this.objectState().geometryReason)) throw new DocumentError('objectProtected');
+      const objectBefore = object ? outsideObject(this.document, this.scope.slice(7), objectGeometry) : null;
+      const header = !restore && !structure && label !== 'headerPosition' && !objectGeometry && this.scope !== 'body';
       if (header && (this.headerReason() || !['typing', 'format', 'paragraph', 'style', 'replace', 'cut', 'paste', 'link'].includes(label))) throw new DocumentError('headerUnsupported');
-      const outside = header || structure ? outsideArea(this.document, structureNames || this.scope, structure) : null;
+      const outside = !object && (header || structure) ? outsideArea(this.document, structureNames || this.scope, structure) : null;
       const geometry = label === 'pageSetup' || label === 'sectionSetup' || label === 'columnsSetup' || label === 'headerPosition';
       const breaks = () => [...this.document.querySelectorAll('body p,body li')].flatMap(node => {
         const values = this.values(node);
@@ -904,16 +917,17 @@ export class WriteProDocument {
       const breaksBefore = !restore && !geometry && label !== 'breakEdit' ? breaks() : null;
       const bodyBefore = geometry ? this.document.querySelector('body').outerHTML : null;
       const bookmarksBefore = geometry ? [...this.document.querySelectorAll('meta[name="bookmarks"]')].map(node => node.outerHTML).join('') : null;
-      if (!restore && !geometry && !header && !structure && this.readOnly) throw new DocumentError('protected');
-      const metadata = restore || geometry || header || structure ? { bookmarks: {} } : nativeMetadata(this.document);
+      if (!restore && !geometry && !header && !structure && !objectGeometry && this.readOnly) throw new DocumentError('protected');
+      const metadata = restore || geometry || header || structure || objectGeometry ? { bookmarks: {} } : nativeMetadata(this.document);
       const objects = restore ? [] : this.formulaElements().map(node => ({ node, xml: node.outerHTML }));
-      const tracked = !restore && !geometry && !header && !structure && (this.tracksNativeEdits || label === 'bookmark' || label === 'breakEdit');
+      const tracked = !restore && !geometry && !header && !structure && !objectGeometry && (this.tracksNativeEdits || label === 'bookmark' || label === 'breakEdit');
       this.nativeTransaction = tracked ? {
         text: this.nativeView().text,
         bookmarks: metadata.bookmarks, meta: metadata.meta,
       } : null;
       const result = change();
-      if (header && (this.headerReason() || outsideArea(this.document, this.scope) !== outside)) throw new DocumentError('headerUnsupported');
+      if (object && (this.objectState().reason || outsideObject(this.document, this.scope.slice(7), objectGeometry) !== objectBefore)) throw new DocumentError('objectProtected');
+      if (header && (this.headerReason() || !object && outsideArea(this.document, this.scope) !== outside)) throw new DocumentError('headerUnsupported');
       if (structure && (this.headerAreas().reason || outsideArea(this.document, structureNames, true) !== outside)) throw new DocumentError('headerAssociation');
       if (breaksBefore) {
         const afterBreaks = breaks();
@@ -939,8 +953,8 @@ export class WriteProDocument {
           JSON.stringify(nativeMetadata(this.document).bookmarks) !== JSON.stringify(this.nativeTransaction.bookmarks)) throw new DocumentError('protected');
       }
       const after = this.serialize();
-      const hasBookmarks = restore || geometry || header || structure ? this.hasBookmarks : Object.keys(nativeMetadata(this.document).bookmarks).length > 0;
-      if (!restore && !geometry && !header && !structure && !tracked && hasBookmarks) throw new DocumentError('protected');
+      const hasBookmarks = restore || geometry || header || structure || objectGeometry ? this.hasBookmarks : Object.keys(nativeMetadata(this.document).bookmarks).length > 0;
+      if (!restore && !geometry && !header && !structure && !objectGeometry && !tracked && hasBookmarks) throw new DocumentError('protected');
       if (after !== before) {
         parse(after);
         const resources = Object.entries(this.files).reduce((sum, [name, bytes]) => sum + (name === this.entry ? 0 : bytes.length), 0);
@@ -1099,7 +1113,8 @@ export class WriteProDocument {
     const areaXML = () => new Map([...this.document.querySelectorAll('body > div')]
       .filter(element => areaClass.test(element.getAttribute('class') || ''))
       .map(element => [element.getAttribute('class'), element.outerHTML +
-        JSON.stringify(this.styles.filter(rule => rule.selector === `div.${element.getAttribute('class')}`).map(rule => rule.values))]));
+        JSON.stringify(this.styles.filter(rule => rule.selector === `div.${element.getAttribute('class')}`).map(rule => rule.values))])
+      .concat(this.storedObjects().map(item => [item.name, item.element.outerHTML + JSON.stringify(this.values(item.element))])));
     const areasBefore = areaXML();
     const previousScope = this.scope;
     (redo ? this.undoLabels : this.redoLabels).push(labels.pop() || 'edit');
@@ -1116,7 +1131,8 @@ export class WriteProDocument {
     if (this.selection) {
       let block = this.document.querySelector('body');
       for (const index of this.selection.start.path) block = block?.children[index];
-      const scope = block?.closest('div')?.getAttribute('class')?.match(areaClass)?.[0] || 'body';
+      const object = this.storedObjects().find(item => item.element.contains(block));
+      const scope = object?.name || block?.closest('div')?.getAttribute('class')?.match(areaClass)?.[0] || 'body';
       if (scope !== this.scope) this.selection = null;
     }
     return this.selection ? { selection: this.selection } : null;
@@ -1769,19 +1785,59 @@ export class WriteProDocument {
     });
   }
 
-  imageSource(image) {
+  imageInfo(image) {
     const src = image.getAttribute('src') || '';
-    if (/^data:image\/(?:png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(src)) return src;
-    if (!src || /^(?:[a-z][\w+.-]*:|\/\/|\/)/i.test(src)) return null;
     if (this.resourceCache.has(src)) return this.resourceCache.get(src);
-    let path;
-    try { path = decodeURIComponent(new URL(src, `https://archive.invalid/${this.entry}`).pathname.slice(1)); }
-    catch { return null; }
-    const bytes = this.files[path];
-    const type = bytes && rasterType(bytes);
-    const result = type ? `data:image/${type};base64,${base64(bytes)}` : null;
-    if (result) this.resourceCache.set(src, result);
+    if (this.resourceCache.size >= 512) return { src: null, reason: 'mediaBudget' };
+    let result = mediaSource(src, this.files, this.entry);
+    const admitted = [...this.resourceCache.values()].filter(info => info.src);
+    if (result.src && (admitted.length >= 128 ||
+      admitted.reduce((sum, info) => sum + info.width * info.height, 0) + result.width * result.height > 80_000_000 ||
+      admitted.reduce((sum, info) => sum + info.size, 0) + result.size > 16 * 1024 * 1024)) result = { src: null, reason: 'mediaBudget' };
+    this.resourceCache.set(src, result);
     return result;
+  }
+
+  imageSource(image) { return this.imageInfo(image).src; }
+
+  projectImage(source, labels) {
+    const info = this.imageInfo(source);
+    const badge = document.createElement('span');
+    badge.className = 'preserved-object';
+    if (!info.src) {
+      badge.textContent = `${labels.image}: ${labels[info.reason] || labels.mediaUnsupported}`;
+      return badge;
+    }
+    const image = document.createElement('img');
+    image.src = info.src;
+    image.alt = source.getAttribute('alt') || labels.image;
+    image.loading = 'lazy';
+    const values = this.values(source);
+    for (const property of ['width', 'height']) {
+      try {
+        const points = pagePoints(values[property]);
+        if (points > 0 && points <= 10000) image.style[property] = `${points}pt`;
+      } catch (error) { if (!(error instanceof DocumentError)) throw error; }
+    }
+    image.style.maxWidth = '100%';
+    image.style.maxHeight = '1600px';
+    const mode = (values['-d4-img-display-mode'] || 'scaledToFit').toLowerCase();
+    image.style.objectFit = mode.startsWith('proportional') ? 'contain' : mode.startsWith('truncated') ? 'none' : 'fill';
+    image.style.objectPosition = mode.endsWith('centered') ? 'center' : 'left top';
+    image.onerror = () => {
+      this.resourceCache.set(source.getAttribute('src') || '', { src: null, reason: 'mediaMalformed' });
+      badge.textContent = `${labels.image}: ${labels.mediaMalformed}`;
+      for (const attribute of ['data-image', 'role', 'tabindex']) badge.removeAttribute(attribute);
+      badge.setAttribute('aria-label', labels.mediaMalformed);
+      badge.dispatchEvent(new CustomEvent('mediaerror', { bubbles: true }));
+    };
+    badge.append(image);
+    if (info.wrapped || !['scaledtofit', 'proportional', 'proportionalcentered', 'truncated', 'truncatedcentered'].includes(mode)) {
+      const notice = document.createElement('small');
+      notice.textContent = labels.mediaProjection;
+      badge.append(notice);
+    }
+    return badge;
   }
 
   insertImage(selection, src, width, height, alt) {
@@ -2029,35 +2085,26 @@ export class WriteProDocument {
           const badge = document.createElement('div');
           this.projection.set(child, badge);
           badge.className = 'preserved-object';
-          badge.textContent = labels.preserved;
+          const object = this.storedObjects().find(item => item.element === child);
+          badge.textContent = object ? `${labels[object.kind]} · ${object.id} · ${labels.objectHelp}` : labels.preserved;
           target.append(badge);
           continue;
         }
         const native = Object.keys(values).some(key => /^-d4-(ref|anchor)/.test(key));
         if (native || tag === 'img' || !SAFE_TAGS.has(tag) || child.namespaceURI !== XHTML) {
-          const badge = document.createElement('span');
+          const badge = tag === 'img' && !native ? this.projectImage(child, labels) : document.createElement('span');
           this.projection.set(child, badge);
           badge.className = 'preserved-object';
-          badge.textContent = tag === 'img' ? labels.image : labels.preserved;
           if (tag === 'img' && !native) {
-            const src = this.imageSource(child);
-            if (src) {
-              const image = document.createElement('img');
-              image.src = src;
-              image.alt = child.getAttribute('alt') || labels.image;
-              image.loading = 'lazy';
-              for (const [property, value] of Object.entries(values)) {
-                if (['width', 'height'].includes(property) && /^[\d.]+(?:pt|px|%)$/.test(value)) image.style.setProperty(property, value);
-              }
+            if (this.imageSource(child)) {
               badge.dataset.image = this.images.push(child) - 1;
               if (!this.protected(child)) {
                 badge.tabIndex = 0;
                 badge.setAttribute('role', 'button');
                 badge.setAttribute('aria-label', labels.image);
               }
-              badge.replaceChildren(image);
             }
-          }
+          } else badge.textContent = tag === 'img' ? labels.image : labels.preserved;
           target.append(badge);
           continue;
         }
@@ -2109,13 +2156,24 @@ export class WriteProDocument {
         }
       }
     };
-    project(body, host);
+    if (objectScope(this.scope) && body.localName === 'img') host.append(this.projectImage(body, labels));
+    else project(body, host);
     if (this.scope === 'body') projectLayout(this, host);
     else {
       host.classList.remove('layout-preview');
       for (const property of ['width', 'min-width', 'max-width', 'min-height', 'padding']) host.style.removeProperty(property);
       host.classList.add('header-paper');
+      if (objectScope(this.scope)) {
+        const values = this.values(body);
+        for (const [property, target] of [['width', 'width'], ['height', 'min-height']]) {
+          try {
+            const points = pagePoints(values[property]);
+            if (points > 0 && points <= 1200) host.style.setProperty(target, `${points}pt`);
+          } catch (error) { if (!(error instanceof DocumentError)) throw error; }
+        }
+      }
     }
     host.classList.toggle('header-paper', this.scope !== 'body');
+    host.classList.toggle('object-paper', objectScope(this.scope));
   }
 }

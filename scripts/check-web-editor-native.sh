@@ -46,6 +46,24 @@ with (root / logfile).open("w") as log:
         raise SystemExit(f"Full 4D exited with {code}; inspect native.log. No native pass is claimed.")
 PY
 }
+run_4d wp_media_check media-native.log
+python3 - "$DEST" <<'PY'
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1]) / "Output"
+errors = json.loads((root / "media-errors.json").read_text())
+report = json.loads((root / "media-report.json").read_text())
+if errors or report.get("version") != "F0012102" or len(report.get("cases", [])) != 7:
+    raise SystemExit("Native media probe failed: " + json.dumps(errors, ensure_ascii=False))
+for case in report["cases"]:
+    stages = case["stages"]
+    if len(stages) != 7 or len(stages[0]["stats"]["objects"]) != 2:
+        raise SystemExit("Missing native media creation/operation evidence.")
+    if any(stage["stats"]["body"] != stages[0]["stats"]["body"] for stage in stages):
+        raise SystemExit("Native object mutation changed the body tape or bookmarks.")
+PY
 run_4d wp_header_check header-native.log
 [ -s "$DEST/Output/header-report.json" ] || { echo "Full 4D produced no header report; inspect $DEST/header-native.log." >&2; exit 1; }
 python3 - "$DEST" <<'PY'
