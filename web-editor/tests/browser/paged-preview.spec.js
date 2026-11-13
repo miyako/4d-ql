@@ -45,6 +45,128 @@ function areas(section = 1) {
     `<div class="section${section}${variant}${kind}" style="visibility:hidden;height:0"><p>S${section}${variant || 'Default'}${kind}</p></div>`)).join('');
 }
 
+test('rectangular tables split at measured rows with stable unequal columns, repeated native headers and matching print', async ({ page }, testInfo) => {
+  const rows = Array.from({ length: 30 }, (_, index) => `<tr><td class="narrow"><p><span style="font-weight:bold;color:#135724">ROW${index}</span></p></td><td class="wide"><p>VALUE${index}</p></td></tr>`).join('');
+  await open(page, 'table{border-collapse:collapse;width:200pt;margin:3pt 0}td{border:1pt solid #234567;padding:3pt}td.narrow{width:70pt}td.wide{width:130pt}tr.header{background-color:#ddeeff;-d4-header:true}',
+    `<p>BEFORE</p><table><tr class="header"><td class="narrow"><p>HEADERA</p></td><td class="wide"><p>HEADERB</p></td></tr>${rows}</table><p>AFTER</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-view .browser-page')).toHaveCount(4);
+  const bodies = page.locator('#paged-view .browser-page .page-body');
+  const texts = await bodies.allTextContents();
+  expect(texts.length).toBeGreaterThan(2);
+  const expected = texts.map(text => text.match(/ROW\d+/g) || []);
+  expect(expected.map(rows => rows.length)).toEqual([7, 8, 8, 7]);
+  expect(expected.flat()).toEqual(Array.from({ length: 30 }, (_, i) => `ROW${i}`));
+  expect(texts.join('').match(/VALUE\d+/g)).toEqual(Array.from({ length: 30 }, (_, i) => `VALUE${i}`));
+  const widths = await bodies.locator('table').evaluateAll(tables => tables.map(table =>
+    [...table.rows[0].cells].map(cell => cell.getBoundingClientRect().width)));
+  for (const width of widths) expect(width).toEqual(widths[0]);
+  expect(widths[0][1]).toBeGreaterThan(widths[0][0]);
+  expect(await bodies.locator('table').evaluateAll(tables => tables.every(table => {
+    const header = getComputedStyle(table.rows[0]);
+    return header.backgroundColor === 'rgb(221, 238, 255)' &&
+      [...table.querySelectorAll('td')].every(cell => {
+        const style = getComputedStyle(cell);
+        return style.borderTopStyle === 'solid' && parseFloat(style.borderTopWidth) > 0 &&
+          style.paddingTop === '4px';
+      }) && [...table.querySelectorAll('td span[style*="font-weight"]')].every(span => {
+        const style = getComputedStyle(span);
+        return style.fontWeight === '700' && style.color === 'rgb(19, 87, 36)';
+      });
+  }))).toBe(true);
+  await expect(bodies.locator('table')).toHaveCount(texts.length);
+  await expect(bodies.locator('tr').filter({ hasText: 'HEADERA' })).toHaveCount(texts.length);
+  expect(await bodies.evaluateAll(elements => elements.every(body => {
+    const bounds = body.getBoundingClientRect();
+    const rows = [...body.querySelectorAll('tr')];
+    return rows.every(row => row.getBoundingClientRect().bottom <= bounds.bottom + .25) &&
+      (!rows.length || rows.length > 1);
+  }))).toBe(true);
+  const output = await pdf(page, testInfo, 'table-rows');
+  expect(output.map(sheet => sheet.words.filter(word => /^ROW\d+$/.test(word)))).toEqual(expected);
+  expect(output.every(sheet => sheet.words.includes('HEADERA'))).toBe(true);
+  expect(output.flatMap(sheet => sheet.words).filter(word => word === 'AFTER')).toHaveLength(1);
+  await page.emulateMedia({ media: 'print' });
+  await page.evaluate(() => dispatchEvent(new Event('beforeprint')));
+  expect(await page.locator('#print-document table').evaluateAll(tables => tables.map(table =>
+    [...table.rows[0].cells].map(cell => cell.getBoundingClientRect().width)))).toEqual(widths);
+  await page.evaluate(() => dispatchEvent(new Event('afterprint')));
+  await page.emulateMedia({ media: 'screen' });
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('table projection stays derived across mixed sections, zoom, resize, print Cancel and recovered Redo', async ({ page }, testInfo) => {
+  const rows = Array.from({ length: 25 }, (_, i) => `<tr><td><p>CELL${i}</p></td><td><p>TEXT${i}</p></td></tr>`).join('');
+  await open(page, `${variants()}${variants(2)}div.section2{-d4-page-orientation:landscape}table{border-collapse:collapse;width:100%}td{border:1pt solid #123456;padding:2pt}`,
+    `<p>ORIGINAL</p><table>${rows}</table><p style="page-break-after:always;-d4-section-break-after:always">SECTIONEND</p><p>SECOND</p><table>${rows.replaceAll('CELL', 'NEXTCELL')}</table><p>TAIL</p>${areas()}${areas(2)}`);
+  await page.locator('#paper [contenteditable]').first().fill('EDITED');
+  const edited = contents(await bytes(page));
+  await page.locator('#undo').click();
+  const undone = await bytes(page);
+  await preview(page);
+  const output = await pdf(page, testInfo, 'table-sections');
+  const bbox = execFileSync('pdftotext', ['-bbox', testInfo.outputPath('table-sections.pdf'), '-'], { encoding: 'utf8' });
+  for (const token of ['CELL0', 'NEXTCELL0']) {
+    const expectedX = await page.locator('#paged-view table .text-run').filter({ hasText: new RegExp(`^${token}$`) }).evaluate(run => {
+      const range = document.createRange();
+      range.selectNodeContents(run);
+      return (range.getBoundingClientRect().left - run.closest('.browser-page').getBoundingClientRect().left) * .75;
+    });
+    const printedX = Number(new RegExp(`<word xMin="([\\d.]+)"[^>]*>${token}</word>`).exec(bbox)[1]);
+    expect(printedX).toBeCloseTo(expectedX, 0);
+  }
+  const texts = await page.locator('#paged-view .browser-page').allTextContents();
+  expect(output.slice(0, texts.length).map(sheet => [sheet.width, sheet.height])).toEqual(
+    await page.locator('#paged-view .browser-page').evaluateAll(sheets => sheets.map(sheet =>
+      [parseFloat(sheet.style.width), parseFloat(sheet.style.height)])));
+  expect(texts.join('')).toContain('S2FirstHeader');
+  await page.locator('#settings-toggle').click();
+  await page.locator('#zoom').selectOption('2');
+  await page.locator('#theme').selectOption('dark');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await pdf(page, testInfo, 'table-mobile')).toEqual(output);
+  await page.evaluate(() => { window.print = () => { dispatchEvent(new Event('beforeprint')); dispatchEvent(new Event('afterprint')); }; });
+  await page.locator('#print-toggle').click();
+  await page.locator('#print-open').click();
+  expect(await bytes(page)).toEqual(undone);
+  await page.reload();
+  await expect(page.locator('#recovery-notice')).toBeVisible();
+  await page.locator('#redo').click();
+  expect(contents(await bytes(page))).toEqual(edited);
+  await preview(page);
+  await expect(page.locator('#paged-view')).toContainText('EDITED');
+});
+
+test('intrinsic native column geometry is not stretched to the page body width', async ({ page }) => {
+  await open(page, 'table{border-collapse:collapse}td{padding:3pt;border:1pt solid #234567}td.a{width:60pt}td.b{width:120pt}',
+    '<p>BEFORE</p><table><tr><td class="a"><p>A</p></td><td class="b"><p>B</p></td></tr><tr><td class="a"><p>C</p></td><td class="b"><p>D</p></td></tr></table><p>AFTER</p>');
+  const geometry = table => ({
+    width: table.getBoundingClientRect().width,
+    columns: [...table.rows[0].cells].map(cell => cell.getBoundingClientRect().width),
+  });
+  const original = await page.locator('#paper table').evaluate(geometry);
+  await preview(page);
+  const projected = await page.locator('#paged-view table').evaluate(geometry);
+  expect(projected).toEqual(original);
+});
+
+test('oversized rows, spanning cells and table-cell lists fall back atomically with the entire table retained', async ({ page }) => {
+  for (const [table, reason] of [
+    ['<table><tr><td><p>' + 'TOOBIG<br/>'.repeat(30) + '</p></td></tr></table>', 'pagedOverflow'],
+    ['<table><tr><td colspan="2"><p>MERGED</p></td></tr><tr><td><p>A</p></td><td><p>B</p></td></tr></table>', 'pagedTables'],
+    ['<table><tr><td><ul><li>LIST</li></ul></td></tr></table>', 'pagedTables'],
+  ]) {
+    await open(page, '', `<p>BEFORE</p>${table}<p>TAIL</p>`);
+    const before = await bytes(page);
+    await preview(page);
+    await expect(page.locator('#paged-status')).toHaveText(messages.en[reason]);
+    await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+    await expect(page.locator('#paper')).toContainText('TAIL');
+    expect(await bytes(page)).toEqual(before);
+  }
+});
+
 test('automatic page boundaries retain each paragraph once and PDF matches actual preview pages', async ({ page }, testInfo) => {
   const body = Array.from({ length: 40 }, (_, i) => `<p>LINE${i} WORD</p>`).join('');
   await open(page, '', body);

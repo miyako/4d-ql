@@ -146,6 +146,9 @@ if errors or report.get("version") != "F0012102" or len(report.get("cases", []))
 expanded = json.loads((root / "expanded-report.json").read_text())
 if expanded.get("version") != "F0012102" or len(expanded.get("cases", [])) != 3:
     raise SystemExit("Missing independent expanded pagination originals/targets.")
+tables = json.loads((root / "paged-table-report.json").read_text())
+if tables.get("version") != "F0012102" or len(tables.get("cases", [])) != 3:
+    raise SystemExit("Missing independent paged table originals, getters and PDF references.")
 PY
 run_4d wp_range_check range-native.log
 [ -s "$DEST/Output/range-report.json" ] || { echo "Full 4D produced no range report; inspect $DEST/range-native.log." >&2; exit 1; }

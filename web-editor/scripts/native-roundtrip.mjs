@@ -17,7 +17,7 @@ import { preparePrintCases } from './native-print-cases.mjs';
 import { prepareHeaderCases, prepareVariantCases, verifyHeaderCase } from './native-header-cases.mjs';
 import { prepareMediaCases, verifyMediaCase } from './native-media-cases.mjs';
 import { prepareObjectCases, verifyObjectCase } from './native-object-cases.mjs';
-import { preparePagedCases } from './native-paged-cases.mjs';
+import { preparePagedCases, verifyPagedTableCase } from './native-paged-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtures = resolve(root, '../Tests/FourDFileKitTests/Fixtures/WritePro');
@@ -279,6 +279,7 @@ async function verify() {
     if (entry.page) await verifyPageCase(directory, entry, actual);
     if (entry.section) await verifySectionCase(directory, entry, actual);
     if (entry.flow) await verifyFlowCase(directory, entry, actual);
+    if (entry.pagedTable) verifyPagedTableCase(entry, actual);
     if (entry.header) await verifyHeaderCase(directory, entry, actual);
     if (entry.media) await verifyMediaCase(directory, entry, actual);
     if (entry.objects) await verifyObjectCase(directory, entry, actual);

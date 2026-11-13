@@ -5,6 +5,44 @@ const XHTML = 'http://www.w3.org/1999/xhtml';
 const INLINE = new Set(['span', 'a', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'br', 'img']);
 const textValue = text => text.replace(/\u200b/g, '');
 
+export function nativeTableGrid(element) {
+  const fail = () => {
+    const error = new DocumentError('protected');
+    error.reason = 'bookmarkTableShape';
+    throw error;
+  };
+  const children = node => [...node.childNodes].filter(child => child.nodeType !== 8 && !(child.nodeType === 3 && !child.data.length));
+  const rows = children(element);
+  if (!rows.length || rows.some(row => row.localName !== 'tr')) fail();
+  const span = (cell, name) => {
+    const value = cell.getAttribute(name);
+    if (value !== null && !/^[1-9]\d*$/.test(value)) fail();
+    return Number(value || 1);
+  };
+  const columns = [...rows[0].children].reduce((count, cell) => count + span(cell, 'colspan'), 0);
+  if (!columns || columns > 1000) fail();
+  const grid = rows.map(() => Array(columns).fill(false));
+  let merged = false;
+  for (const [index, row] of rows.entries()) {
+    let column = 0;
+    for (const cell of children(row)) {
+      if (!['td', 'th'].includes(cell.localName)) fail();
+      while (grid[index][column]) column++;
+      const width = span(cell, 'colspan');
+      const height = span(cell, 'rowspan');
+      if (column + width > columns || index + height > rows.length) fail();
+      merged ||= width > 1 || height > 1;
+      for (let r = index; r < index + height; r++) for (let c = column; c < column + width; c++) {
+        if (grid[r][c]) fail();
+        grid[r][c] = true;
+      }
+      column += width;
+    }
+    if (grid[index].some(occupied => !occupied)) fail();
+  }
+  return { rows, columns, merged };
+}
+
 export function nativeBoundary(text, offset) {
   return Number.isSafeInteger(offset) && offset >= 1 && offset <= text.length + 1 &&
     !(/[\uD800-\uDBFF]/.test(text[offset - 2] || '') && /[\uDC00-\uDFFF]/.test(text[offset - 1] || ''));
@@ -75,39 +113,14 @@ export function nativeBody(document, values, imageSource = image => /^data:image
   const children = element => [...element.childNodes].filter(child => child.nodeType !== 8 && !(child.nodeType === 3 && !child.data.length));
   const table = element => {
     check(element);
-    const rows = children(element);
-    if (!rows.length || rows.some(row => row.localName !== 'tr')) fail('bookmarkTableShape');
-    const span = (cell, name) => {
-      const value = cell.getAttribute(name);
-      if (value !== null && !/^[1-9]\d*$/.test(value)) fail('bookmarkTableShape');
-      return Number(value || 1);
-    };
-    const columns = [...rows[0].children].reduce((count, cell) => count + span(cell, 'colspan'), 0);
-    if (!columns || columns > 1000) fail('bookmarkTableShape');
-    const grid = rows.map(() => Array(columns).fill(false));
+    const { rows, merged } = nativeTableGrid(element);
     const start = text.length + 1;
     const regions = [];
     const rowRegions = [];
     const offsets = [start];
-    let merged = false;
-    for (const [index, row] of rows.entries()) {
+    for (const row of rows) {
       check(row);
       const cells = children(row);
-      let column = 0;
-      for (const cell of cells) {
-        if (!['td', 'th'].includes(cell.localName)) fail('bookmarkTableShape');
-        while (grid[index][column]) column++;
-        const width = span(cell, 'colspan');
-        const height = span(cell, 'rowspan');
-        if (column + width > columns || index + height > rows.length) fail('bookmarkTableShape');
-        merged ||= width > 1 || height > 1;
-        for (let r = index; r < index + height; r++) for (let c = column; c < column + width; c++) {
-          if (grid[r][c]) fail('bookmarkTableShape');
-          grid[r][c] = true;
-        }
-        column += width;
-      }
-      if (grid[index].some(occupied => !occupied)) fail('bookmarkTableShape');
       const rowStart = text.length + 1;
       const rowOffsets = [rowStart];
       const cellRegions = [];
