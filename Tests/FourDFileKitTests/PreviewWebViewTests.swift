@@ -5,8 +5,30 @@ import FourDFileKit
 @testable import FourDQuickLookUI
 @testable import FourDRender
 
+private final class PreviewMagnificationEvent: NSEvent {
+    private let point: NSPoint
+    private let delta: CGFloat
+    private let eventPhase: NSEvent.Phase
+
+    init(point: NSPoint, delta: CGFloat, phase: NSEvent.Phase) {
+        self.point = point
+        self.delta = delta
+        self.eventPhase = phase
+        super.init()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override var type: NSEvent.EventType { .magnify }
+    override var phase: NSEvent.Phase { eventPhase }
+    override var locationInWindow: NSPoint { point }
+    override var magnification: CGFloat { delta }
+}
+
 @MainActor
 final class PreviewWebViewTests: XCTestCase {
+    private var mouseEventNumber = 0
+
     private func html() -> String {
         let nodes = [
             DiagramNode(id: "A", title: "First", fields: [], position: DiagramPosition(x: 0, y: 0)),
@@ -63,36 +85,62 @@ final class PreviewWebViewTests: XCTestCase {
         window.contentView = webView
         window.orderFront(nil)
         defer { window.close() }
-        var eventNumber = 0
-        func click(_ selector: String) throws {
-            let point = try XCTUnwrap(evaluate("""
-            const control = document.querySelector('\(selector)');
-            control.scrollIntoView({block:'center'});
-            const rect = control.getBoundingClientRect();
-            return {x:rect.left + rect.width / 2, y:rect.top + rect.height / 2};
-            """, in: webView) as? [String: Double])
-            let x = try XCTUnwrap(point["x"])
-            let y = try XCTUnwrap(point["y"])
-            let location = webView.convert(NSPoint(x: x, y: webView.isFlipped ? y : webView.bounds.height - y), to: nil)
-            eventNumber += 1
-            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-                let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [],
-                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-                    context: nil, eventNumber: eventNumber, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0))
-                window.sendEvent(event)
-                _ = try evaluate("await new Promise(resolve => setTimeout(resolve, 100)); return true;", in: webView)
-            }
-            XCTAssertFalse(window.isKeyWindow)
-        }
         for id in ["platform-windows", "platform-macOS", "theme-glassDark", "theme-classicLight",
                    "page-classicLight-2", "page-classicLight-1"] {
-            try click("label[for=\"\(id)\"]")
+            try click("label[for=\"\(id)\"]", in: webView, window: window)
             XCTAssertEqual(try evaluate("return document.getElementById('\(id)').checked;", in: webView) as? Bool, true, id)
         }
-        try click("button[aria-label=\"Zoom form in\"]")
+        try click("button[aria-label=\"Zoom form in\"]", in: webView, window: window)
         XCTAssertEqual(try evaluate("return document.querySelector('.form-zoom-controls output').value;", in: webView) as? String, "120%")
-        try click("button[aria-label=\"Reset form zoom\"]")
+        try click("button[aria-label=\"Reset form zoom\"]", in: webView, window: window)
         XCTAssertEqual(try evaluate("return document.querySelector('.form-zoom-controls output').value;", in: webView) as? String, "100%")
+    }
+
+    private func click(_ selector: String, in webView: PreviewWebView, window: NSWindow) throws {
+        let point = try XCTUnwrap(evaluate("""
+        const control = document.querySelector('\(selector)');
+        control.scrollIntoView({block:'center'});
+        const rect = control.getBoundingClientRect();
+        return {x:rect.left + rect.width / 2, y:rect.top + rect.height / 2};
+        """, in: webView) as? [String: Double])
+        let x = try XCTUnwrap(point["x"])
+        let y = try XCTUnwrap(point["y"])
+        let location = webView.convert(NSPoint(x: x, y: webView.isFlipped ? y : webView.bounds.height - y), to: nil)
+        mouseEventNumber += 1
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, eventNumber: mouseEventNumber, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0))
+            window.sendEvent(event)
+            _ = try evaluate("await new Promise(resolve => setTimeout(resolve, 100)); return true;", in: webView)
+        }
+        XCTAssertFalse(window.isKeyWindow)
+    }
+
+    func testCatalogControlsSurviveNonKeyWindowReattachment() throws {
+        let webView = load()
+        let window = NSWindow(contentRect: webView.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = webView
+        window.orderFront(nil)
+        defer { window.close() }
+        _ = try evaluate("""
+        document.querySelector('button[aria-label="Zoom diagram in"]').click();
+        return true;
+        """, in: webView)
+
+        for _ in 0..<3 {
+            window.contentView = NSView(frame: webView.frame)
+            XCTAssertNil(webView.window)
+            window.contentView = webView
+            // Do not reload the document: Quick Look can reuse the existing preview.
+            try click("button[aria-label=\"Reset diagram zoom\"]", in: webView, window: window)
+            XCTAssertEqual(try evaluate("return document.querySelector('.diagram-zoom-controls output').value;",
+                                        in: webView) as? String, "100%")
+            try click("button[aria-label=\"Zoom diagram in\"]", in: webView, window: window)
+            XCTAssertEqual(try evaluate("return document.querySelector('.diagram-zoom-controls output').value;",
+                                        in: webView) as? String, "120%")
+        }
     }
 
     func testLabelSheetArtworkAndZoomShareTheOwnedViewer() throws {
@@ -415,7 +463,6 @@ final class PreviewWebViewTests: XCTestCase {
         XCTAssertFalse(webView.configuration.defaultWebpagePreferences.allowsContentJavaScript)
         XCTAssertFalse(webView.configuration.websiteDataStore.isPersistent)
         XCTAssertFalse(webView.allowsMagnification)
-        XCTAssertTrue(webView.gestureRecognizers.contains { $0 is NSMagnificationGestureRecognizer })
         let values = try XCTUnwrap(evaluate("""
         return {
             presets:document.querySelectorAll('.diagram-zoom-choice').length,
@@ -481,6 +528,49 @@ final class PreviewWebViewTests: XCTestCase {
         XCTAssertEqual(try evaluate("""
         return globalThis.fourdCanvasZoom.magnify(10, 10, 0.5);
         """, in: webView) as? Bool, false)
+    }
+
+    func testMagnificationEventsSurviveResizingAndReattachmentInsideUnflippedRoot() throws {
+        let webView = load()
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 900))
+        webView.frame = root.bounds.insetBy(dx: 20, dy: 30)
+        webView.autoresizingMask = [.width, .height]
+        root.addSubview(webView)
+        let window = NSWindow(contentRect: root.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = root
+        window.orderFront(nil)
+        defer { window.close() }
+
+        for height in [900.0, 760.0, 870.0] {
+            window.contentView = NSView(frame: root.frame)
+            root.setFrameSize(NSSize(width: 900, height: height))
+            window.contentView = root
+            let point = try XCTUnwrap(evaluate("""
+            const viewport = document.querySelector('.diagram-viewport');
+            viewport.scrollIntoView({block:'center'});
+            const rect = viewport.getBoundingClientRect();
+            return {x:rect.left + 100, y:rect.top + 80};
+            """, in: webView) as? [String: Double])
+            let x = try XCTUnwrap(point["x"])
+            let y = try XCTUnwrap(point["y"])
+            let local = NSPoint(x: x, y: webView.isFlipped ? y : webView.bounds.height - y)
+            let location = webView.convert(local, to: nil)
+
+            for (delta, expected) in [(log(1.25), "125%"), (-log(1.25), "100%")] {
+                for (phase, amount) in [(NSEvent.Phase.began, 0.0), (.changed, delta)] {
+                    webView.magnify(with: PreviewMagnificationEvent(point: location, delta: amount, phase: phase))
+                }
+                XCTAssertEqual(try evaluate("""
+                return document.querySelector('.diagram-zoom-controls output').value;
+                """, in: webView) as? String, expected)
+                webView.magnify(with: PreviewMagnificationEvent(point: location, delta: 0, phase: .ended))
+            }
+            try click("button[aria-label=\"Zoom diagram in\"]", in: webView, window: window)
+            XCTAssertEqual(try evaluate("return document.querySelector('.diagram-zoom-controls output').value;",
+                                        in: webView) as? String, "120%")
+            try click("button[aria-label=\"Reset diagram zoom\"]", in: webView, window: window)
+        }
     }
 
     func testSliderButtonsKeyboardResetAndBoundsKeepScrollExtentCorrect() throws {

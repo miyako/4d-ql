@@ -13,7 +13,10 @@ final class PreviewProvider: NSViewController, QLPreviewingController {
 
     override func loadView() {
         webView = PreviewWebView(frame: NSRect(x: 0, y: 0, width: 860, height: 1000))
-        view = webView
+        // Keep an unflipped AppKit root at the remote-view boundary.
+        view = NSView(frame: webView.frame)
+        webView.autoresizingMask = [.width, .height]
+        view.addSubview(webView)
         preferredContentSize = NSSize(width: 860, height: 1000)
     }
 

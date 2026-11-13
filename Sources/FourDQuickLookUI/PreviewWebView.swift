@@ -18,13 +18,21 @@ public final class PreviewWebView: WKWebView, WKNavigationDelegate {
         super.init(frame: frame, configuration: configuration)
         allowsMagnification = false
         navigationDelegate = self
-        addGestureRecognizer(NSMagnificationGestureRecognizer(target: self, action: #selector(magnifyCanvas(_:))))
     }
 
     required init?(coder: NSCoder) { nil }
 
     // Finder hosts the preview remotely; its key window need not be key in this process.
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    public override func magnify(with event: NSEvent) {
+        // Remote Quick Look hosting can forward events without driving a local gesture recognizer.
+        magnifyCanvas(at: convert(event.locationInWindow, from: nil), delta: event.magnification) { result in
+            if case .failure(let error) = result {
+                NSLog("Canvas magnification failed: %@", error.localizedDescription)
+            }
+        }
+    }
 
     public func loadPreview(html: String, completion: @escaping (Error?) -> Void) {
         let previous = pending
@@ -38,17 +46,6 @@ public final class PreviewWebView: WKWebView, WKNavigationDelegate {
         // Generated previews embed their assets. Never give WebKit a project-folder base URL.
         let policy = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'\">"
         previewNavigation = loadHTMLString(html.replacingOccurrences(of: "<head>", with: "<head>\(policy)"), baseURL: nil)
-    }
-
-    @objc private func magnifyCanvas(_ gesture: NSMagnificationGestureRecognizer) {
-        guard gesture.state == .began || gesture.state == .changed else { return }
-        let delta = gesture.magnification
-        gesture.magnification = 0
-        magnifyCanvas(at: gesture.location(in: self), delta: delta) { result in
-            if case .failure(let error) = result {
-                NSLog("Canvas magnification failed: %@", error.localizedDescription)
-            }
-        }
     }
 
     func magnifyCanvas(at point: NSPoint, delta: Double,

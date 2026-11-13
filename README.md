@@ -439,6 +439,10 @@ In Finder, authorize the containing project folder in the hosting app so the
 preview service can read this sibling file; without access the embedded layout
 or automatic grid remains available.
 Finder uses a view-based Quick Look extension with an owned `WKWebView`.
+The web view resizes inside an unflipped AppKit root view rather than acting
+as the remote controller's root itself. Native magnification events are handled
+directly, so canvas pinch does not depend on a local gesture recognizer being
+driven when Finder returns to a cached preview.
 Pinch over the diagram for continuous, cursor-centered zoom, use the logarithmic
 slider or +/- buttons, and select 100% to reset. Zoom ranges from 1% to 800%;
 only the SVG and its scrollable extent scale, not the surrounding preview.
@@ -539,6 +543,26 @@ Download the `.dmg` from [Releases](https://github.com/miyako/4d-ql/releases),
 drag **4D Quick Look** to Applications, and open it once so macOS registers the
 preview extension. The app is signed with a Developer ID and notarized. If
 Finder still shows the old preview, run `qlmanage -r`.
+
+If zoom or buttons stop responding after switching Finder items, check which
+extension Finder is actually using. Current source accepts first-mouse input
+even when the remotely hosted preview window is not key. An older development
+extension can shadow an updated app, including under a different bundle ID:
+
+```sh
+pluginkit -m -v -p com.apple.quicklook.preview | grep FourDQuickLook
+pgrep -x FourDQuickLookExtension | xargs -I{} ps -p {} -o pid=,command=
+```
+
+The second command identifies the executable serving an open preview; compare
+its path with the intended app. To stop using a stale development extension,
+disable its **exact** bundle ID with `pluginkit -e ignore -i <stale-extension-id>`,
+then close Quick Look and run `qlmanage -r` before reopening it. Do not disable
+the extension you intend to use. Also install the current release: disabling
+a development extension does not update an older app in `/Applications`.
+`scripts/build.sh --register` replaces copies
+with the same bundle ID, but does not disable differently named development
+extensions.
 
 ### Command-line tool
 
@@ -711,6 +735,29 @@ produced the visible pre-canvas warning. On the tested macOS 26.7 host,
 `qlmanage -p -o` still aborted inside ExtensionFoundation with a nil dictionary
 key after unlocking; actual Finder previews and controls worked. The harness
 uses Finder rather than treating that export-tool failure as a renderer failure.
+
+For the catalog input/focus regression, run:
+
+```sh
+swiftc scripts/finder-preview-focus.swift -o build/finder-preview-focus
+build/finder-preview-focus Tests/FourDFileKitTests/Fixtures/catalog.4DCatalog
+```
+
+This closes any existing Quick Look window and opens the supplied catalog.
+It sends native Control-wheel and mouse input, then repeats the checks after
+selecting a temporary text file and a folder while Quick Look stays open.
+Each return must accept wheel zoom, a single reset click, and a single zoom-in
+click (120%). It uses Accessibility output to verify results rather than
+invoking JavaScript or accessibility button actions. It needs an unlocked
+desktop, Automation and Accessibility permission, and the intended extension
+registered as above. Do not use other apps while it runs; native input requires
+Finder to stay in the foreground. It does not synthesize physical trackpad pinch gestures.
+The AppKit regressions also check cached-document reattachment in a non-key
+window and native magnification event coordinates inside an offset, resized
+child view. They are not a substitute for the remotely hosted Finder check or
+physical trackpad testing. When checking a viewer change manually, verify
+buttons and slider on initial presentation, then pinch before and after a
+file/folder selection round trip.
 
 ## File format notes
 
