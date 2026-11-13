@@ -120,7 +120,7 @@ test('browser PDF includes labeled native content appendix and original paper ge
   const before = await download(page);
   const path = testInfo.outputPath('headers.pdf');
   await page.pdf({ path, preferCSSPageSize: true });
-  const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
+  const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' }).replace(/\s+/g, ' ');
   const bbox = execFileSync('pdftotext', ['-bbox', path, '-'], { encoding: 'utf8' });
   for (const token of ['BODY ONE', 'HEADER', 'FIRST HEADER', 'SECOND FOOTER', 'content appendix', 'Native section 2']) expect(text).toContain(token);
   for (const match of bbox.matchAll(/<page width="([\d.]+)" height="([\d.]+)">/g)) {
