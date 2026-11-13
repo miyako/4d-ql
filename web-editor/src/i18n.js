@@ -3,6 +3,7 @@ import { pageMessages } from './page-messages.js';
 import { sectionMessages } from './section-messages.js';
 import { flowMessages } from './flow-messages.js';
 import { printMessages } from './print-messages.js';
+import { headerMessages } from './header-messages.js';
 
 export const languages = {
   en: 'English', ja: '日本語', fr: 'Français', de: 'Deutsch', es: 'Español', it: 'Italiano',
@@ -20,7 +21,7 @@ const en = {
   details: 'Document guide', local: 'Your files stay on this device',
   intro: 'Try editing the example brief, open your own 4D Write Pro document, or start with a blank page.',
   editing: 'Select text across formatting runs to edit or format it. Without a selection, formatting applies to the active run. Enter splits a paragraph; Shift+Enter adds a line break. More tools offers tables and images.',
-  preservation: 'Original XML, native properties and archive resources are retained. Formulas, protected text, headers, footers and anchored objects cannot be edited here.',
+  preservation: 'Original XML, native properties and archive resources are retained. Choose a header/footer editing scope for supported text and formatting. Formulas, protected text and anchored objects remain read-only.',
   limits: 'Experimental editor, not the 4D runtime. Pagination, tabs and native layout are approximate. Formulas are not evaluated. Unsupported images appear as placeholders. Verify edited downloads in 4D before production use.',
   bookmarkNotice: 'Read-only: this document contains unsupported ranges or bookmarked structures. Editing is disabled to preserve their offsets. Download preserves the original file.',
   bookmarkEditingNotice: 'Bookmarks are adjusted with verified edits. Permitted replacements delete then insert. Open Editing capabilities for document-specific restrictions; original native structures and resources are preserved.',
@@ -48,7 +49,7 @@ const ja = {
   paragraph: '段落を追加', editor: '書類編集領域', details: '書類ガイド', local: 'ファイルはこの端末内で処理されます',
   intro: 'サンプルの企画書を編集するか、お手持ちの4D Write Pro書類を開くか、白紙から始めてください。',
   editing: '書式の異なる文字列をまたいで選択・編集できます。選択がない場合は現在の文字列全体に書式を適用します。Enterで段落を分割し、Shift+Enterで改行します。「その他のツール」で表や画像を挿入できます。',
-  preservation: '元のXML、ネイティブ属性、アーカイブ内リソースを保持します。フォーミュラ、保護された文字、ヘッダー、フッター、アンカー付きオブジェクトは編集できません。',
+  preservation: '元のXML、ネイティブ属性、アーカイブ内リソースを保持します。対応するテキストと書式はヘッダー・フッターの編集対象を選択して変更できます。フォーミュラ、保護された文字、アンカー付きオブジェクトは読み取り専用です。',
   limits: '実験的なエディターであり、4Dランタイムではありません。改ページ、タブ、レイアウトは近似表示です。フォーミュラは評価しません。未対応の画像は代替表示です。業務で使う前に4Dで確認してください。',
   bookmarkNotice: '読み取り専用：未対応の範囲またはブックマーク付きの構造が含まれています。位置を維持するため編集を無効にしています。ダウンロードは元のファイルを保持します。',
   bookmarkEditingNotice: '検証済みの編集に合わせてブックマークを調整します。許可された置換は削除後に挿入します。書類ごとの制限は「編集機能と制限」を開いて確認してください。元の構造とリソースは保持されます。',
@@ -73,7 +74,7 @@ const fr = {
   paragraph: 'Ajouter un paragraphe', editor: 'Zone de modification du document', details: 'Guide du document',
   local: 'Vos fichiers restent sur cet appareil', intro: 'Modifiez la note d’exemple, ouvrez votre document 4D Write Pro ou commencez avec une page vierge.',
   editing: 'Sélectionnez du texte entre plusieurs segments pour le modifier ou le formater. Sans sélection, le format s’applique au segment actif. Entrée scinde le paragraphe ; Maj+Entrée insère un saut de ligne. Autres outils propose tableaux et images.',
-  preservation: 'Le XML, les propriétés natives et les ressources de l’archive sont conservés. Les formules, le texte protégé, les en-têtes, les pieds de page et les objets ancrés ne sont pas modifiables ici.',
+  preservation: 'Le XML, les propriétés natives et les ressources sont conservés. Choisissez une zone d’en-tête ou de pied pour le texte et le format pris en charge. Formules, texte protégé et objets ancrés restent en lecture seule.',
   limits: 'Éditeur expérimental, sans moteur 4D. Pagination, tabulations et mise en page approximatives. Les formules ne sont pas évaluées. Les images incompatibles sont remplacées par un repère. Vérifiez les fichiers modifiés dans 4D avant utilisation en production.',
   bookmarkNotice: 'Lecture seule : le document contient des plages ou des structures avec signets non prises en charge. La modification est désactivée pour conserver leurs positions. Le téléchargement conserve le fichier original.',
   bookmarkEditingNotice: 'Les signets suivent les modifications vérifiées. Les remplacements autorisés suppriment puis insèrent. Consultez Capacités de modification pour les restrictions du document ; structures et ressources natives sont conservées.',
@@ -98,7 +99,7 @@ const de = {
   paragraph: 'Absatz hinzufügen', editor: 'Dokumentbearbeitungsbereich', details: 'Dokumenthinweise',
   local: 'Ihre Dateien bleiben auf diesem Gerät', intro: 'Bearbeiten Sie das Beispielkonzept, öffnen Sie Ihr eigenes 4D Write Pro-Dokument oder beginnen Sie mit einer leeren Seite.',
   editing: 'Text kann über mehrere Textabschnitte hinweg bearbeitet und formatiert werden. Ohne Auswahl gilt das Format für den aktiven Abschnitt. Eingabe teilt den Absatz, Umschalt+Eingabe fügt einen Zeilenumbruch ein. Weitere Werkzeuge bietet Tabellen und Bilder.',
-  preservation: 'Original-XML, native Eigenschaften und Archivressourcen bleiben erhalten. Formeln, geschützter Text, Kopf- und Fußzeilen sowie verankerte Objekte sind hier nicht bearbeitbar.',
+  preservation: 'Original-XML, native Eigenschaften und Ressourcen bleiben erhalten. Für unterstützten Text und Formatierung einen Kopf-/Fußzeilenbereich wählen. Formeln, geschützter Text und verankerte Objekte bleiben schreibgeschützt.',
   limits: 'Experimenteller Editor ohne 4D-Laufzeit. Seitenumbrüche, Tabulatoren und Layout werden nur angenähert. Formeln werden nicht ausgewertet. Für nicht unterstützte oder externe Bilder erscheinen Platzhalter. Geänderte Dateien vor dem produktiven Einsatz in 4D prüfen.',
   bookmarkNotice: 'Schreibgeschützt: Das Dokument enthält nicht unterstützte Bereiche oder Strukturen mit Lesezeichen. Zum Erhalt ihrer Positionen ist die Bearbeitung deaktiviert. Der Download erhält die Originaldatei.',
   bookmarkEditingNotice: 'Lesezeichen folgen geprüften Änderungen. Erlaubte Ersetzungen löschen und fügen danach ein. Bearbeitungsmöglichkeiten zeigt dokumentbezogene Grenzen; native Strukturen und Ressourcen bleiben erhalten.',
@@ -123,7 +124,7 @@ const es = {
   paragraph: 'Añadir párrafo', editor: 'Área de edición del documento', details: 'Guía del documento',
   local: 'Tus archivos permanecen en este dispositivo', intro: 'Prueba a editar la propuesta de ejemplo, abre tu documento 4D Write Pro o empieza con una página en blanco.',
   editing: 'Selecciona texto entre varios segmentos para editarlo o darle formato. Sin selección, el formato se aplica al segmento activo. Intro divide el párrafo; Mayús+Intro inserta un salto de línea. Más herramientas ofrece tablas e imágenes.',
-  preservation: 'Se conservan el XML original, las propiedades nativas y los recursos del archivo. Las fórmulas, el texto protegido, las cabeceras, los pies y los objetos anclados no se pueden editar aquí.',
+  preservation: 'Se conservan el XML, las propiedades nativas y los recursos. Elija un área de encabezado o pie para editar texto y formato compatibles. Fórmulas, texto protegido y objetos anclados siguen siendo de solo lectura.',
   limits: 'Editor experimental sin motor 4D. Paginación, tabulaciones y diseño aproximados. No se evalúan fórmulas. Las imágenes externas o incompatibles se muestran como marcadores. Verifica los archivos editados en 4D antes de usarlos en producción.',
   bookmarkNotice: 'Solo lectura: el documento contiene rangos o estructuras con marcadores no compatibles. La edición está desactivada para conservar sus posiciones. La descarga conserva el archivo original.',
   bookmarkEditingNotice: 'Los marcadores siguen las ediciones verificadas. Los reemplazos permitidos eliminan y luego insertan. Consulte Capacidades de edición para las restricciones del documento; se conservan las estructuras y recursos nativos.',
@@ -148,7 +149,7 @@ const it = {
   paragraph: 'Aggiungi paragrafo', editor: 'Area di modifica del documento', details: 'Guida del documento',
   local: 'I file rimangono su questo dispositivo', intro: 'Prova a modificare la proposta di esempio, apri un tuo documento 4D Write Pro o inizia con una pagina vuota.',
   editing: 'Seleziona il testo tra più segmenti per modificarlo o formattarlo. Senza selezione, il formato si applica al segmento attivo. Invio divide il paragrafo; Maiusc+Invio inserisce un’interruzione di riga. Altri strumenti offre tabelle e immagini.',
-  preservation: 'XML originale, proprietà native e risorse dell’archivio vengono conservati. Formule, testo protetto, intestazioni, piè di pagina e oggetti ancorati non sono modificabili qui.',
+  preservation: 'XML, proprietà native e risorse vengono conservati. Scegli un’area di intestazione o piè di pagina per testo e formato supportati. Formule, testo protetto e oggetti ancorati restano in sola lettura.',
   limits: 'Editor sperimentale, senza runtime 4D. Paginazione, tabulazioni e impaginazione sono approssimative. Le formule non vengono valutate. Le immagini esterne o incompatibili appaiono come segnaposto. Verifica i file modificati in 4D prima dell’uso in produzione.',
   bookmarkNotice: 'Sola lettura: il documento contiene intervalli o strutture con segnalibri non supportati. La modifica è disabilitata per conservarne le posizioni. Il download conserva il file originale.',
   bookmarkEditingNotice: 'I segnalibri seguono le modifiche verificate. Le sostituzioni consentite eliminano e poi inseriscono. Consultare Capacità di modifica per i limiti del documento; strutture e risorse native sono conservate.',
@@ -166,7 +167,7 @@ const it = {
 };
 
 export const messages = { en, ja, fr, de, es, it };
-for (const language of Object.keys(messages)) Object.assign(messages[language], toolMessages[language], pageMessages[language], sectionMessages[language], flowMessages[language], printMessages[language]);
+for (const language of Object.keys(messages)) Object.assign(messages[language], toolMessages[language], pageMessages[language], sectionMessages[language], flowMessages[language], printMessages[language], headerMessages[language]);
 
 export function detectLanguage(preferences = navigator.languages) {
   return preferences.map(value => value.split('-')[0]).find(value => value in messages) || 'en';

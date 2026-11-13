@@ -1,0 +1,125 @@
+var $root : 4D.Folder:=Folder(Get 4D folder(Database folder); fk platform path)
+var $report : Object:=New object("version"; Application version(*); "cases"; New collection())
+var $doc; $body; $range; $section; $target; $header; $footer; $item : Object
+var $kind; $stage : Text
+var $index; $type : Integer
+var wpBookmarkErrors : Collection:=New collection()
+For each ($kind; New collection("plain"; "first"; "facing"; "right"; "formula"; "bookmark"; "distances"))
+	$doc:=WP New()
+	$body:=WP Get body($doc)
+	WP SET TEXT($body; "BODY ONE"; wk replace)
+	$range:=WP Insert break($body; wk section break; wk append)
+	WP SET TEXT($body; "BODY TWO"; wk append)
+	$range:=WP Insert break($body; wk continuous section break; wk append)
+	WP SET TEXT($body; "BODY THREE"; wk append)
+	WP NEW BOOKMARK(WP Text range($body; 1; 5); "body_anchor")
+	WP SET ATTRIBUTES($doc; wk page margin; "36pt")
+	$section:=WP Get section($doc; 1)
+	$header:=WP New header($section)
+	WP SET TEXT($header; "HEADER 😀 ONE"; wk replace)
+	$footer:=WP New footer($section)
+	WP SET TEXT($footer; "FOOTER ONE"; wk replace)
+	If ($kind="distances")
+		WP SET ATTRIBUTES($header; wk margin top; "12pt"; wk margin right; "13pt"; wk margin bottom; "14pt"; wk margin left; "15pt")
+		WP SET ATTRIBUTES($footer; wk margin top; "16pt"; wk margin right; "17pt"; wk margin bottom; "18pt"; wk margin left; "19pt")
+		$target:=WP Get section($doc; 2)
+		WP SET ATTRIBUTES($target; wk page orientation; wk landscape; wk page margin top; "24pt"; wk page margin right; "30pt"; wk page margin bottom; "36pt"; wk page margin left; "42pt")
+	End if
+	If ($kind="formula")
+		WP INSERT FORMULA($header; Formula("HCACHE"); wk append)
+		WP SET TEXT($header; " TAIL"; wk append)
+		WP INSERT FORMULA($footer; Formula("FCACHE"); wk append)
+	End if
+	If ($kind="bookmark")
+		ON ERR CALL("wp_bookmark_error")
+		WP NEW BOOKMARK(WP Text range($header; 1; 4); "header_anchor")
+		ON ERR CALL("wp_web_error")
+	End if
+	If ($kind="first") | ($kind="facing") | ($kind="right")
+		If ($kind="first")
+			$type:=wk first page
+		Else
+			$type:=wk left page
+			If ($kind="right")
+				$type:=wk right page
+			End if
+		End if
+		$target:=WP New subsection($section; $type)
+		$header:=WP Get header($target)
+		If ($header=Null)
+			$header:=WP New header($target)
+		End if
+		WP SET TEXT($header; "VARIANT HEADER"; wk replace)
+		$footer:=WP Get footer($target)
+		If ($footer=Null)
+			$footer:=WP New footer($target)
+		End if
+		WP SET TEXT($footer; "VARIANT FOOTER"; wk replace)
+	End if
+	$item:=New object("name"; $kind; "stages"; New collection())
+	For each ($stage; New collection("original"; "edit"; "variantEdit"; "variantFooterEdit"; "createEmpty"; "create"; "remove"; "split"; "merge"; "disable"; "grow"; "paragraph"; "lineBreak"; "footerEdit"))
+		$section:=WP Get section($doc; 1)
+		$header:=WP Get header($section)
+		Case of
+			: ($stage="edit")
+				WP SET TEXT(WP Text range($header; 2; 4); "日é"; wk replace)
+				WP SET ATTRIBUTES(WP Text range($header; 1; 3); wk font bold; wk true)
+			: ($stage="variantEdit")
+				If ($kind="first") | ($kind="facing") | ($kind="right")
+					$target:=WP Get subsection($section; $type)
+					$header:=WP Get header($target)
+					WP SET TEXT(WP Text range($header; 2; 4); "日é"; wk replace)
+					WP SET ATTRIBUTES(WP Text range($header; 1; 3); wk font bold; wk true)
+				End if
+			: ($stage="variantFooterEdit")
+				If ($kind="first") | ($kind="facing") | ($kind="right")
+					$target:=WP Get subsection($section; $type)
+					$footer:=WP Get footer($target)
+					WP SET TEXT(WP Text range($footer; 2; 4); "日é"; wk replace)
+					WP SET ATTRIBUTES(WP Text range($footer; 1; 3); wk font bold; wk true)
+				End if
+			: ($stage="createEmpty")
+				$section:=WP Get section($doc; 2)
+				$header:=WP New header($section)
+				$footer:=WP New footer($section)
+			: ($stage="create")
+				$section:=WP Get section($doc; 2)
+				$header:=WP Get header($section)
+				WP SET TEXT($header; "SECOND HEADER"; wk replace)
+				$footer:=WP Get footer($section)
+				WP SET TEXT($footer; "SECOND FOOTER"; wk replace)
+			: ($stage="remove")
+				$section:=WP Get section($doc; 2)
+				WP DELETE HEADER($section)
+				WP DELETE FOOTER($section)
+			: ($stage="split")
+				$range:=WP Insert break(WP Text range($body; 3; 3); wk continuous section break; wk replace)
+			: ($stage="merge")
+				$range:=WP Insert break(WP Text range($body; 3; 4); wk paragraph break; wk replace)
+			: ($stage="disable")
+				If ($kind="first") | ($kind="facing") | ($kind="right")
+					WP DELETE SUBSECTION($section; $type)
+				End if
+			: ($stage="grow")
+				WP SET TEXT(WP Text range($header; 1; 1); "日😀 "; wk replace)
+			: ($stage="paragraph")
+				$range:=WP Insert break(WP Text range($header; 5; 5); wk paragraph break; wk replace)
+			: ($stage="lineBreak")
+				$range:=WP Insert break(WP Text range($header; 2; 2); wk line break; wk replace)
+			: ($stage="footerEdit")
+				$footer:=WP Get footer($section)
+				WP SET TEXT(WP Text range($footer; 2; 4); "日é"; wk replace)
+				WP SET ATTRIBUTES(WP Text range($footer; 1; 3); wk font bold; wk true)
+		End case
+		WP EXPORT DOCUMENT($doc; $root.file("Output/header-"+$kind+"-"+$stage+".4wp").platformPath; wk 4wp)
+		If ($stage="original")
+			WP EXPORT DOCUMENT($doc; $root.file("Output/header-"+$kind+"-original.pdf").platformPath; wk pdf)
+		End if
+		$doc:=WP Import document($root.file("Output/header-"+$kind+"-"+$stage+".4wp").platformPath)
+		$body:=WP Get body($doc)
+		$item.stages.push(New object("name"; $stage; "stats"; wp_header_stats($doc)))
+	End for each
+	$report.bookmarkErrors:=wpBookmarkErrors
+	$report.cases.push($item)
+End for each
+$root.file("Output/header-report.json").setText(JSON Stringify($report; *))

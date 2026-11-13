@@ -9,6 +9,7 @@ import { pageUnits, paperPresets, pageFields, pageDisplay, pagePoints, pagePaper
 import { paragraphBreak } from './sections.js';
 import { tabTypes, tabLeaders, defaultTab } from './flow-settings.js';
 import { createPrintProjection, printCapability } from './printing.js';
+import { areaLabel } from './header-messages.js';
 
 let locale = detectLanguage();
 let theme = 'system';
@@ -80,6 +81,14 @@ document.querySelector('#app').innerHTML = `
   <main>
     <section class="workspace">
       <div class="document-bar"><div><span class="document-kind" data-i18n="document"></span><h2 id="document-title"></h2></div><span id="save-state" role="status"></span></div>
+      <section class="scope-panel" aria-labelledby="scope-heading">
+        <h3 id="scope-heading" data-i18n="headerSetup"></h3>
+        <label><span data-i18n="editingScope"></span><select id="editing-scope" data-label="editingScope" aria-describedby="scope-help scope-protection"></select></label>
+        <label><span data-i18n="headerSection"></span><select id="header-section" data-label="headerSection"></select></label>
+        <label><span data-i18n="headerSetup"></span><select id="header-kind" data-label="headerSetup"><option value="Header" data-i18n="headerHeader"></option><option value="Footer" data-i18n="headerFooter"></option></select></label>
+        <button id="header-create" data-i18n="headerCreate"></button><button id="header-remove" data-i18n="headerRemove"></button>
+        <p id="scope-state" role="status"></p><p id="scope-help" data-i18n="headerHelp"></p><p data-i18n="headerStructure"></p><p id="scope-protection" role="status" hidden></p>
+      </section>
       <div class="toolbar" role="toolbar" aria-label="Text formatting">
         <button id="undo" data-label="undo">↶</button><button id="redo" data-label="redo">↷</button>
         <span class="separator"></span>
@@ -121,7 +130,7 @@ document.querySelector('#app').innerHTML = `
       </section>
       <section id="print-panel" class="tool-panel print-panel" aria-labelledby="print-heading" hidden>
         <h3 id="print-heading" data-i18n="print"></h3>
-        <p data-i18n="printHelp"></p><p data-i18n="printLimits"></p>
+        <p data-i18n="printHelp"></p><p data-i18n="printLimits"></p><p data-i18n="headerPrint"></p>
         <p id="print-protection" role="status" hidden></p>
         <button id="print-open" data-i18n="printOpen"></button>
         <button id="print-close" data-i18n="close"></button>
@@ -249,7 +258,7 @@ function showError(error) {
 function updateStatus() {
   $('document-title').textContent = model.title;
   document.title = `${unsaved() ? '• ' : ''}${model.title} — 4WP Editor`;
-  $('save-state').textContent = t(model.readOnly ? 'readonly' : unsaved() ? 'changed' : downloadReady ? 'downloaded' : 'ready');
+  $('save-state').textContent = t(model.editingReadOnly ? 'readonly' : unsaved() ? 'changed' : downloadReady ? 'downloaded' : 'ready');
   $('save-state').classList.toggle('unsaved', unsaved());
   $('undo').disabled = model.undoStack.length === 0;
   $('redo').disabled = model.redoStack.length === 0;
@@ -259,21 +268,25 @@ function updateStatus() {
   }
   const editable = active !== null && model.runs[active] && !model.protected(model.runs[active].parentElement);
   for (const id of ['bold', 'italic', 'underline', 'strike', 'font', 'size', 'color', 'highlight', 'link-toggle', 'apply-link', 'remove-link', 'left', 'center', 'right', 'paragraph-style', 'bullets', 'numbering', 'outdent', 'indent', 'spacing', 'line-height']) $(id).disabled = !editable;
-  $('paste-plain').disabled = model.readOnly;
-  $('bookmark-create').disabled = model.readOnly || !bookmarkSelection;
-  $('bookmark-rename').disabled = model.readOnly || currentBookmark === null;
-  $('bookmark-delete').disabled = model.readOnly || currentBookmark === null;
+  $('paste-plain').disabled = model.editingReadOnly;
+  const header = model.scope !== 'body';
+  for (const id of ['page-toggle', 'bookmarks-toggle']) $(id).disabled = header;
+  $('bookmark-create').disabled = header || model.readOnly || !bookmarkSelection;
+  $('bookmark-rename').disabled = header || model.readOnly || currentBookmark === null;
+  $('bookmark-delete').disabled = header || model.readOnly || currentBookmark === null;
   $('selection-state').hidden = true;
   const block = active !== null ? $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-block]') : null;
   const sourceBlock = block ? model.blocks[Number(block.dataset.block)] : null;
   const sectionIndex = sourceBlock ? model.sectionIndex(sourceBlock) : null;
   $('section-active').textContent = `${t('sectionActive')}: ${sectionIndex ?? '—'}`;
-  $('break-insert').disabled = model.readOnly || !selection;
-  $('break-remove').disabled = model.readOnly || !$('break-list').options.length;
-  $('paragraph').disabled = model.readOnly;
-  $('insert-tab').disabled = !editable || !selection;
-  $('insert-table').disabled = model.readOnly || Boolean(sourceBlock && sourceBlock.parentElement.localName !== 'body');
-  $('insert-image').disabled = model.readOnly;
+  $('break-insert').disabled = header || model.readOnly || !selection;
+  $('break-remove').disabled = header || model.readOnly || !$('break-list').options.length;
+  $('paragraph').disabled = model.editingReadOnly;
+  $('insert-tab').disabled = header || !editable || !selection;
+  $('insert-table').disabled = header || model.readOnly || Boolean(sourceBlock && sourceBlock.parentElement.localName !== 'body');
+  $('insert-image').disabled = header || model.readOnly;
+  if (header) for (const id of ['paragraph-style', 'bullets', 'numbering', 'tabs-toggle']) $(id).disabled = true;
+  else $('tabs-toggle').disabled = false;
   const cell = active !== null && $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-cell]');
   for (const id of ['add-row', 'remove-row', 'add-column', 'remove-column']) {
     $(id).disabled = !cell || !editable;
@@ -283,7 +296,7 @@ function updateStatus() {
     model.tableCapability(Number(cell.dataset.cell), action)).filter(Boolean))] : [];
   $('table-capability').hidden = !tableReasons.length;
   $('table-capability').textContent = tableReasons.map(t).join(' ');
-  for (const id of ['replace-one', 'replace-all']) $(id).disabled = model.readOnly;
+  for (const id of ['replace-one', 'replace-all']) $(id).disabled = model.editingReadOnly;
   const blockText = new Map();
   for (const node of model.runs) {
     const block = node.parentElement.closest('p,li');
@@ -362,6 +375,7 @@ function updateStatus() {
 }
 
 function render(caret = null) {
+  composition = null;
   clearBookmarkHighlight();
   bookmarkSelection = null;
   protectedSelection = false;
@@ -374,7 +388,7 @@ function render(caret = null) {
   $('paper').setAttribute('aria-description', t('previewHelp'));
   const styleLabels = { Normal: 'normalStyle', Heading_1: 'heading1Style', Heading_2: 'heading2Style', Quote: 'quoteStyle' };
   $('paragraph-style').replaceChildren(...model.styleNames().map(name => new Option(styleLabels[name] ? t(styleLabels[name]) : name.replaceAll('_', ' '), name)));
-  $('readonly-notice').hidden = !model.readOnly && !model.hasBookmarks;
+  $('readonly-notice').hidden = model.scope !== 'body' || !model.readOnly && !model.hasBookmarks;
   $('readonly-notice').textContent = t(model.readOnly ? model.readOnlyReason : 'bookmarkEditingNotice');
   const capabilities = model.capabilityCodes();
   $('capabilities').hidden = !capabilities.length;
@@ -392,11 +406,56 @@ function render(caret = null) {
   renderBookmarks();
   renderPageSetup();
   renderTabs();
+  renderScopes();
   const printBlocked = printCapability(model);
   $('print-open').disabled = Boolean(printBlocked);
   $('print-protection').hidden = !printBlocked;
   $('print-protection').textContent = printBlocked ? t(printBlocked) : '';
 }
+
+function renderScopes() {
+  const state = model.headerAreas();
+  const previous = $('header-section').value;
+  $('editing-scope').replaceChildren(new Option(t('bodyScope'), 'body'),
+    ...state.areas.map(area => new Option(areaLabel(area, messages[locale]), area.name)));
+  $('editing-scope').value = model.scope;
+  $('header-section').replaceChildren(...state.sections.map(section => new Option(`${t('headerSection')} ${section.index}`, section.index)));
+  const area = state.areas.find(area => area.name === model.scope);
+  $('header-section').value = String(state.sections.some(section => String(section.index) === previous) ? previous : area?.section ?? 1);
+  const reason = state.reason || (model.scope !== 'body' ? model.headerReason() : null);
+  $('scope-protection').hidden = !reason;
+  $('scope-protection').textContent = reason ? t(reason) : '';
+  $('scope-state').textContent = area ? areaLabel(area, messages[locale]) : t('bodyScope');
+  $('header-create').disabled = Boolean(state.reason || state.variants.some(name => name.match(/^section(\d+)/)[1] === $('header-section').value) || state.areas.some(item =>
+    item.section === Number($('header-section').value) && (item.variant || item.kind === $('header-kind').value)));
+  $('header-remove').disabled = !area || Boolean(area.variant || reason ||
+    state.variants.some(name => name.match(/^section(\d+)/)[1] === String(area.section)) ||
+    [...area.element.querySelectorAll('*')].some(element => model.formula(element)));
+}
+
+$('editing-scope').onchange = () => {
+  try {
+    model.setScope($('editing-scope').value);
+    const area = model.headerAreas().areas.find(item => item.name === model.scope);
+    if (area) $('header-section').value = String(area.section);
+    window.getSelection().removeAllRanges();
+    for (const panel of ['page', 'tabs', 'bookmarks']) {
+      $(panel + '-panel').hidden = true;
+      $(panel + '-toggle').setAttribute('aria-expanded', 'false');
+    }
+    $('find-query').value = '';
+    render();
+    schedulePersist('editingScope');
+  } catch (error) { showError(error); }
+};
+$('header-section').onchange = renderScopes;
+$('header-kind').onchange = renderScopes;
+$('header-create').onclick = () => perform('headerSetup', () => model.changeHeaderArea(Number($('header-section').value), $('header-kind').value));
+$('header-remove').onclick = () => perform('headerSetup', () => {
+  if (!confirm(t('headerRemove'))) return;
+  const area = model.headerAreas().areas.find(item => item.name === model.scope);
+  model.changeHeaderArea(area?.section, area?.kind, true);
+});
 
 function localize() {
   document.documentElement.lang = locale;
@@ -1101,7 +1160,7 @@ function renderPageSetup() {
     }
   });
   $('break-list').replaceChildren(...breaks);
-  $('break-remove').disabled = model.readOnly || !breaks.length;
+  $('break-remove').disabled = model.scope !== 'body' || model.readOnly || !breaks.length;
 }
 
 function pageInheritance(reason = null) {

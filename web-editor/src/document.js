@@ -5,6 +5,7 @@ import { pageFields, pagePoints, validatePageGeometry } from './page-setup.js';
 import { paragraphBreak, breakProperties } from './sections.js';
 import { validateColumns, parseTabs, tabDeclarations, tabProperties, defaultTab } from './flow-settings.js';
 import { projectLayout } from './layout-preview.js';
+import { areaClass, headerAreas, headerContentReason, outsideArea, removeAreaRules } from './headers-footers.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
@@ -178,6 +179,7 @@ export class WriteProDocument {
     this.undoSelections = [];
     this.redoSelections = [];
     this.selection = null;
+    this.scope = 'body';
     this.resourceCache = new Map();
     this.refresh();
   }
@@ -246,6 +248,60 @@ export class WriteProDocument {
 
   get title() { return this.document.querySelector('title')?.textContent || 'Document'; }
   get dirty() { return this.serialize() !== this.initial; }
+  get scopeRoot() {
+    return this.scope === 'body' ? this.document.querySelector('body') :
+      [...this.document.querySelectorAll('body > div')].find(element => element.getAttribute('class') === this.scope) || null;
+  }
+  get editingReadOnly() { return this.scope === 'body' ? this.readOnly : Boolean(this.headerReason()); }
+  headerAreas() { return headerAreas(this); }
+  headerReason() {
+    const { areas, reason } = this.headerAreas();
+    return reason || headerContentReason(this, areas.find(area => area.name === this.scope)?.element);
+  }
+  setScope(scope) {
+    if (scope !== 'body' && !this.headerAreas().areas.some(area => area.name === scope)) throw new DocumentError('headerAssociation');
+    this.scope = scope;
+    this.selection = null;
+    this.endGroup();
+  }
+  changeHeaderArea(section, kind, remove = false) {
+    const state = this.headerAreas();
+    if (state.reason || !Number.isInteger(section) || !state.sections.some(item => item.index === section) ||
+      !['Header', 'Footer'].includes(kind)) throw new DocumentError('headerAssociation');
+    if (state.variants.some(name => name.match(/^section(\d+)/)[1] === String(section))) throw new DocumentError('headerUnsupported');
+    const name = `section${section}${kind}`;
+    const area = state.areas.find(item => item.name === name);
+    if (remove) {
+      if (!area || headerContentReason(this, area.element) ||
+        [...area.element.querySelectorAll('*')].some(element => this.formula(element))) throw new DocumentError('headerUnsupported');
+    } else if (area || this.styles.some(rule => rule.selector === `div.${name}`)) throw new DocumentError('headerAssociation');
+    const setup = this.sectionSetup(section);
+    if (setup.reason) throw new DocumentError('headerAssociation');
+    this.mutate('headerSetup', () => {
+      if (remove) {
+        area.element.remove();
+        removeAreaRules(this.document, name);
+      } else {
+        const element = this.document.createElementNS(XHTML, 'div');
+        element.setAttribute('class', name);
+        element.setAttribute('style', 'visibility: hidden; height: 0');
+        const paragraph = this.document.createElementNS(XHTML, 'p');
+        paragraph.setAttribute('class', 'Normal');
+        element.append(paragraph);
+        this.document.querySelector('body').append(element);
+        const style = this.document.createElementNS(XHTML, 'style');
+        style.setAttribute('type', 'text/css');
+        const { left, right } = setup.geometry;
+        const [top, bottom] = kind === 'Header' ? ['1cm', '0.5cm'] : ['0.5cm', '1cm'];
+        style.textContent = `div.${name}{margin:${top} ${right} ${bottom} ${left}}`;
+        this.document.querySelector('head').append(style);
+      }
+      this.refresh();
+      if (!remove && headerContentReason(this, [...this.document.querySelectorAll('body > div')].find(element =>
+        element.getAttribute('class') === name))) throw new DocumentError('headerUnsupported');
+    }, null, false, name);
+    this.setScope(remove ? 'body' : name);
+  }
   serialize() { return new XMLSerializer().serializeToString(this.document); }
 
   values(element) {
@@ -570,6 +626,8 @@ export class WriteProDocument {
   }
 
   sectionIndex(element) {
+    const area = element?.closest('div')?.getAttribute('class')?.match(areaClass);
+    if (area) return Number(area[1]);
     return this.sectionLayout().sections.find(section => section.elements.some(child => child === element || child.contains(element)))?.index ?? null;
   }
 
@@ -738,7 +796,11 @@ export class WriteProDocument {
   get tracksNativeEdits() { return this.hasBookmarks || this.formulaTracking; }
 
   protected(element, allowFormulas = false) {
+    const scoped = this.scope !== 'body';
+    const root = scoped ? this.scopeRoot : null;
+    if (scoped && (!root?.contains(element) || this.headerReason())) return true;
     for (let current = element; current?.nodeType === 1; current = current.parentElement) {
+      if (scoped && current === root) return false;
       const values = this.values(current);
       if (current.namespaceURI !== XHTML || !SAFE_TAGS.has(current.localName) && current.localName !== 'body' ||
         values['-d4-protected'] === 'true' || Object.keys(values).some(key =>
@@ -777,9 +839,14 @@ export class WriteProDocument {
 
   endGroup() { this.group = null; }
 
-  mutate(label, change, group = null, restore = false) {
+  mutate(label, change, group = null, restore = false, structureArea = null) {
     const before = this.serialize();
     try {
+      const structure = structureArea !== null;
+      if (structure && (label !== 'headerSetup' || !areaClass.test(structureArea))) throw new DocumentError('headerAssociation');
+      const header = !restore && !structure && this.scope !== 'body';
+      if (header && (this.headerReason() || !['typing', 'format', 'paragraph', 'style', 'replace', 'cut', 'paste', 'link'].includes(label))) throw new DocumentError('headerUnsupported');
+      const outside = header || structure ? outsideArea(this.document, structureArea || this.scope, structure) : null;
       const geometry = label === 'pageSetup' || label === 'sectionSetup' || label === 'columnsSetup';
       const breaks = () => [...this.document.querySelectorAll('body p,body li')].flatMap(node => {
         const values = this.values(node);
@@ -789,15 +856,17 @@ export class WriteProDocument {
       const breaksBefore = !restore && !geometry && label !== 'breakEdit' ? breaks() : null;
       const bodyBefore = geometry ? this.document.querySelector('body').outerHTML : null;
       const bookmarksBefore = geometry ? [...this.document.querySelectorAll('meta[name="bookmarks"]')].map(node => node.outerHTML).join('') : null;
-      if (!restore && !geometry && this.readOnly) throw new DocumentError('protected');
-      const metadata = restore || geometry ? { bookmarks: {} } : nativeMetadata(this.document);
+      if (!restore && !geometry && !header && !structure && this.readOnly) throw new DocumentError('protected');
+      const metadata = restore || geometry || header || structure ? { bookmarks: {} } : nativeMetadata(this.document);
       const objects = restore ? [] : this.formulaElements().map(node => ({ node, xml: node.outerHTML }));
-      const tracked = !restore && !geometry && (this.tracksNativeEdits || label === 'bookmark' || label === 'breakEdit');
+      const tracked = !restore && !geometry && !header && !structure && (this.tracksNativeEdits || label === 'bookmark' || label === 'breakEdit');
       this.nativeTransaction = tracked ? {
         text: this.nativeView().text,
         bookmarks: metadata.bookmarks, meta: metadata.meta,
       } : null;
       const result = change();
+      if (header && (this.headerReason() || outsideArea(this.document, this.scope) !== outside)) throw new DocumentError('headerUnsupported');
+      if (structure && (this.headerAreas().reason || outsideArea(this.document, structureArea, true) !== outside)) throw new DocumentError('headerAssociation');
       if (breaksBefore) {
         const afterBreaks = breaks();
         if (afterBreaks.length !== breaksBefore.length || breaksBefore.some(({ node, signature }, index) =>
@@ -818,8 +887,8 @@ export class WriteProDocument {
           JSON.stringify(nativeMetadata(this.document).bookmarks) !== JSON.stringify(this.nativeTransaction.bookmarks)) throw new DocumentError('protected');
       }
       const after = this.serialize();
-      const hasBookmarks = restore || geometry ? this.hasBookmarks : Object.keys(nativeMetadata(this.document).bookmarks).length > 0;
-      if (!restore && !geometry && !tracked && hasBookmarks) throw new DocumentError('protected');
+      const hasBookmarks = restore || geometry || header || structure ? this.hasBookmarks : Object.keys(nativeMetadata(this.document).bookmarks).length > 0;
+      if (!restore && !geometry && !header && !structure && !tracked && hasBookmarks) throw new DocumentError('protected');
       if (after !== before) {
         parse(after);
         const resources = Object.entries(this.files).reduce((sum, [name, bytes]) => sum + (name === this.entry ? 0 : bytes.length), 0);
@@ -975,12 +1044,28 @@ export class WriteProDocument {
     this.endGroup();
     const labels = redo ? this.redoLabels : this.undoLabels;
     const selections = redo ? this.redoSelections : this.undoSelections;
+    const areaXML = () => new Map([...this.document.querySelectorAll('body > div')]
+      .filter(element => areaClass.test(element.getAttribute('class') || ''))
+      .map(element => [element.getAttribute('class'), element.outerHTML]));
+    const areasBefore = areaXML();
+    const previousScope = this.scope;
     (redo ? this.undoLabels : this.redoLabels).push(labels.pop() || 'edit');
     (redo ? this.undoSelections : this.redoSelections).push(this.selection);
     to.push(this.serialize());
     this.document = parse(from.pop());
     this.selection = selections.pop() || null;
     this.refresh();
+    const areasAfter = areaXML();
+    const changed = [...new Set([...areasBefore.keys(), ...areasAfter.keys()])]
+      .filter(name => areasBefore.get(name) !== areasAfter.get(name));
+    this.scope = changed.length === 1 && areasAfter.has(changed[0]) ? changed[0] : 'body';
+    if (previousScope !== this.scope) (redo ? this.undoSelections : this.redoSelections).splice(-1, 1, null);
+    if (this.selection) {
+      let block = this.document.querySelector('body');
+      for (const index of this.selection.start.path) block = block?.children[index];
+      const scope = block?.closest('div')?.getAttribute('class')?.match(areaClass)?.[0] || 'body';
+      if (scope !== this.scope) this.selection = null;
+    }
     return this.selection ? { selection: this.selection } : null;
   }
 
@@ -1074,6 +1159,16 @@ export class WriteProDocument {
   }
 
   addParagraph(index = null) {
+    if (this.scope !== 'body') {
+      if (this.editingReadOnly) throw new DocumentError('headerUnsupported');
+      return this.mutate('paragraph', () => {
+        const paragraph = this.document.createElementNS(XHTML, 'p');
+        paragraph.setAttribute('class', 'Normal');
+        paragraph.append(this.document.createTextNode(''));
+        this.scopeRoot.append(paragraph);
+        return { node: paragraph.firstChild, offset: 0 };
+      });
+    }
     if (this.readOnly) throw new DocumentError('protected');
     const after = this.blocks[index];
     if (after && (after.parentElement.localName !== 'body' || this.protected(after))) throw new DocumentError('protected');
@@ -1105,8 +1200,10 @@ export class WriteProDocument {
   }
 
   guardRange(range, allowFormulas = false) {
-    if (this.readOnly) throw new DocumentError('protected');
-    for (const element of this.document.querySelectorAll('body *')) {
+    if (this.editingReadOnly) throw new DocumentError('protected');
+    const root = this.scopeRoot;
+    if (this.scope !== 'body' && (!root?.contains(range.startContainer) || !root.contains(range.endContainer))) throw new DocumentError('protected');
+    for (const element of root.querySelectorAll('*')) {
       if (range.intersectsNode(element) && this.protected(element, allowFormulas)) throw new DocumentError('protected');
       if (range.intersectsNode(element) && element.localName === 'img' && !this.imageSource(element)) throw new DocumentError('protected');
     }
@@ -1367,6 +1464,13 @@ export class WriteProDocument {
   }
 
   paste(selection, html, plain) {
+    if (this.scope !== 'body' && html) {
+      if (html.length + plain.length > 2 * 1024 * 1024) throw new DocumentError('tooLarge');
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      if (template.content.querySelector('table,ul,ol,img,object,iframe,svg,math,script,style,.formula-object') ||
+        [...template.content.querySelectorAll('[style]')].some(element => /-d4-(ref|anchor|protected|section)/i.test(element.getAttribute('style')))) throw new DocumentError('headerUnsupported');
+    }
     const fragment = cleanPaste(html, plain, this.document);
     const range = this.range(selection);
     const block = this.runs[selection.startRun].parentElement.closest('p,li');
@@ -1744,6 +1848,7 @@ export class WriteProDocument {
   restoreVersion(xml) {
     const restored = parse(xml);
     this.mutate('restore', () => { this.document = restored; this.refresh(); }, null, true);
+    this.setScope('body');
   }
 
   pack() {
@@ -1751,6 +1856,7 @@ export class WriteProDocument {
       xml: this.serialize(), files: this.files, entry: this.entry, original: this.original, initial: this.initial,
       undo: [...this.undoStack], redo: [...this.redoStack], undoLabels: [...this.undoLabels], redoLabels: [...this.redoLabels],
       selection: this.selection, undoSelections: [...this.undoSelections], redoSelections: [...this.redoSelections],
+      scope: this.scope,
     };
   }
 
@@ -1773,6 +1879,8 @@ export class WriteProDocument {
       model[field] = values;
     }
     if (!validBookmark(data.selection ?? null)) throw new DocumentError('invalidDocument');
+    model.selection = data.selection ?? null;
+    if (data.scope !== undefined) model.setScope(data.scope);
     model.selection = data.selection ?? null;
     return model;
   }
@@ -1797,7 +1905,8 @@ export class WriteProDocument {
     this.blocks = [];
     this.images = [];
     this.cells = [];
-    const body = this.document.querySelector('body');
+    const body = this.scopeRoot;
+    if (!body) throw new DocumentError('headerAssociation');
     this.projection.set(body, host);
     for (const element of body.querySelectorAll('img,br')) {
       if (this.protected(element) || element.localName === 'img' && !this.imageSource(element) || !element.closest('p,li')) continue;
@@ -1824,7 +1933,7 @@ export class WriteProDocument {
           run.textContent = child.data;
           if (decoration) run.style.textDecoration = decoration;
           if (background) run.style.backgroundColor = background;
-          if (!locked && !this.readOnly) {
+          if (!locked && !this.editingReadOnly) {
             run.setAttribute('contenteditable', 'plaintext-only');
             run.setAttribute('role', 'textbox');
             run.setAttribute('aria-label', labels.editText);
@@ -1948,6 +2057,12 @@ export class WriteProDocument {
       }
     };
     project(body, host);
-    projectLayout(this, host);
+    if (this.scope === 'body') projectLayout(this, host);
+    else {
+      host.classList.remove('layout-preview');
+      for (const property of ['width', 'min-width', 'max-width', 'min-height', 'padding']) host.style.removeProperty(property);
+      host.classList.add('header-paper');
+    }
+    host.classList.toggle('header-paper', this.scope !== 'body');
   }
 }
