@@ -7,7 +7,7 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`3166e23` / #55](https://github.com/miyako/4d-ql/pull/55).
+[`c767aa6` / #56](https://github.com/miyako/4d-ql/pull/56).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
@@ -36,15 +36,16 @@ promise of dates or full Write Pro parity.
 | 10.3. Paged browser preview | Best-effort, read-only single-column paragraph pages and repeating supported first/facing/default headers/footers; matching browser print projection and explicit continuous fallback | Available on merged main via #53 |
 | 10.4. Expanded browser pagination | Measured paragraph fragments, supported flat native lists and local inline images in read-only paged preview and matching print | Available on main via #54 |
 | 10.5. Paged tables | Measured row-boundary fragments of rectangular paragraph-cell tables, stable columns and repeating native leading header rows in preview and matching print | Available on main via #55 |
-| 10.6. Paged columns | Bounded equal-column, sequential paragraph/list/image flow with explicit column breaks and matching browser print | In progress; not yet merged or deployed |
-| 10.7. Further layout parity | Multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled, not part of this increment |
+| 10.6. Paged columns | Bounded equal-column, sequential paragraph/list/image flow with explicit column breaks and matching browser print | Available on main via #56 |
+| 10.7. Continuous-section pages | Area-free compatible single-column boundaries share measured pages and matching browser print; unsupported seams retain explicit fallback | In progress; not yet merged or deployed |
+| 10.8. Further layout parity | Area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled, not part of this increment |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
 Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
-on main. The #55 baseline was deployed by successful Pages run
-[`43472236709`](https://github.com/miyako/4d-ql/actions/runs/43472236709)
-at `3166e238434980cc1672e7c5392de6fa57f5986c`.
-The selected next increment is bounded read-only paged columns; it remains
+on main. The #56 baseline was deployed by successful Pages run
+[`43479804466`](https://github.com/miyako/4d-ql/actions/runs/43479804466)
+at `c767aa67108a708d94c7f4d0560843161189c439`.
+The selected next increment is bounded read-only continuous-section pages; it remains
 **In progress** until merged. Publication is separately gated by verification,
 review and CI; this status does not imply a deployed release. Arbitrary wrapping and
 automatic native pagination remain unscheduled proposals.
@@ -524,7 +525,7 @@ class-renumbering counterexample are independently preserved in
 `~/.copilot/evidence-backups/4wp-objects-20261113-probes-33ac49fe/`.
 The #52 increment is merged and deployed at the baseline recorded above.
 
-## Paged browser preview (#55 available; paged columns in progress)
+## Paged browser preview (#56 available; continuous-section pages in progress)
 
 Open **Paged browser preview** above the continuous editor. It is a separate,
 read-only projection of the whole document, even while authoring a header/footer.
@@ -618,7 +619,7 @@ Existing body protection for bookmarked documents with unsupported hidden-area
 associations remains in force. Native table recovery evidence edits the safe
 first-header scope rather than weakening those body guards.
 
-The selected column increment admits **2-4 equal-width, left-to-right columns**,
+The available #56 column increment admits **2-4 equal-width, left-to-right columns**,
 with a **0-72 pt gap** and **at least 72 pt of text width in each column** after
 effective section paper margins. Count/gap reuse the existing native authoring
 resolver: `div.section0` supplies defaults and exact `div.sectionN` rules override
@@ -648,7 +649,39 @@ Native PDFs establish equal-column widths and explicit break progression;
 browser PDFs are separately checked against actual measured page/column
 membership, not native automatic wrapping.
 
-Continuous sections, unsupported column shapes/geometry/content, unsupported tables/lists/images, anchored
+The in-progress continuous-section increment admits **area-free single-column
+seams with identical effective paper, orientation, margins and column count/gap
+on both sides**. Native `-d4-section-break-after:continuous` continues in the
+current measured body flow, retaining residual capacity instead of creating an
+artificial page. Overflow advances physical pages normally. Chains and explicit
+page breaks remain ordered; later new-page sections still reset first-area
+selection and use physical document parity. Each disposable body fragment keeps
+its source section identity; the physical sheet records its starting section
+and all participating sections. Names, explicit overrides and inheritance are
+not flattened or rewritten.
+
+`wp_continuous_paged_probe` independently authors 14 full-4D originals, native
+mutation targets, getters and PDFs. Compatible inherited/explicit settings,
+overflow, chains and page/new-page transitions establish the positive subset.
+Margin changes can apply within the same native page, while an orientation
+change can start a different-sized native page. Multi-column seams have distinct
+native flow/balancing behavior and remain unsupported here. A shared native page
+keeps the starting section's header/footer; later physical pages use the later
+section's facing/default content, **not a deferred first header**. All stored
+areas and enabled first/facing variants on either side, including empty ones,
+therefore remain outside the supported subset. Geometry-changing seams, column
+breaks or multi-column seams also use the dedicated localized continuous-seam
+fallback. Unsupported seams never return partial pages.
+
+Already-admitted lists, inline local images/inert formulas and rectangular
+single-column tables retain their existing safety rules across compatible
+seams. A focused rich-content browser regression uses remaining capacity before
+continuing a table on later pages, with fixed widths, repeated leading headers,
+complete ordered content, fitting bounds and exact measured print membership.
+No native wrapping, final-column balancing, exact native pagination/page counts
+or footer coordinates are claimed.
+
+Unsupported continuous seams, unsupported column shapes/geometry/content, unsupported tables/lists/images, anchored
 objects, ambiguous associations/settings, fixed-size body paragraphs and
 unsupported paragraph content use the existing continuous view/print mode.
 Unsplittable oversized lines/atoms, unsafe area bands, oversized unused appendix
@@ -807,6 +840,38 @@ Each independent backup has a complete `SHA256-MANIFEST.json`. The first complet
 native generation is separately retained and backed up as
 `4wp-columns-20261114-gate-01`; it is not the final augmented-manifest evidence.
 
+Continuous-section increment verification (still **In progress; not merged or
+deployed**): **438 unit tests, 149 production browser tests and 2,409 full-4D
+21.2 `F0012102` import/export/reopen cases passed**. Independent native generation
+passed 2,399 cases before final-build regeneration and real Cancel exports.
+All 2,337 #56 definitions remain unchanged by name, with 2,240 unaffected input
+hashes and 2,761 input/dependency archives independently compared. The final
+manifest contains 97 regenerated affected baseline exports (including eight
+prior Cancel cases) and 72 additional continuous-section cases.
+
+All twelve actual headed Chromium print-preview Cancel states passed: continuous,
+paged, expanded, tables, columns and compatible seams, each clean/Redo and
+dirty/Undo. Full DOM, selection endpoints, scope, zoom, history, IndexedDB and
+exact source bytes remain unchanged. The final augmented manifest was then
+strictly imported, exported and reopened in full 4D under the exclusive native
+ownership preflight and lock. The rich-content seam regression also checks
+remaining-page capacity, ordered fitting list/image/formula/table content,
+continued complete rows, repeated native headers and measured PDF membership.
+These checks do not expand the supported seam subset or claim native pagination.
+
+Final continuous-section evidence:
+`~/.copilot/evidence/4wp-continuous-20261114-gate-02/`; independent byte/SHA-verified
+backup: `~/.copilot/evidence-backups/4wp-continuous-20261114-gate-02/`.
+`reproduction.json` records the exact source/build/head identities and gates;
+`Source/`, `Build/`, `Validation/` and `BrowserTestArtifacts/` retain reproduction
+inputs, native/browser/Cancel evidence and all final comparisons outside the
+disposable worktree. Both copies have a complete `SHA256-MANIFEST.json`.
+The independently backed-up passing generation
+`4wp-continuous-20261114-generation-02` and failed first target-terminator attempt
+`4wp-continuous-20261114-gate-01` remain separate; neither is the final release
+evidence. Earlier diagnostic Cancel logs are retained alongside the passing
+`cancel-verified.log` and final native recheck, not presented as passing gates.
+
 ## Layout preview and browser printing (available on main)
 
 White section surfaces reflect supported oriented paper dimensions and each
@@ -906,8 +971,29 @@ cell/header getters are compared after import and reopen.
 For paged columns, also run with `--columns`: its independent mixed-section
 column original and first-header target cover actual Cancel in clean/Redo and
 dirty/Undo states. `columns-cancel-*` downloads add two cases without replacing
-any prior definitions. Run all four paged/expanded/table/column modes, then
+any prior definitions.
+For compatible continuous-section pages, also run with `--seams`: its independent
+native overflow source and first-paragraph mutation target cover actual Cancel
+in clean/Redo and dirty/Undo states. All six modes (default continuous print,
+`--paged`, `--expanded`, `--tables`, `--columns`, `--seams`) compare full DOM,
+exact selection endpoint paths, scope, zoom, history, IndexedDB and before/after
+source export bytes. `seams-cancel-*` adds two cases without replacing any
+baseline definition. The harness settles its own download-triggered draft write
+before taking the snapshots and fixes the browser's Date per phase (timers still
+run), so dirty-export modification timestamps are identical for exact byte
+comparison. It does not normalize away DOM, history, recovery or source changes.
+Run all modes, then
 re-import the augmented manifest in full 4D and run the complete verifier.
+
+For the strict #56 baseline comparison, run
+`node scripts/reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_56_BASELINE`
+after the initial full gate. It preserves unrelated baseline input/dependency
+bytes and regenerates affected paged exports with the current production build.
+Run all Cancel modes, then the same command with `--compare` to check every
+baseline definition and unaffected hash. Finally run
+`bash scripts/check-web-editor-native.sh EVIDENCE_DIRECTORY --recheck`
+from the repository root. Recheck uses the same exclusive ownership preflight
+and lock and rejects an existing final recheck log.
 
 ## GitHub Pages demo
 

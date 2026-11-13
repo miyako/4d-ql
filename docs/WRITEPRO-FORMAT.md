@@ -487,7 +487,7 @@ unverified longhand margins are protected rather than normalized. Browser
 projection remains inert and allowlisted. Continuous browser printing presents
 stored content once in a labeled appendix, **not** native repeating placement.
 
-### Paged browser projection (#55 merged; column increment in progress)
+### Paged browser projection (#56 available; continuous-section increment in progress)
 
 `wp_paged_probe` extends the existing full-4D print gate with four independent
 six-page, two-section documents and native first-footer edit targets. Right-first
@@ -512,7 +512,7 @@ Explicit page/new-page-section boundaries and effective
 section paper geometry are projected on disposable models. Browser header-top
 and footer-bottom margin bands use stored area margins but deliberately do
 **not** claim native vertical coordinates, body-clearance calculation or page
-counts. Unsupported shapes/settings, continuous sections, oversized lines/atoms
+counts. Unsupported shapes/settings, unsupported continuous seams, oversized lines/atoms
 or unsafe bands retain continuous view/printing with an explicit notice.
 Neither projection changes source XML/resources, formulas, bookmark coordinates,
 editing scopes, history or recovery.
@@ -569,7 +569,7 @@ not the unused second column of page 2. The first/left/right headers follow
 physical pages, not column slots. Native paragraph column breaks serialize as
 `break-after:column`, distinct from `page-break-after:always`.
 
-The in-progress browser subset admits 2-4 equal LTR columns without divider
+The available #56 browser subset admits 2-4 equal LTR columns without divider
 rules, gaps from 0 through 72 pt and at least 72 pt of text width per column.
 It reuses the count/gap resolver, oriented paper geometry, measured visual-line
 fragments, native list markers and indivisible local image/formula atoms.
@@ -583,6 +583,41 @@ evaluation are not reproduced. Multi-column tables, divider rules, custom
 column shapes/spanners, RTL/vertical flow, nested/conflicting breaks and
 out-of-bound geometry use localized atomic continuous fallback. Single-column
 table behavior and all established limits/protections remain unchanged.
+
+`wp_continuous_paged_probe` independently creates 14 native originals and
+mutation targets with native section names, inherited/explicit geometry,
+break/column getters, tail bookmarks and PDFs. The compatible one-column,
+area-free cases continue on the occupied page, including a seam after automatic
+overflow. An explicit page break before the seam, successive continuous seams
+and a later new-page section retain physical page progression.
+
+The native margin-change counterexample places section 2 at x=72 pt on the
+same physical page, rather than inserting a page. The orientation counterexample
+starts a 420-by-480 pt second page after a 480-by-420 pt first page.
+Default and first/facing area counterexamples establish that a shared page keeps
+the areas of the section that started it. In the overflow first/facing original,
+section 2 starts on physical page 3 under section 1's right header; physical
+page 4 uses section 2's left header, **not section 2's first header**.
+These observations do not establish general native wrapping, column balancing,
+exact pagination/page counts or footer coordinates.
+
+The in-progress browser subset permits only identical effective paper,
+orientation, all margins and one-column count/gap on both sides, without stored
+areas, enabled first/facing variants or column breaks. Empty areas/variants are
+not treated as absent. Compatible seams retain the current disposable flow;
+new sheets are created only for measured overflow or existing explicit page/
+new-page boundaries. Sheet ownership is its starting section; per-fragment
+section identities and participating-section metadata remain separate from
+physical page numbers. Original names, inheritance, XML/resources, bookmarks,
+formulas, editing state and recovery remain authoritative and untouched.
+Existing admitted paragraph/list/image/formula and rectangular table handling
+is reused without relaxing authoring guards. A rich-content browser regression
+checks residual seam capacity, later table fragments, stable widths, repeated
+leading headers, complete ordered fitting content and exact print membership.
+Geometry-changing, area-bearing, multi-column or otherwise unsupported seams
+use localized atomic continuous fallback. #56 is available and deployed;
+this increment is unmerged/in progress. Broader continuous-seam parity remains
+Proposed and unscheduled.
 
 ## Formulas
 
