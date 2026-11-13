@@ -10,6 +10,7 @@ function model(body, head = '') {
 }
 function render(result) { const host = document.createElement('div'); result.render(host, messages.en); return host; }
 const selection = (startRun, start, endRun = startRun, end = start) => ({ startRun, start, endRun, end });
+const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==';
 
 describe('continuous native-XML operations', () => {
   it('toggles decorations independently and clears inherited inline highlights', () => {
@@ -68,7 +69,7 @@ describe('continuous native-XML operations', () => {
 
   it('restores empty cursor slots on both sides of inline objects', () => {
     for (const index of [0, 1]) {
-      const doc = model('<p><img src="data:image/png;base64,AA=="/></p>');
+      const doc = model(`<p><img src="${png}"/></p>`);
       doc.rememberSelection(selection(index, 0));
       doc.editRun(index, 'Caption');
       render(doc);
@@ -230,13 +231,12 @@ describe('styles, tables and search', () => {
   });
 
   it('resolves raster assets relative to the HTML entry and round-trips inserted pictures', () => {
-    const doc = model('<p>Picture <img src="assets/photo.png"/></p>');
-    doc.entry = 'Book/Doc.html';
-    doc.files['Book/assets/photo.png'] = new Uint8Array([137, 80, 78, 71]);
+    const doc = new WriteProDocument('<html xmlns="http://www.w3.org/1999/xhtml"><head/><body><p>Picture <img src="assets/photo.png"/></p></body></html>',
+      { 'Book/assets/photo.png': Uint8Array.from(atob(png.split(',')[1]), char => char.charCodeAt(0)) }, 'Book/Doc.html');
     const host = render(doc);
-    expect(host.querySelector('img').src).toBe('data:image/png;base64,iVBORw==');
+    expect(host.querySelector('img').src).toBe(png);
     const fresh = model('<p>\u200b</p>');
-    fresh.insertImage(selection(0, 0), 'data:image/png;base64,iVBORw==', 100, 50, 'Example');
+    fresh.insertImage(selection(0, 0), png, 100, 50, 'Example');
     render(fresh);
     fresh.changeImage(0, 150);
     const exported = WriteProDocument.open(fresh.export());
@@ -249,7 +249,7 @@ describe('styles, tables and search', () => {
   });
 
   it('keeps image-only paragraphs editable after restore and moves/removes images without deleting adjacent text', () => {
-    const doc = model('<p><img src="data:image/png;base64,iVBORw=="/></p><p>After</p>');
+    const doc = model(`<p><img src="${png}"/></p><p>After</p>`);
     const before = doc.serialize();
     expect(doc.runs[0].length).toBe(0);
     expect(doc.dirty).toBe(false);

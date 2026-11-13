@@ -7,7 +7,7 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`e2774c0` / #49](https://github.com/miyako/4d-ql/pull/49).
+[`caf6b31` / #50](https://github.com/miyako/4d-ql/pull/50).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
@@ -30,14 +30,16 @@ promise of dates or full Write Pro parity.
 | 8.3. Columns and tabs | Column count/gap and paragraph tab stops, with explicit preview limits | Available on main via #47; deployment status is separate |
 | 8.4. Preview/output | Section-sized continuous preview and local browser printing without claiming exact 4D pagination | Available on main via #48 |
 | 9. Headers and footers | Section-aware text/formatting in stored default/first/left/right areas, protected default-area creation/removal, labeled print content appendix | Available on main via #49 |
-| 9.1. Header/footer variants and positioning | Section-local first-page and paired left/right toggles with native copying/removal semantics; four native area margins | In progress; this increment is not merged or deployed |
-| 10. Richer media and advanced layout | More picture formats, floating objects, text boxes, object wrapping and automatic native-equivalent pagination | Proposed; not started |
+| 9.1. Header/footer variants and positioning | Section-local first-page and paired left/right toggles with native copying/removal semantics; four native area margins | Available on main via #50 |
+| 10.1. Advanced images and text boxes | Bounded native picture decoding, isolated anchored-picture/text-box views, scoped box text/formatting and object size/offset editing | In progress; this local increment is not merged or deployed |
+| 10.2. Further layout parity | Repeating browser headers/footers, arbitrary object wrapping/layers and automatic native-equivalent pagination | Proposed; unscheduled, not part of this increment |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
-Steps 8.1–8.4 and basic header/footer editing are available on main. The selected
-next increment is header/footer variants and positioning; it remains **In progress** until merged. Publication is separately gated; this
-increment does not merge or deploy itself. Advanced pictures/text boxes,
-floating objects and automatic native pagination are proposals, not started.
+Steps 8.1–8.4 and header/footer variants/positioning are available on main.
+The selected next increment is advanced images and text boxes; it remains
+**In progress** until merged. Publication is separately gated; this increment
+does not push, open a PR, merge or deploy itself. Repeating browser headers,
+arbitrary wrapping and automatic native pagination remain unscheduled proposals.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
 The [preservation contract](#preservation-contract-and-limits) and
@@ -239,7 +241,7 @@ sections inherit or override its geometry, not another section's header text.
 Absent header/footer areas are absent, not inherited content. Creating a native
 subsection copies existing default content, and creating left or right also
 creates its opposite. Existing first/left/right stored areas can be edited
-independently. The unmerged variant/positioning increment below adds explicit
+independently. The merged variant/positioning increment below adds explicit
 controls for those native operations, not automatic native pagination.
 
 The separate section/kind selectors create an **empty default** header/footer
@@ -278,7 +280,7 @@ pairs, geometry, formula XML and native reexports/reopens. The browser suite
 also covers scope-aware recovery, safe removal/undo, unsupported structures,
 six languages, mobile, themes, keyboard focus and content-appendix PDF output.
 
-### Variant controls and positioning (in progress, not merged or deployed)
+### Variant controls and positioning (available on main via #50)
 
 The **First page** and **Left/right pages** toggle buttons apply to the selected
 **Native section**, to **both header and footer**. Their pressed state and a
@@ -333,21 +335,104 @@ repeating placement, evaluated fields or native-equivalent pagination.
 Native-created regression archives in `tests/fixtures/headers/` come from
 `Output/variant-*.4wp`, never from the web model.
 
-This local increment passes **415 unit tests, 103 browser tests and 1,959
+The merged #50 increment passed **415 unit tests, 103 browser tests and 1,959
 full-4D F0012102 import/export/reopen cases**. The native gate retains the
 1,692-case #49 baseline and adds 267 variant/positioning cases, including real
 browser operations, Undo and recovered Redo downloads. Nine native originals,
 thirteen stages each and four separate area-deletion/creation counterexamples
 establish the independent expectations. This is scoped compatibility evidence,
-not arbitrary layout parity or a claim that this branch is merged/deployed.
+not arbitrary layout parity.
 
-This unmerged increment passed **408 unit tests, 101 browser tests and 1,692
+The merged #49 increment passed **408 unit tests, 101 browser tests and 1,692
 full-4D import/export/reopen cases**. The unchanged 1,548-case printing baseline
 is retained; 144 additions comprise 62 model exports and 82 actual browser and
 recovered downloads. Seven independent native cases each retain fourteen
 mutation stages. Native-original PDF observations verify first/right selection,
 cached formula text, absent-section content and mixed page geometry; they do not
 assert browser/native page-count or repetition parity.
+
+## Advanced images and text boxes (in progress)
+
+The **Editing scope** selector includes stored anchored pictures and text boxes
+by their original native IDs. These are isolated authoring views, not objects
+positioned on simulated pages. Stored page/section/origin/alignment/layout and
+display-mode declarations are inspectable as native metadata; absent properties
+stay absent. The native defaults observed by the probe are all pages/all
+sections, paper origin and zero offsets for added pictures; new text boxes start
+on page 1, 8 cm wide, auto height, with 4 pt padding and front layout.
+The editor does not create/delete native anchored objects, change associations,
+alignment, wrapping, layering or display modes in this increment.
+
+Supported native text boxes containing ordinary paragraphs and inline formatting
+have their own text/formatting scope. Supported immutable text formulas keep
+their exact subtrees while surrounding text can change. Edits use the existing
+registered document-wide transaction, Undo/Redo, versions and IndexedDB recovery.
+Body text, raw bookmark pairs, nonactive objects, headers/footers, formulas and
+resources remain unchanged. Body guards are **not** relaxed merely because an
+object can be edited in another scope. Nested tables/pictures, identity-bearing
+descendants, unknown anchor properties, ambiguous IDs/sections, conditional or
+important object CSS and formula pictures remain protected. Text boxes require
+their unique native identity-owned `div._divN` rule; shared/missing rules and
+inline box geometry are protected because native 4D ignores those inline overrides.
+
+**Object size and offsets** applies only changed fields, preserving unchanged
+units/precision and auto dimensions. Width/height are 1–1,200 pt and nonnegative
+horizontal/vertical offsets are 0–1,200 pt, in pt/mm/cm/in. Invalid/nonfinite
+values fail explicitly, without history or mutation. These are editor limits,
+not native maximums. Alignment-based placement remains geometry-protected;
+supported box text can still be edited independently. Only paper-origin,
+unambiguous native associations are editable. Existing front/behind/wrap-square
+metadata is retained, never converted into browser positioning.
+Box geometry updates only that identity-owned rule; picture geometry uses
+native-verified inline overrides. Unrelated CSS and XML remain exact.
+
+Inline/archive-relative static PNG, JPEG, GIF and WebP previews are admitted by
+bounded container/dimension inspection (including PNG chunk checksums), followed
+by browser decoding. The
+independently observed TCP4 v8 single-codec PNG/JPEG record can also be projected:
+the codec-name record, declared sizes, metadata span, reserved bytes and payload
+offset/length must agree. The extractor does **not** scan arbitrary bytes for a
+magic signature or execute metadata. Other native records/codecs remain explicit
+placeholders. Wrapper projection is display-only, may differ from native affine
+transforms, and never replaces or rasterizes the authoritative source URI or
+archive bytes. Wrapped inline objects remain mutation-protected.
+
+Admission limits are 8 MiB and 40 million decoded pixels per source, with
+128 distinct admitted sources, 16 MiB of admitted source bytes and 80 million
+pixels per model. At most 512 distinct source attempts (including rejections)
+are inspected; further sources receive a budget notice rather than bypassing
+admission limits when the cache is full. Animation (including APNG), active SVG/vector/native codecs,
+external URLs and malformed/truncated/missing payloads receive explicit localized
+notices; browser decode failures replace the picture with a notice too.
+Nothing fetches an external image. Original sources remain available on export,
+including unsupported and malformed ones. The archive/XML budgets still apply.
+
+The isolated view approximates supported picture fitting and dimensions. Text
+box surfaces use stored dimensions as guides without clipping overflowing text.
+Browser print includes supported stored objects **once each in a labeled
+appendix**, with protected-object notices for unsupported cases. It uses a
+disposable model, not the live scope/mappings. Native wrapping, z-order, page
+targeting, repetition and pagination are not simulated; formulas are not
+evaluated.
+
+`wp_media_probe` independently creates seven native cases (defaults, paper,
+section, alignment, formula, nested picture and transformed wrapper), records
+seven operation stages and exports native PDFs. It establishes independent box
+UTF-16 text ranges, stable object IDs and unchanged body tape/bookmarks across
+geometry, box text/formatting, layout and removal. Native PDF text bounds verify
+the paper-relative box movement. The expanded gate compares model and actual
+browser downloads, Undo and recovered Redo with those independent getter/text
+expectations and retained source bytes. Fixtures in `tests/fixtures/media/`
+are native-generated originals, not editor-generated expectations.
+
+This local increment passed **424 unit tests, 114 browser tests and 2,060
+full-4D F0012102 import/export/reopen cases**. The 1,959-case #50 manifest is
+unchanged; 101 media cases add 23 model exports and 78 actual browser, recovery,
+Undo and recovered-Redo downloads. Browser checks include measured isolated
+object widths, malformed/decode-failing sources, immutable print content and
+all six languages/themes on mobile. These are scoped preservation and getter
+checks, not a claim of native browser layout parity. The increment remains
+unmerged and undeployed.
 
 ## Layout preview and browser printing (available on main)
 
@@ -578,11 +663,11 @@ formulas and resource payloads are retained, not translated into editor markup.
 The UI renders an allowlisted projection, never the source HTML or stylesheet
 directly. Document scripts, navigation, external images, CSS URLs and embedded
 active content do not run. Native formulas/data-source tables, protected text,
-generic hidden or anchored objects are not editable. Header/footer text has
-separate, capability-checked scopes described above. Browser-compatible
-inline and archive-relative PNG/JPEG/GIF/WebP images are shown without network
-requests; other images (including native 4DPicture wrappers) and unsupported
-objects have placeholders.
+generic hidden objects remain protected. Headers/footers and supported stored
+objects have separate capability-checked scopes described above. Supported
+static inline/archive-relative PNG/JPEG/GIF/WebP and bounded native picture
+wrappers are projected without network requests; other images and unsupported
+objects have explicit placeholders.
 They are still retained in exported archives.
 
 ### Formula-aware display (available on main)

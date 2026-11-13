@@ -39,6 +39,9 @@ Else
 		End if
 		$doc:=WP Import document($root.file("Input/"+$case.file).platformPath)
 		If ($doc#Null)
+			If (OB Is defined($case; "media"))
+				$result.mediaImported:=wp_media_stats($doc)
+			End if
 			If (OB Is defined($case; "header"))
 				$result.headerImported:=wp_header_stats($doc)
 			End if
@@ -56,6 +59,9 @@ Else
 			WP EXPORT DOCUMENT($doc; $root.file("Output/"+$case.name+".4wp").platformPath; wk 4wp)
 			$reopened:=WP Import document($root.file("Output/"+$case.name+".4wp").platformPath)
 			If ($reopened#Null)
+				If (OB Is defined($case; "media"))
+					$result.mediaReopened:=wp_media_stats($reopened)
+				End if
 				If (OB Is defined($case; "header"))
 					$result.headerReopened:=wp_header_stats($reopened)
 				End if

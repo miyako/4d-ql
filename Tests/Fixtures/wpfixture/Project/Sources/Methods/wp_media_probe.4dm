@@ -1,0 +1,63 @@
+var $root : 4D.Folder:=Folder(Get 4D folder(Database folder); fk platform path)
+var $report : Object:=New object("version"; Application version(*); "cases"; New collection())
+var $doc; $body; $pictureObject; $box; $item; $break : Object
+var $picture : Picture
+var $kind; $stage : Text
+READ PICTURE FILE($root.file("Resources/checker.png").platformPath; $picture)
+For each ($kind; New collection("default"; "paper"; "section"; "aligned"; "formula"; "nested"; "wrapper"))
+	READ PICTURE FILE($root.file("Resources/checker.png").platformPath; $picture)
+	If ($kind="wrapper")
+		TRANSFORM PICTURE($picture; Scale; 20; 20)
+	End if
+	$doc:=WP New()
+	$body:=WP Get body($doc)
+	WP SET TEXT($body; "BODY 😀 ONE"; wk replace)
+	$break:=WP Insert break($body; wk section break; wk append)
+	WP SET TEXT($body; "BODY TWO"; wk append)
+	WP NEW BOOKMARK(WP Text range($body; 1; 5); "media_body")
+	$pictureObject:=WP Add picture($doc; $picture)
+	$box:=WP New text box($doc; 1)
+	WP SET TEXT($box; "BOX 😀 日é"; wk replace)
+	Case of
+		: ($kind="paper")
+			WP SET ATTRIBUTES($pictureObject; wk anchor origin; wk paper box; wk anchor page; 1; wk width; "96pt"; wk height; "64pt"; wk anchor horizontal offset; "40pt"; wk anchor vertical offset; "100pt")
+			WP SET ATTRIBUTES($box; wk anchor origin; wk paper box; wk anchor page; 1; wk width; "180pt"; wk height; "90pt"; wk anchor horizontal offset; "180pt"; wk anchor vertical offset; "200pt")
+		: ($kind="section")
+			WP SET ATTRIBUTES($pictureObject; wk anchor section; 2; wk anchor page; wk anchor all)
+			WP SET ATTRIBUTES($box; wk anchor section; 2; wk anchor page; wk anchor all)
+		: ($kind="aligned")
+			WP SET ATTRIBUTES($pictureObject; wk anchor horizontal align; wk right; wk anchor vertical align; wk bottom)
+			WP SET ATTRIBUTES($box; wk anchor horizontal align; wk center; wk anchor vertical align; wk center)
+		: ($kind="formula")
+			WP INSERT FORMULA($box; Formula("BOXCACHE"); wk append)
+			WP SET ATTRIBUTES($pictureObject; wk image formula; Formula(This.data.logo))
+		: ($kind="nested")
+			WP INSERT PICTURE($box; $picture; wk append)
+	End case
+	$item:=New object("name"; $kind; "stages"; New collection())
+	For each ($stage; New collection("original"; "geometry"; "text"; "format"; "layout"; "removePicture"; "removeBox"))
+		Case of
+			: ($stage="geometry")
+				WP SET ATTRIBUTES($pictureObject; wk width; "111.125pt"; wk height; "72.25pt"; wk anchor horizontal offset; "12.345mm"; wk anchor vertical offset; "20.5pt")
+				WP SET ATTRIBUTES($box; wk width; "210.125pt"; wk height; "100.25pt"; wk anchor horizontal offset; "30.5pt"; wk anchor vertical offset; "40.75pt")
+			: ($stage="text")
+				WP SET TEXT(WP Text range($box; 1; 4); "EDITé"; wk replace)
+			: ($stage="format")
+				WP SET ATTRIBUTES(WP Text range($box; 1; 6); wk font bold; wk true)
+			: ($stage="layout")
+				WP SET ATTRIBUTES($pictureObject; wk anchor layout; wk behind text; wk image display mode; wk proportional centered)
+				WP SET ATTRIBUTES($box; wk anchor layout; wk text wrap square)
+			: ($stage="removePicture")
+				WP DELETE PICTURE($pictureObject)
+			: ($stage="removeBox")
+				WP DELETE TEXT BOX($box)
+		End case
+		WP EXPORT DOCUMENT($doc; $root.file("Output/media-"+$kind+"-"+$stage+".4wp").platformPath; wk 4wp)
+		If ($kind="paper")
+			WP EXPORT DOCUMENT($doc; $root.file("Output/media-"+$kind+"-"+$stage+".pdf").platformPath; wk pdf)
+		End if
+		$item.stages.push(New object("name"; $stage; "stats"; wp_media_stats($doc)))
+	End for each
+	$report.cases.push($item)
+End for each
+$root.file("Output/media-report.json").setText(JSON Stringify($report; *))

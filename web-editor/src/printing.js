@@ -74,6 +74,24 @@ export function createPrintProjection(model, labels) {
     }
     root.append(appendix);
   }
+  const objects = copy.storedObjects();
+  if (objects.length) {
+    const appendix = document.createElement('section');
+    appendix.className = 'header-appendix object-appendix';
+    const notice = document.createElement('p');
+    notice.textContent = labels.objectHelp;
+    appendix.append(notice);
+    for (const item of objects) {
+      const heading = document.createElement('h3');
+      heading.textContent = `${labels[item.kind]} · ${item.id}`;
+      const content = document.createElement('div');
+      copy.setScope(item.name);
+      if (copy.objectState().reason) content.textContent = labels.objectProtected;
+      else copy.render(content, labels);
+      appendix.append(heading, content);
+    }
+    root.append(appendix);
+  }
   for (const element of root.querySelectorAll('*')) {
     for (const attribute of [...element.attributes]) {
       if (['contenteditable', 'tabindex', 'role', 'spellcheck', 'aria-label'].includes(attribute.name) ||

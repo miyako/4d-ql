@@ -78,7 +78,7 @@ test('hidden native associations retain a visible placeholder without adding def
 });
 
 test('a document change during image preparation aborts printing instead of opening a stale document', async ({ page }) => {
-  const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+  const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==';
   await open(page, '', `<p>FIRST<img src="data:image/png;base64,${pixel}"/></p>`);
   await page.evaluate(() => {
     window.printCalls = 0;
@@ -98,7 +98,7 @@ test('a document change during image preparation aborts printing instead of open
 test('long text, tables, raster images and inert formula/unsupported placeholders survive small-paper printing without clipping', async ({ page }, testInfo) => {
   const rows = Array.from({ length: 60 }, (_, index) => `<tr><td><p>ROW${index}LEFT</p></td><td><p>ROW${index}RIGHT</p></td></tr>`).join('');
   const lines = Array.from({ length: 80 }, (_, index) => `<p>TEXT${index} word word word word word word</p>`).join('');
-  const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+  const pixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==';
   await open(page, 'div.section0{-d4-page-width:298pt;-d4-page-height:420pt;-d4-page-margin:24pt}',
     `${lines}<table style="width:900pt">${rows}</table><p><img src="data:image/png;base64,${pixel}" style="width:400pt;height:400pt"/><span style="-d4-ref:'1+1'">CACHED</span><img src="https://invalid.example/tracker"/>TAILEND</p>`);
   let requests = 0;

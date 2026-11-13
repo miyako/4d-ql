@@ -557,6 +557,56 @@ an atom roll back. See the [editor's exact limits](../web-editor/README.md#formu
   (`colspan`, `rowspan`, `width`, padding and borders). An empty paragraph
   follows each table.
 
+### Scoped web media evidence (full 4D F0012102)
+
+The independent `wp_media_probe` creates anchored pictures (`img1`) and text
+boxes (`textBox1`) with default, explicit paper, section-2, alignment, formula,
+nested-image and transformed-picture variants. Seven stages export original,
+geometry, text replacement, formatting, layout, picture removal and box removal.
+All stages retain the exact body text/range and original raw body bookmark.
+`WP Text range(box; 1; 4)` replaces `BOX`, not body characters at those coordinates.
+The native getters and native PDF text bounds are the oracle, not the browser DOM.
+
+Default added pictures have auto dimensions, all-page/all-section anchors,
+paper origin (getter `3`), zero offsets, no alignment and behind layout. Native
+text boxes start on page 1/all sections, paper origin, width `8cm`, auto height,
+padding `4pt`, white background, solid `1pt` border and front layout.
+The picture display-mode getter returns `scaledToFit` by default and
+`proportionalCentered` after the independent mode-change stage; geometry-only
+targets retain the original mode. This getter requires a string-compatible
+output variable, unlike the integer anchor/layout getters.
+Setting a specific section preserves its association independently of source
+DOM order. Offset setters do not remove existing center/right/bottom alignment;
+the web editor therefore protects offset controls for aligned objects rather
+than treating alignment as an interchangeable coordinate.
+
+Full-4D import/reopen counterexamples establish that box width/height/offset
+overrides on the root `div`'s inline `style` are ignored, even though the same
+picture overrides work. Box geometry must update the unique native
+`div._divN` rule associated with `textBoxN`. The scoped transaction excludes
+only that rule's four geometry declarations from its outside-XML comparison;
+all other declarations, selectors and source text remain authoritative.
+
+For the independently observed single-codec TCP4 v8 wrapper, little-endian
+header fields at offsets 8/12/16/20/24 are codec count, payload byte length,
+codec-record byte length, metadata byte length and a zero reserved field.
+At 28 is a negative UTF-16 codec-name length, followed by that name. After the
+codec record and metadata span are 24 reserved zero bytes, then an eight-byte
+payload offset/length record. The bounded web extractor requires exactly one
+PNG/JPEG codec, matching lengths/offsets and a complete supported raster
+envelope; it never searches arbitrary metadata for a codec signature.
+This is a deliberately narrow observed representation, not a general TCP4 spec.
+Native affine/display metadata stays opaque and authoritative; extracting its
+payload is a labeled display-only projection, not a source conversion.
+
+The web increment retains object IDs, all association/layout/display attributes,
+nonactive XML/formulas/resources and body bookmark pairs. Ordinary box
+text/formatting and validated paper-origin size/offset edits use isolated
+transactions; creation/removal, association/alignment/layout/display-mode
+changes, nested identity-bearing content, unknown metadata and formula pictures
+remain protected. Supported stored objects print once in an isolated appendix,
+not at native page coordinates. See the [editor support contract](../web-editor/README.md#advanced-images-and-text-boxes-in-progress).
+
 ## Preview limits
 
 The preview rebuilds documents from a fixed vocabulary of elements and

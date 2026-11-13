@@ -15,6 +15,7 @@ import { prepareSectionCases, verifySectionCase } from './native-section-cases.m
 import { prepareFlowCases, verifyFlowCase } from './native-flow-cases.mjs';
 import { preparePrintCases } from './native-print-cases.mjs';
 import { prepareHeaderCases, prepareVariantCases, verifyHeaderCase } from './native-header-cases.mjs';
+import { prepareMediaCases, verifyMediaCase } from './native-media-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtures = resolve(root, '../Tests/FourDFileKitTests/Fixtures/WritePro');
@@ -87,6 +88,7 @@ async function prepare() {
       if (edited) await editable.fill('WEB-CHECK ' + await editable.textContent());
       await download(`${name}-browser`, { reference: `${name}-original`, edited });
     }
+    await prepareMediaCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     await prepareHeaderCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     await prepareVariantCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     const rangeReport = JSON.parse(await readFile(resolve(directory, 'Output/range-report.json'), 'utf8'));
@@ -274,6 +276,7 @@ async function verify() {
     if (entry.section) await verifySectionCase(directory, entry, actual);
     if (entry.flow) await verifyFlowCase(directory, entry, actual);
     if (entry.header) await verifyHeaderCase(directory, entry, actual);
+    if (entry.media) await verifyMediaCase(directory, entry, actual);
     if (entry.resources) {
       const source = unzipSync(await readFile(resolve(directory, 'Input', entry.resources)));
       const edited = unzipSync(await readFile(resolve(directory, 'Input', entry.file)));

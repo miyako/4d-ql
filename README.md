@@ -88,11 +88,13 @@ Section-sized continuous preview and local browser Print/Save-as-PDF are
 available on main via [#48](https://github.com/miyako/4d-ql/pull/48), without
 claiming exact 4D pagination. Header/footer text editing, guarded default-area
 creation/removal and a labeled print content appendix are available on main via
-[#49](https://github.com/miyako/4d-ql/pull/49). The selected next increment,
-native section-local first/left/right variant controls and area positioning,
-is **in progress**, not merged or deployed.
-Advanced pictures/text boxes, floating objects and native pagination remain
-proposals, not started.
+[#49](https://github.com/miyako/4d-ql/pull/49). Native section-local first/left/right
+variant controls and area positioning are available on main via
+[#50](https://github.com/miyako/4d-ql/pull/50). The selected advanced images/text-box
+increment is **in progress**, not merged or deployed: bounded native codec
+projection, isolated object views and scoped box text/object geometry editing.
+Repeating browser headers, arbitrary wrapping and native pagination remain
+unscheduled proposals.
 See the editor README for the exact feature boundaries, local data
 limits and full-4D compatibility gate. The Pages demo follows `main`, not
 unmerged feature branches.
