@@ -538,6 +538,26 @@ drag **4D Quick Look** to Applications, and open it once so macOS registers the
 preview extension. The app is signed with a Developer ID and notarized. If
 Finder still shows the old preview, run `qlmanage -r`.
 
+If zoom or buttons stop responding after switching Finder items, check which
+extension Finder is actually using. Current source accepts first-mouse input
+even when the remotely hosted preview window is not key. An older development
+extension can shadow an updated app, including under a different bundle ID:
+
+```sh
+pluginkit -m -v -p com.apple.quicklook.preview | grep FourDQuickLook
+pgrep -x FourDQuickLookExtension | xargs -I{} ps -p {} -o pid=,command=
+```
+
+The second command identifies the executable serving an open preview; compare
+its path with the intended app. To stop using a stale development extension,
+disable its **exact** bundle ID with `pluginkit -e ignore -i <stale-extension-id>`,
+then close Quick Look and run `qlmanage -r` before reopening it. Do not disable
+the extension you intend to use. Also install the current release: disabling
+a development extension does not update an older app in `/Applications`.
+`scripts/build.sh --register` replaces copies
+with the same bundle ID, but does not disable differently named development
+extensions.
+
 ### Command-line tool
 
 See the [CLI reference](docs/CLI.md) for capabilities, installation, options,
@@ -709,6 +729,25 @@ produced the visible pre-canvas warning. On the tested macOS 26.7 host,
 `qlmanage -p -o` still aborted inside ExtensionFoundation with a nil dictionary
 key after unlocking; actual Finder previews and controls worked. The harness
 uses Finder rather than treating that export-tool failure as a renderer failure.
+
+For the catalog input/focus regression, run:
+
+```sh
+swiftc scripts/finder-preview-focus.swift -o build/finder-preview-focus
+build/finder-preview-focus Tests/FourDFileKitTests/Fixtures/catalog.4DCatalog
+```
+
+This closes any existing Quick Look window and opens the supplied catalog.
+It sends native Control-wheel and mouse input, then repeats the checks after
+selecting a temporary text file and a folder while Quick Look stays open.
+Each return must accept wheel zoom, a single reset click, and a single zoom-in
+click (120%). It uses Accessibility output to verify results rather than
+invoking JavaScript or accessibility button actions. It needs an unlocked
+desktop, Automation and Accessibility permission, and the intended extension
+registered as above. Do not use other apps while it runs; native input requires
+Finder to stay in the foreground. It does not synthesize physical trackpad pinch gestures.
+The AppKit regression also checks cached-document reattachment in a non-key
+window; it is not a substitute for this remotely hosted Finder check.
 
 ## File format notes
 

@@ -503,6 +503,25 @@ scripts/build.sh         builds and signs "4D Quick Look.app"
 登録するように一度起動してください。アプリは Developer ID で署名され、公証済みです。
 Finder に古いプレビューが表示される場合は `qlmanage -r` を実行してください。
 
+Finder の選択を切り替えた後にズームやボタンが反応しなくなる場合は、
+実際に使われている拡張機能を確認してください。現在のソースは、リモートの
+プレビューウインドウがキーウインドウでなくても最初のクリックを受け付けますが、
+別のバンドル ID の古い開発版が更新済みアプリより優先されることがあります。
+
+```sh
+pluginkit -m -v -p com.apple.quicklook.preview | grep FourDQuickLook
+pgrep -x FourDQuickLookExtension | xargs -I{} ps -p {} -o pid=,command=
+```
+
+2 番目のコマンドは、開いているプレビューを処理する実行ファイルを表示します。
+意図したアプリのパスと比較し、古い開発版の**正確な**バンドル ID を
+`pluginkit -e ignore -i <stale-extension-id>` で無効にしてください。
+その後、Quick Look を閉じて `qlmanage -r` を実行し、開き直します。
+使用したい拡張機能は無効にしないでください。開発版を無効にしても
+`/Applications` の古いアプリは更新されないため、最新リリースもインストールしてください。
+`scripts/build.sh --register` は
+同じバンドル ID のコピーを置き換えますが、異なる ID の開発版は無効にしません。
+
 ### コマンドラインツール
 
 対応形式、インストール、オプション、自動処理時の動作、各形式のスクリーンショットは
@@ -671,6 +690,24 @@ Finder で複数のファイル系統にわたって確認する必要があり�
 検証した macOS 26.7 のホストでは、ロック解除後も `qlmanage -p -o` が ExtensionFoundation 内で
 辞書のキーが nil のため異常終了しましたが、実際の Finder のプレビューとコントロールは動作しました。
 ハーネスはこのエクスポートツールの失敗をレンダラーの失敗とみなさず、Finder を使います。
+
+カタログの入力・フォーカスの回帰確認には、次を実行します。
+
+```sh
+swiftc scripts/finder-preview-focus.swift -o build/finder-preview-focus
+build/finder-preview-focus Tests/FourDFileKitTests/Fixtures/catalog.4DCatalog
+```
+
+既存の Quick Look を閉じて指定のカタログを開き、ネイティブの Control スクロール、
+リセットの最初のクリック、ズームインの最初のクリック（120%）を確認します。
+Quick Look を開いたまま一時的なテキストファイルとフォルダを選択し、
+カタログに戻るたびに同じ確認を繰り返します。結果は JavaScript や
+アクセシビリティのボタン操作ではなく、アクセシビリティの表示値で判定します。
+ロックされていないデスクトップ、オートメーションとアクセシビリティの許可、
+意図した拡張機能の登録が必要です。実行中は他のアプリを操作せず、Finder を
+最前面に保ってください。物理トラックパッドのピンチは合成しません。
+AppKit テストも非キーウインドウへの再接続を確認しますが、Finder のリモート
+プレビューの確認を代替するものではありません。
 
 ## ファイル形式に関するメモ
 
