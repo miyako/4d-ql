@@ -93,7 +93,7 @@ describe('derived paged projection safety and area selection', () => {
     }
     for (const rows of [row() + row('-d4-header:true'), row('-d4-header:true'), row('-d4-header:unknown') + row(),
       row('', '<ul><li>LIST<ul><li>NESTED</li></ul></li></ul>'), row('', '<table><tr><td><p>NESTED</p></td></tr></table>'),
-      '<tr><td colspan="2"><p>MERGED</p></td></tr>' + row(),
+      '<tr><td colspan="2"><p>MERGED</p></td></tr>',
       row() + '<tr><td><p>IRREGULAR</p></td></tr>', row('height:900pt')]) {
       const model = new WriteProDocument(source('', table(rows)));
       expect(pagedCapability(model)).toBe('pagedTables');
@@ -106,6 +106,31 @@ describe('derived paged projection safety and area selection', () => {
       expect(pagedCapability(model)).toBe(reason);
     }
   }, 15000);
+
+  it('admits horizontal native grids only with a complete unmerged witness, including later witnesses and merged leading headers', () => {
+    const row = '<tr><td><p>A</p></td><td><p>B</p></td><td><p>C</p></td></tr>';
+    const merged = header => `<tr style="-d4-header:${header}"><td colspan="2"><p>AB</p></td><td><p>C</p></td></tr>`;
+    for (const rows of [row + merged(false), merged(false) + row, merged(true) + row,
+      merged(true) + merged(true) + row, merged(false) + '<tr><td colspan="3"><p>ABC</p></td></tr>' + row]) {
+      const model = new WriteProDocument(source('', `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`));
+      model.render(document.createElement('article'), messages.en);
+      const before = model.pack();
+      const mappings = model.projection;
+      expect(pagedCapability(model)).toBeNull();
+      expect(model.pack()).toEqual(before);
+      expect(model.projection).toBe(mappings);
+    }
+    for (const rows of [merged(false) + merged(false),
+      '<tr><td rowspan="2"><p>A</p></td><td colspan="2"><p>BC</p></td></tr><tr><td><p>B</p></td><td><p>C</p></td></tr>' + row,
+      merged(false) + '<tr><td colspan="4"><p>IRREGULAR</p></td></tr>' + row]) {
+      const model = new WriteProDocument(source('', `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`));
+      const before = model.pack();
+      expect(pagedCapability(model)).toBe('pagedTables');
+      expect(() => createPagedProjection(model, messages.en)).toThrow(expect.objectContaining({ code: 'pagedTables' }));
+      expect(model.pack()).toEqual(before);
+      expect(document.querySelector('.paged-measure')).toBeNull();
+    }
+  });
 
   it('admits bounded mixed flat cell lists without inventing counters or changing live mappings', () => {
     for (const list of ['<ul><li style="margin-left:24pt;list-style-type:square">A</li><li>B</li></ul>',

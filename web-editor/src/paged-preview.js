@@ -74,7 +74,10 @@ function pagedTable(model, element) {
   try {
     if (element.children.length > 1000 || element.querySelectorAll('td,th').length > 10000) throw new DocumentError('pagedTables');
     const grid = nativeTableGrid(element);
-    if (grid.merged || grid.rows.length > 1000 || grid.rows.length * grid.columns > 10000 ||
+    const witness = grid.rows.findIndex(row => [...row.children].every(cell =>
+      Number(cell.getAttribute('colspan') || 1) === 1 && Number(cell.getAttribute('rowspan') || 1) === 1));
+    if (witness < 0 || grid.rows.some(row => [...row.children].some(cell => Number(cell.getAttribute('rowspan') || 1) !== 1)) ||
+      grid.rows.length > 1000 || grid.rows.length * grid.columns > 10000 ||
       element.previousElementSibling?.localName !== 'p' || element.nextElementSibling?.localName !== 'p') throw new DocumentError('pagedTables');
     let headers = 0;
     let markers = 0;
@@ -110,7 +113,7 @@ function pagedTable(model, element) {
         paragraphBreak(values) || values['break-after'] === 'column' || (node.localName !== 'img' &&
         ['height', 'min-height', 'max-height'].some(key => values[key]))) throw new DocumentError('pagedTables');
     }
-    return { ...grid, headers };
+    return { ...grid, headers, witness };
   } catch (error) {
     if (!(error instanceof DocumentError)) throw error;
     throw new DocumentError('pagedTables');
@@ -513,7 +516,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
       };
       for (const element of section.elements) {
         if (element.localName === 'table') {
-          const { rows, headers } = pagedTable(copy, element);
+          const { rows, headers, witness, merged } = pagedTable(copy, element);
           const table = mappings.get(element);
           if (!table || table.localName !== 'table' ||
             table.querySelector('.preserved-object:not(.formula-object):not(.paged-image)')) throw new DocumentError('pagedTables');
@@ -540,7 +543,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
           // Measure the whole table once, then freeze its grid before selecting rows.
           flow.append(table);
           const width = table.getBoundingClientRect().width;
-          const widths = [...table.rows[0].cells].map(cell => cell.getBoundingClientRect().width);
+          const widths = [...table.rows[witness].cells].map(cell => cell.getBoundingClientRect().width);
           const reference = [...table.rows].map(row => [...row.cells].map(cell => {
             const bounds = cell.getBoundingClientRect();
             return { width: bounds.width, height: bounds.height };
@@ -551,7 +554,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
             if (['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].some(side => parseFloat(style[side]) < 0)) throw new DocumentError('pagedTables');
           }
           for (const cell of table.querySelectorAll('td,th')) {
-            if (!cell.querySelector('.paged-list-marker')) continue;
+            if (!merged && !cell.querySelector('.paged-list-marker')) continue;
             const bounds = cell.getBoundingClientRect();
             if (![...cell.querySelectorAll('.text-run,.preserved-object,.paged-list-marker,img')].every(run =>
               [...run.getClientRects()].every(rect => rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25 &&
@@ -600,6 +603,9 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
                 const bounds = cell.getBoundingClientRect();
                 if (Math.abs(bounds.width - original[column].width) > .25 ||
                   Math.abs(bounds.height - original[column].height) > .25) throw new DocumentError('pagedTables');
+                if (merged && ![...cell.querySelectorAll('.text-run,.preserved-object,.paged-list-marker,img')].every(run =>
+                  [...run.getClientRects()].every(rect => rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25 &&
+                    rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25))) throw new DocumentError('pagedTables');
               }
             }
             start = end;

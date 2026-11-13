@@ -7,7 +7,7 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`c767aa6` / #56](https://github.com/miyako/4d-ql/pull/56).
+[`b302afc` / #59](https://github.com/miyako/4d-ql/pull/59).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
@@ -38,8 +38,9 @@ promise of dates or full Write Pro parity.
 | 10.5. Paged tables | Measured row-boundary fragments of rectangular paragraph-cell tables, stable columns and repeating native leading header rows in preview and matching print | Available on main via #55 |
 | 10.6. Paged columns | Bounded equal-column, sequential paragraph/list/image flow with explicit column breaks and matching browser print | Available on main via #56 |
 | 10.7. Continuous-section pages | Area-free compatible single-column boundaries share measured pages and matching browser print; unsupported seams retain explicit fallback | Available on main via #57; deployed |
-| 10.8. Paged table-cell lists | Native-evidenced bounded flat cell lists, mixed paragraphs, stable unequal columns and list-bearing leading headers in read-only pages and matching print | In progress; not yet merged or deployed |
-| 10.9. Further layout parity | Area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled, not part of this increment |
+| 10.8. Paged table-cell lists | Native-evidenced bounded flat cell lists, mixed paragraphs, stable unequal columns and list-bearing leading headers in read-only pages and matching print | Available on main via #59; deployed |
+| 10.9. Paged horizontal table spans | Native-evidenced horizontal-only merges with a fully unmerged width-witness row, stable frozen geometry and complete-row/header fragments | Implemented in this version; deployment snapshot below |
+| 10.10. Further layout parity | Vertical/mixed spans, area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled, not part of this increment |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
 Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
@@ -609,7 +610,8 @@ Only contiguous leading rows with native `-d4-header:true` repeat, based on
 independent full-4D `wk header row count` originals/getters/PDF evidence. A `th`
 element alone does not invent a native header. Each fragment requires at least
 one data row in addition to its headers. Nonleading/invalid/all-header metadata,
-merged/spanning/irregular/nested/data-source tables, unsupported lists within cells,
+vertical/mixed spans, horizontal grids without an unmerged witness row,
+irregular/nested/data-source tables, unsupported lists within cells,
 fixed-height structures, negative margins, horizontal overflow, and rows that
 cannot fit with their headers fall back explicitly. Limits are 1,000 rows and
 10,000 cells per table, the existing 1,000-column grid limit, and the shared
@@ -620,7 +622,7 @@ Existing body protection for bookmarked documents with unsupported hidden-area
 associations remains in force. Native table recovery evidence edits the safe
 first-header scope rather than weakening those body guards.
 
-The **In progress** cell-list increment admits direct native `ul`/`ol` blocks
+The **Available/deployed #59** cell-list increment admits direct native `ul`/`ol` blocks
 mixed with cell paragraphs. Items are flat inline `li` elements: no nested lists,
 paragraph-wrapped items, reversed lists, per-item `value`, unknown levels or
 custom marker types. Supported native marker types are `disc`, `circle`, `square`,
@@ -642,6 +644,56 @@ are retained in disposable cell content before the whole-table measurement.
 List-bearing leading header rows repeat with their markers and frozen grid.
 Neither viewing nor printing converts the original XML or broadens table
 authoring, native-range/bookmark guards, undo/recovery or formula evaluation.
+
+Horizontal-span support **in this version** admits only complete native grids
+whose `rowspan` values are all one, with at least one fully unmerged witness row.
+That row may follow merged header/body rows; it supplies all underlying column
+widths after the whole table is measured at its physical flow width. Disposable
+fragments retain original horizontal `colspan` attributes, complete rows and
+contiguous native leading headers. Rich merged cells retain supported paragraphs,
+flat lists, inline formatting/inert links, local pictures and inert formula caches.
+Every cell/atom/marker stays inside its owning bounds, and fragment width/height
+must remain within **0.25 CSS px** of the unfrozen whole table.
+
+Installed full 4D 21.2 `F0012102` originals/mutations/getters/PDFs independently
+establish unequal 50/70/110 pt settings, later witnesses, zero/one/two headers,
+rich merged headers and compatible-seam capacity. The native formula export has
+no distinguishable cache and retains the existing explicit unavailable-value
+notice; cached values are retained only when actually present. A rich two-header
+overflow original remains atomic fallback without altering paper or row geometry.
+Browser frozen dimensions are
+not asserted equal to native width getters or native collapsed-border decisions.
+Vertical/mixed spans, no witness, ambiguous/irregular/overlapping/nested/data-source
+grids, unsafe content and changing geometry remain localized atomic fallback with
+untouched original downloads. No authoring, bookmark/range guard, formula execution,
+row-splitting, continuous-section or multi-column admission is broadened; all prior
+row/cell/column/list/grapheme/sheet limits remain. Native wrapping, pagination,
+page-count and border-conflict parity remain **Proposed**, not promised.
+Deployment is recorded separately: at this version's verification snapshot,
+the live site was #59 (`b302afc`), independently matched to Pages run
+[`43502491206`](https://github.com/miyako/4d-ql/actions/runs/43502491206).
+The horizontal-span release is tracked by its PR and subsequent Pages receipt,
+not inferred from the implementation status in this table.
+
+Verification for this version: **441 unit tests, 159 production browser tests,
+2,524 installed-4D generation cases and 2,538 final strict import/export/reopen
+cases passed** under 4D 21.2 `F0012102`. All **2,498 #59 definitions** remain
+unchanged by name; **2,240 unaffected inputs and 2,761 dependency archives** were
+independently byte/SHA-compared. Final production assets regenerated all affected
+exports. All **sixteen genuine headed Chromium Cancel states** passed: continuous,
+paged, expanded, tables, columns, seams, cell lists and horizontal spans, each
+clean/Redo and dirty/Undo, preserving complete DOM, selection paths/endpoints,
+scope, zoom, exact bytes, history and the entire IndexedDB record. The existing
+seven-line #58 actual-resize repair, body marker admission and cell-only glyph
+overrides remain intact. A prior rich two-header overflow is retained as failed
+generation evidence, not represented as a passing gate.
+
+Final evidence: `~/.copilot/evidence/4wp-colspan-20261114-gate-02/`;
+independent byte/SHA-verified backup:
+`~/.copilot/evidence-backups/4wp-colspan-20261114-gate-02/`.
+The source/build/native/browser/PDF/Cancel/baseline reproduction is sealed before
+PR publication; exact publication heads and unique/unpushed state are reported
+separately from the immutable verification snapshot.
 
 The available #56 column increment admits **2-4 equal-width, left-to-right columns**,
 with a **0-72 pt gap** and **at least 72 pt of text width in each column** after
@@ -896,7 +948,7 @@ The independently backed-up passing generation
 evidence. Earlier diagnostic Cancel logs are retained alongside the passing
 `cancel-verified.log` and final native recheck, not presented as passing gates.
 
-Table-cell-list increment verification (**In progress; not merged or deployed**):
+Table-cell-list increment verification (**Available/deployed #59**):
 **440 units, 153 production browser tests, 2,486 installed-4D generation cases
 and a final strict 2,498-case import/export/reopen gate passed** under 4D 21.2
 `F0012102`. The exact #58 repair baseline is

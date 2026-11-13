@@ -487,7 +487,7 @@ unverified longhand margins are protected rather than normalized. Browser
 projection remains inert and allowlisted. Continuous browser printing presents
 stored content once in a labeled appendix, **not** native repeating placement.
 
-### Paged browser projection (#57 available; table-cell-list increment in progress)
+### Paged browser projection (#59 deployed snapshot; horizontal spans in this version)
 
 `wp_paged_probe` extends the existing full-4D print gate with four independent
 six-page, two-section documents and native first-footer edit targets. Right-first
@@ -538,12 +538,14 @@ first-header edit targets. Existing body protection for bookmarked documents
 with hidden areas is unchanged; the gate uses the independently editable header
 scope for Undo/Redo/recovery rather than admitting a protected body operation.
 
-The browser uses the shared native grid validator and permits unmerged direct
-rows with paragraphs or supported bounded flat cell lists. It measures the complete table once at the
+The browser uses the shared native grid validator and permits direct rows with
+horizontal-only merges and at least one fully unmerged width-witness row, with
+paragraphs or supported bounded flat cell lists. It measures the complete table once at the
 section's width, freezes the measured column geometry in disposable DOM, and
 places complete rows on pages. Leading native header rows repeat explicitly;
 every data row/cell appears once. Fragment cell widths/heights must remain within
-0.25 CSS px of the whole-table measurement. Nested/merged/irregular/data-source
+0.25 CSS px of the whole-table measurement. Vertical/mixed spans, no-witness,
+nested/irregular/data-source
 tables, unsupported cell lists, invalid/nonleading/all-header metadata and rows that cannot
 fit with their headers use explicit continuous fallback. The scope is bounded
 to 1,000 rows and 10,000 cells per table and the existing sheet/grapheme budgets.
@@ -551,7 +553,7 @@ Source table XML, media, formulas, bookmarks and editing/recovery/history remain
 immutable. Browser row/page counts, carry-over rows, native row splitting,
 border-conflict behavior and automatic native pagination parity are not claimed.
 
-The table-cell-list increment is **In progress**, not merged or deployed.
+The table-cell-list increment is **Available/deployed via #59**.
 `wp_cell_list_probe` independently authors 18 installed-4D originals, header/body
 edit targets and PDFs, with paragraph-level getters and unequal 90/140 pt columns.
 Flat native lists may coexist with cell paragraphs. A contiguous `ol start="7"`
@@ -576,9 +578,39 @@ cells within 0.25 CSS px. List-bearing native leading headers repeat without
 counter loss or duplication. Prepared disposable lists are measured with the
 whole table once, before the same frozen-grid complete-row preview/print path.
 Source XML/resources, native ranges, selection and history/recovery are unchanged.
-No table authoring, row splitting, merged grids, nesting or native pagination
+No table authoring, row splitting, nesting or native pagination
 parity is added. #57's compatible continuous-section pages are Available on main
 and deployed; broader layout/native parity remains Proposed and unscheduled.
+
+Horizontal-span support is **implemented in this version**; live deployment is
+recorded separately in the editor README's verification snapshot.
+`wp_colspan_probe` independently creates ten installed-4D originals, pre-merge
+and split mutations, getter records, safe header/body edit targets and native PDFs.
+It establishes unequal 50/70/110 pt column settings, witnesses after merged rows
+(including row 6), zero/one/two native leading headers, rich merged header lists,
+inline formatting/inert links, local pictures and an inert native formula
+inside surviving merged cells. A compatible area-free seam uses residual capacity.
+Alternating merges without any complete witness, vertical spans and mixed spans
+remain excluded based on their actual native serialized shape. A native merge
+covering entire rows can collapse rows or columns rather than preserve the
+requested span: command arguments alone are not an admission oracle.
+The installed native exporter retained no distinguishable cache for the computed
+formula, even with visible references disabled; the browser displays its existing
+unavailable-cache notice, not an invented result. Cached values remain supported
+when actually stored. The same rich table with two headers exceeds the available
+row height and independently establishes terminal atomic overflow fallback.
+
+All `rowspan` values must equal one. The shared native grid validator must confirm
+complete, nonoverlapping coverage; at least one fully unmerged row supplies every
+underlying browser column width. The complete table is measured in its owning
+physical flow, then frozen and cloned by complete rows with original `colspan`
+attributes. All inline atoms/markers stay in their owning cell, and every fragment
+cell retains whole-table width/height within 0.25 CSS px. Unstable geometry is
+rejected, never clipped, stretched or shrunk. Native width getters and browser
+collapsed-border/intrinsic dimensions are separate evidence, not an equality
+or native wrapping/pagination/page-count/border-conflict parity claim.
+Authoring, native-range/bookmark guards, formula execution, row splitting,
+continuous-section/multi-column admission and all existing budgets are unchanged.
 
 `wp_paged_column_probe` independently authors seven full-4D documents: two,
 three (zero gap), four columns, explicit column/page breaks, a landscape section
@@ -645,7 +677,8 @@ checks residual seam capacity, later table fragments, stable widths, repeated
 leading headers, complete ordered fitting content and exact print membership.
 Geometry-changing, area-bearing, multi-column or otherwise unsupported seams
 use localized atomic continuous fallback. #57 is available on main and deployed;
-the bounded table-cell-list increment is unmerged/in progress. Broader continuous-seam parity remains
+bounded horizontal spans are implemented in this version, with live deployment
+recorded separately. Broader continuous-seam parity remains
 Proposed and unscheduled.
 
 ## Formulas
