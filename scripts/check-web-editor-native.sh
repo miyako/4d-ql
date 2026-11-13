@@ -131,6 +131,19 @@ run_4d wp_page_check page-native.log
 [ -s "$DEST/Output/page-report.json" ] || { echo "Full 4D produced no page report; inspect $DEST/page-native.log." >&2; exit 1; }
 run_4d wp_print_check print-native.log
 [ -s "$DEST/Output/print-report.json" ] || { echo "Full 4D produced no print report; inspect $DEST/print-native.log." >&2; exit 1; }
+python3 - "$DEST" <<'PY'
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1]) / "Output"
+errors = json.loads((root / "print-errors.json").read_text())
+report = json.loads((root / "paged-report.json").read_text())
+if errors or report.get("version") != "F0012102" or len(report.get("cases", [])) != 4 or any(
+    len(case.get("stages", [])) != 2 for case in report["cases"]
+):
+    raise SystemExit("Native paged oracle failed: " + json.dumps(errors, ensure_ascii=False))
+PY
 run_4d wp_range_check range-native.log
 [ -s "$DEST/Output/range-report.json" ] || { echo "Full 4D produced no range report; inspect $DEST/range-native.log." >&2; exit 1; }
 (cd "$ROOT/web-editor" && npm run build && node scripts/native-roundtrip.mjs prepare "$DEST")

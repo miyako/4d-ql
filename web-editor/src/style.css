@@ -141,6 +141,19 @@ div.preserved-object { display: block; margin-top: 16px; }
 .paper.layout-preview { background: transparent; box-shadow: none; }
 .section-paper { background: #fff; margin: 0 auto 24pt; box-shadow: 0 3px 14px #0000000e; display: flow-root; }
 .section-flow { display: flow-root; }
+.paged-panel > summary { cursor: pointer; padding: 12px 18px; }
+.paged-panel > p { margin: 12px 18px; line-height: 1.6; }
+.paper.paged-document { padding: 0; margin: 0; width: max-content; min-width: 0; max-width: none; min-height: 0; background: transparent; box-shadow: none; zoom: 1; }
+.paged-measure { position: absolute; left: -20000px; top: 0; visibility: hidden; width: max-content; pointer-events: none; }
+.browser-page, .browser-appendix { position: relative; box-sizing: border-box; background: #fff; color: #222; margin: 0 auto 24pt; box-shadow: 0 3px 14px #0000000e; break-after: page; }
+.browser-page:last-child, .browser-appendix:last-child { break-after: auto; }
+.page-body { position: absolute; display: flex; flex-direction: column; }
+.page-body > p { flex: none; }
+.page-area { position: absolute; display: flow-root; }
+.page-area > p { margin-block: 0; }
+.unused-area { display: flow-root; }
+.page-body > :is(h3, .unused-area) { flex: none; }
+.paged-document .text-run { white-space: pre-wrap; }
 .print-panel h3, .print-panel p { flex-basis: 100%; margin: 0; line-height: 1.6; }
 #print-document { display: none; }
 .section-controls select, #page-target { max-width: 100%; }
@@ -186,7 +199,7 @@ div.preserved-object { display: block; margin-top: 16px; }
 @media print {
   :root, :root[data-theme] { color-scheme: light; background: #fff; color: #222; }
   body { margin: 0; background: #fff; }
-  body > :not(#print-document) { display: none !important; }
+  body > :not(#print-document):not(.paged-measure) { display: none !important; }
   #print-document { display: block; margin: 0; padding: 0; min-width: 0; max-width: none; width: auto; min-height: 0; box-shadow: none; background: #fff; color: #222; zoom: 1; transform: none; }
   #print-document .section-paper { width: auto; min-height: 0; padding: 0; margin: 0; box-shadow: none; }
   #print-document .print-new-page { break-before: page; }
@@ -198,4 +211,7 @@ div.preserved-object { display: block; margin-top: 16px; }
   #print-document img { height: auto !important; max-height: var(--print-height); }
   #print-document .preserved-object:has(> img) { background: transparent; border: 0; padding: 0; }
   #print-document .preserved-object { color: #233247; background: #fff; border: 1px solid #62738a; }
+  #print-document.paged-document { width: max-content; }
+  #print-document :is(.browser-page, .browser-appendix) { margin: 0; box-shadow: none; }
+  #print-document .paged-unused { max-width: none !important; margin: 0; }
 }

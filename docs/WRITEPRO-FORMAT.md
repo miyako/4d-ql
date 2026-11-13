@@ -484,8 +484,33 @@ byte-identical subtrees; original formula node identities/order remain immutable
 Position-only transactions preserve all body XML/bookmarks/formulas/resources,
 unknown declarations and sibling areas. Unsupported/shared/conditional/inline or
 unverified longhand margins are protected rather than normalized. Browser
-projection remains inert and allowlisted. Preview/printing still presents the
+projection remains inert and allowlisted. Continuous browser printing presents
 stored content once in a labeled appendix, **not** native repeating placement.
+
+### Paged browser projection (in-progress increment)
+
+`wp_paged_probe` extends the existing full-4D print gate with four independent
+six-page, two-section documents and native first-footer edit targets. Right-first
+(including the omitted native default), explicit first-left, mixed section
+orientation and deleted first-header/right-footer cases are checked through
+native PDF words, section/area getters and import/export/reopen.
+
+The browser projection selects first-page content on each section's first
+browser page, then paired facing content using physical document page parity
+and `div.section0`'s `-d4-page-first-right` flag; otherwise it selects the section
+default. An enabled but absent area stays empty. Native area content is neither
+inherited across variants/sections nor fabricated. Unselected stored areas are
+retained once in a labeled browser appendix.
+
+Only whole, fitting, single-column body paragraphs and supported inert inline
+content are paginated. Explicit page/new-page-section boundaries and effective
+section paper geometry are projected on disposable models. Browser header-top
+and footer-bottom margin bands use stored area margins but deliberately do
+**not** claim native vertical coordinates, body-clearance calculation or page
+counts. Unsupported shapes/settings, continuous sections, oversized paragraphs
+or unsafe bands retain continuous view/printing with an explicit notice.
+Neither projection changes source XML/resources, formulas, bookmark coordinates,
+editing scopes, history or recovery.
 
 ## Formulas
 

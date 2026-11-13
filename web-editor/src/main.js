@@ -12,6 +12,7 @@ import { createPrintProjection, printCapability } from './printing.js';
 import { areaLabel } from './header-messages.js';
 import { areaSides } from './headers-footers.js';
 import { objectFields, objectScope } from './objects.js';
+import { createPagedProjection } from './paged-preview.js';
 
 let locale = detectLanguage();
 let theme = 'system';
@@ -183,7 +184,7 @@ document.querySelector('#app').innerHTML = `
       </section>
       <section id="print-panel" class="tool-panel print-panel" aria-labelledby="print-heading" hidden>
         <h3 id="print-heading" data-i18n="print"></h3>
-        <p data-i18n="printHelp"></p><p data-i18n="printLimits"></p><p data-i18n="headerPrint"></p>
+        <p data-i18n="printHelp"></p><p data-i18n="printLimits"></p><p data-i18n="headerPrint"></p><p data-i18n="pagedPrint"></p>
         <p id="print-protection" role="status" hidden></p>
         <button id="print-open" data-i18n="printOpen"></button>
         <button id="print-close" data-i18n="close"></button>
@@ -284,6 +285,12 @@ document.querySelector('#app').innerHTML = `
       <div id="readonly-notice" class="notice" hidden></div>
       <details id="capabilities" class="notice" hidden><summary data-i18n="capabilityTitle"></summary><ul id="capability-list"></ul></details>
       <div id="unsupported-notice" class="notice" data-i18n="unsupportedNotice" hidden></div>
+      <details id="paged-panel" class="paged-panel">
+        <summary data-i18n="pagedPreview"></summary>
+        <p data-i18n="pagedHelp"></p><p data-i18n="pagedPrint"></p>
+        <p id="paged-status" role="status"></p>
+        <div id="paged-surround" class="paper-surround" tabindex="0" data-label="pagedPreview"><div id="paged-view"></div></div>
+      </details>
       <div class="paper-surround"><article id="paper" class="paper" data-label="editor"></article></div>
       <footer class="document-footer"><span id="statistics"></span><span id="draft-state" role="status"></span>
         <label><span data-i18n="zoom"></span><select id="zoom"><option value=".75">75%</option><option value="1" selected>100%</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label><span data-i18n="local"></span></footer>
@@ -464,6 +471,7 @@ function render(caret = null) {
   $('print-open').disabled = Boolean(printBlocked);
   $('print-protection').hidden = !printBlocked;
   $('print-protection').textContent = printBlocked ? t(printBlocked) : '';
+  refreshPagedPreview();
 }
 
 function renderScopes() {
@@ -1003,12 +1011,57 @@ $('file').onchange = event => openFile(event.target.files[0]);
 $('download').onclick = download;
 let printing = false;
 let printRoot = null;
+let pagedGeneration = 0;
+let pagedProjection = null;
+function refreshPagedPreview() {
+  const generation = ++pagedGeneration;
+  pagedProjection = null;
+  $('paged-view').replaceChildren();
+  $('paged-surround').hidden = true;
+  if (!$('paged-panel').open) return;
+  $('paged-status').textContent = t('pagedLoading');
+  document.fonts.ready.then(() => {
+    if (generation !== pagedGeneration || !$('paged-panel').open) return;
+    try {
+      pagedProjection = createPagedProjection(model, messages[locale]);
+      $('paged-view').append(pagedProjection.root);
+      pagedProjection.root.style.zoom = $('zoom').value;
+      $('paged-surround').hidden = false;
+      $('paged-status').textContent = `${pagedProjection.pages} · ${t('pagedSheet')}`;
+    } catch (error) {
+      if (!(error instanceof DocumentError)) console.error('Paged preview preparation failed', error);
+      $('paged-status').textContent = t(error instanceof DocumentError ? error.code : 'pagedUnavailable');
+    }
+  });
+}
+$('paged-panel').ontoggle = refreshPagedPreview;
+$('paged-panel').onkeydown = event => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    $('paged-panel').open = false;
+    $('paged-panel').querySelector('summary').focus();
+  }
+};
+window.addEventListener('resize', refreshPagedPreview);
+document.fonts.addEventListener('loadingdone', refreshPagedPreview);
 const printStyle = document.createElement('style');
 printStyle.media = 'print';
 document.head.append(printStyle);
 function preparePrint() {
   if (composition) throw new DocumentError('printFailed');
-  const projection = createPrintProjection(model, messages[locale]);
+  let projection;
+  if ($('paged-panel').open) {
+    try { projection = createPagedProjection(model, messages[locale]); }
+    catch (error) {
+      if (!(error instanceof DocumentError)) throw error;
+      projection = createPrintProjection(model, messages[locale]);
+      const notice = document.createElement('p');
+      notice.textContent = t(error.code);
+      projection.root.prepend(notice);
+      $('paged-status').textContent = t(error.code);
+    }
+  } else projection = createPrintProjection(model, messages[locale]);
+  projection.root.id = 'print-document';
   printRoot?.remove();
   printRoot = projection.root;
   document.body.append(printRoot);
@@ -1259,7 +1312,10 @@ $('resize-image').onclick = () => perform('image', () => {
   model.changeImage(selectedImage, Number($('image-width').value), image.naturalHeight / image.naturalWidth);
 });
 $('remove-image').onclick = () => perform('image', () => model.changeImage(selectedImage));
-$('zoom').onchange = event => { $('paper').style.zoom = event.target.value; };
+$('zoom').onchange = event => {
+  $('paper').style.zoom = event.target.value;
+  if (pagedProjection) pagedProjection.root.style.zoom = event.target.value;
+};
 
 function togglePanel(button, panel) {
   $(panel).hidden = !$(panel).hidden;
@@ -1705,6 +1761,7 @@ function setDraftStatus(code) {
 }
 
 function schedulePersist(label) {
+  refreshPagedPreview();
   if (!storageReady) return;
   // An older in-flight write must not mark newer, still-debounced edits as saved.
   revision++;
