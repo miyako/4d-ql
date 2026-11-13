@@ -149,6 +149,9 @@ if expanded.get("version") != "F0012102" or len(expanded.get("cases", [])) != 3:
 tables = json.loads((root / "paged-table-report.json").read_text())
 if tables.get("version") != "F0012102" or len(tables.get("cases", [])) != 3:
     raise SystemExit("Missing independent paged table originals, getters and PDF references.")
+columns = json.loads((root / "paged-column-report.json").read_text())
+if columns.get("version") != "F0012102" or len(columns.get("cases", [])) != 7:
+    raise SystemExit("Missing independent paged column originals, getters and PDF references.")
 PY
 run_4d wp_range_check range-native.log
 [ -s "$DEST/Output/range-report.json" ] || { echo "Full 4D produced no range report; inspect $DEST/range-native.log." >&2; exit 1; }

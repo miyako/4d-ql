@@ -75,7 +75,7 @@ function pagedTable(model, element) {
       const values = model.values(node);
       if (Object.keys(values).some(key => /^-d4-(ref|anchor)/.test(key) && !model.formula(node)?.supported) ||
         values.display === 'none' || ['hidden', 'collapse'].includes(values.visibility) ||
-        paragraphBreak(values) || (node.localName !== 'img' &&
+        paragraphBreak(values) || values['break-after'] === 'column' || (node.localName !== 'img' &&
         ['height', 'min-height', 'max-height'].some(key => values[key]))) throw new DocumentError('pagedTables');
     }
     return { ...grid, headers };
@@ -157,7 +157,17 @@ function paragraphFragment(paragraph, start, end, first, last) {
   range.setStart(start.node, start.offset);
   range.setEnd(end.node, end.offset);
   const fragment = paragraph.cloneNode(false);
-  fragment.append(range.cloneContents());
+  let content = range.cloneContents();
+  let ancestor = range.commonAncestorContainer;
+  if (ancestor.nodeType === 3) ancestor = ancestor.parentNode;
+  // cloneContents omits a shared inline ancestor; retain its formatting on middle fragments.
+  while (ancestor !== paragraph) {
+    const wrapper = ancestor.cloneNode(false);
+    wrapper.append(content);
+    content = wrapper;
+    ancestor = ancestor.parentNode;
+  }
+  fragment.append(content);
   if (!first) {
     fragment.style.marginTop = '0';
     fragment.style.textIndent = '0';
@@ -171,7 +181,7 @@ function makeInert(root) {
     if (['p', 'li'].includes(element.localName) || element.classList.contains('text-run')) element.style.whiteSpace = 'break-spaces';
     for (const attribute of [...element.attributes]) {
       if (['contenteditable', 'tabindex', 'role', 'spellcheck'].includes(attribute.name) ||
-        attribute.name.startsWith('data-') && !['data-page', 'data-section', 'data-area'].includes(attribute.name)) element.removeAttribute(attribute.name);
+        attribute.name.startsWith('data-') && !['data-page', 'data-section', 'data-area', 'data-column'].includes(attribute.name)) element.removeAttribute(attribute.name);
     }
   }
 }
@@ -204,6 +214,61 @@ export function selectedPageArea(state, section, first, page, rightFirst, kind) 
   return state.areas.find(area => area.section === section && area.variant === variant && area.kind === kind);
 }
 
+export function pagedColumnGeometry(model, index, paper) {
+  const setup = model.columnSetup(index);
+  if (setup.reason) throw new DocumentError('pagedColumns');
+  const { count } = setup.settings;
+  const gap = pagePoints(setup.settings.gap);
+  const width = (paper.width - paper.margins[1] - paper.margins[3] - gap * (count - 1)) / count;
+  if (count === 1) return { count, gap, width };
+  if (count > 4 || gap > 72 || width < 72) throw new DocumentError('pagedColumns');
+  const rules = new Map();
+  for (const style of model.document.querySelectorAll('head style')) {
+    const ast = css.parse(style.textContent, { onParseError: () => { throw new DocumentError('pagedColumns'); } });
+    const scoped = new Set();
+    for (const rule of ast.children) {
+      if (rule.type !== 'Rule') continue;
+      const match = css.generate(rule.prelude).match(/^div\.section(0|[1-9]\d*)$/);
+      if (!match) continue;
+      const values = rules.get(Number(match[1])) || {};
+      for (const node of rule.block.children) {
+        if (node.type !== 'Declaration' || !/^column-/i.test(node.property)) continue;
+        if (node.important || node.property !== node.property.toLowerCase() ||
+          !['column-count', 'column-gap', 'column-rule-style', 'column-rule-width', 'column-rule-color'].includes(node.property)) {
+          throw new DocumentError('pagedColumns');
+        }
+        scoped.add(node);
+        values[node.property] = css.generate(node.value);
+      }
+      rules.set(Number(match[1]), values);
+    }
+    css.walk(ast, node => {
+      if (node.type !== 'Declaration') return;
+      if (/^(columns|column-)/i.test(node.property) && !scoped.has(node) ||
+        /^(direction|writing-mode)$/i.test(node.property) &&
+        !['ltr', 'horizontal-tb'].includes(css.generate(node.value))) throw new DocumentError('pagedColumns');
+    });
+  }
+  const values = { ...rules.get(0), ...rules.get(index) };
+  if (values['column-rule-style'] && values['column-rule-style'] !== 'none' ||
+    [...model.document.querySelectorAll('[style]')].some(element =>
+      /(?:^|;)\s*(?:columns|column-[\w-]+)\s*:/i.test(element.getAttribute('style')))) throw new DocumentError('pagedColumns');
+  for (const element of model.document.querySelectorAll('body,body *')) {
+    const style = model.values(element);
+    if (style.direction && style.direction !== 'ltr' || style['writing-mode'] && style['writing-mode'] !== 'horizontal-tb') {
+      throw new DocumentError('pagedColumns');
+    }
+  }
+  return { count, gap, width };
+}
+
+function pagedBreak(values) {
+  const kind = paragraphBreak(values);
+  const column = values['break-after'] || 'auto';
+  if (!['auto', 'avoid', 'column'].includes(column) || column === 'column' && kind) throw new DocumentError('pagedColumns');
+  return column === 'column' ? 'column' : kind;
+}
+
 export function pagedCapability(model) {
   const setup = model.pageSetup();
   const layout = model.sectionLayout();
@@ -215,13 +280,12 @@ export function pagedCapability(model) {
     const body = model.document.querySelector('body');
     if ([...body.childNodes].some(node => node.nodeType === 3 && node.data.trim())) return 'pagedShape';
     for (const section of layout.sections) {
-      const columns = model.columnSetup(section.index);
-      if (columns.reason) return 'pagedSettings';
-      if (columns.settings.count !== 1) return 'pagedShape';
       const paper = paperGeometry({ ...setup.geometry, ...setup.sections.get(section.index) });
       if (paper.width - paper.margins[1] - paper.margins[3] < 72 ||
         paper.height - paper.margins[0] - paper.margins[2] < 72) return 'pagedSettings';
+      const columns = pagedColumnGeometry(model, section.index, paper);
       for (const element of section.elements) {
+        if (columns.count > 1 && element.localName === 'table') return 'pagedColumns';
         if (element.localName === 'table' && (element.previousElementSibling?.localName !== 'p' ||
           element.nextElementSibling?.localName !== 'p')) return 'pagedShape';
         const blocks = element.localName === 'table' ?
@@ -229,10 +293,11 @@ export function pagedCapability(model) {
         for (const block of blocks) for (const [index, paragraph] of bodyParagraphs(block).entries()) {
           const values = model.values(paragraph);
           if (paragraph.querySelector('table,ul,ol') || ['width', 'height', 'min-height'].some(key => values[key]) ||
-            paragraphBreak(values) === 'continuous' || paragraph.localName === 'li' && paragraphBreak(values)) return 'pagedShape';
+            pagedBreak(values) === 'continuous' || paragraph.localName === 'li' && pagedBreak(values)) return 'pagedShape';
           if (paragraph.localName === 'li') pageListMarker({ ...model.values(block), ...values },
             Number(block.getAttribute('start') || 1) + index, block.localName);
           for (const child of paragraph.querySelectorAll('*')) {
+            if (model.values(child)['break-after'] === 'column') return 'pagedColumns';
             const formula = model.formula(child);
             if (formula && !formula.supported) return 'pagedShape';
             if (child.localName === 'img') inlineImage(model, child);
@@ -247,7 +312,7 @@ export function pagedCapability(model) {
     }
   } catch (error) {
     if (!(error instanceof DocumentError) && error.name !== 'SyntaxError') throw error;
-    return ['pagedShape', 'pagedOverflow', 'pagedTables'].includes(error.code) ? error.code : 'pagedSettings';
+    return ['pagedShape', 'pagedOverflow', 'pagedTables', 'pagedColumns'].includes(error.code) ? error.code : 'pagedSettings';
   }
   return null;
 }
@@ -311,10 +376,13 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
       const paper = paperGeometry(setup.geometry);
       firstPaper ||= paper;
       const [top, right, bottom, left] = paper.margins;
+      const columns = pagedColumnGeometry(copy, section.index, paper);
       const pageName = `wppaged${section.index}`;
       rules.push(`@page ${pageName} { size: ${paper.width}pt ${paper.height}pt; margin: 0; }`);
       let sheet;
       let flow;
+      let columnIndex;
+      let flows;
       let localPage = 0;
       const newPage = () => {
         if (++pageNumber > 500) throw new DocumentError('pagedOverflow');
@@ -326,10 +394,25 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
         sheet.style.width = `${paper.width}pt`;
         sheet.style.height = `${paper.height}pt`;
         sheet.style.page = pageName;
-        flow = document.createElement('div');
-        flow.className = 'page-body';
-        Object.assign(flow.style, { top: `${top}pt`, left: `${left}pt`, right: `${right}pt`, bottom: `${bottom}pt` });
-        sheet.append(flow);
+        const body = document.createElement('div');
+        body.className = 'page-body';
+        Object.assign(body.style, { top: `${top}pt`, left: `${left}pt`, right: `${right}pt`, bottom: `${bottom}pt` });
+        flows = [body];
+        columnIndex = 0;
+        if (columns.count > 1) {
+          body.classList.add('page-columns');
+          body.style.gap = `${columns.gap}pt`;
+          flows = Array.from({ length: columns.count }, (_, index) => {
+            const column = document.createElement('div');
+            column.className = 'page-column';
+            column.dataset.column = String(index + 1);
+            column.style.width = `${columns.width}pt`;
+            body.append(column);
+            return column;
+          });
+        }
+        flow = flows[0];
+        sheet.append(body);
         root.append(sheet);
         for (const kind of ['Header', 'Footer']) {
           const area = selectedPageArea(state, section.index, localPage === 0, pageNumber, rightFirst, kind);
@@ -352,6 +435,10 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
           used.add(area.name);
         }
         localPage++;
+      };
+      const nextColumn = () => {
+        if (++columnIndex === columns.count) newPage();
+        else flow = flows[columnIndex];
       };
       newPage();
       const fits = candidate => {
@@ -437,7 +524,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
             }
             start = end;
             first = false;
-            if (start < rows.length) newPage();
+            if (start < rows.length) nextColumn();
           }
           continue;
         }
@@ -493,7 +580,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
               }
               if (best === start) {
                 if (!flow.children.length) throw new DocumentError('pagedOverflow');
-                newPage();
+                nextColumn();
                 continue;
               }
               block = wrap(paragraphFragment(paragraph, points[start], points[best], start === 0, best === points.length - 1),
@@ -501,11 +588,15 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
               flow.append(block);
               if (!fits(block)) throw new DocumentError('pagedOverflow');
               start = best;
-              if (start < points.length - 1) newPage();
+              if (start < points.length - 1) nextColumn();
             }
           }
         }
-        if (paragraphBreak(copy.values(element)) === 'page' && element !== section.elements.at(-1)) newPage();
+        if (element !== section.elements.at(-1)) {
+          const kind = pagedBreak(copy.values(element));
+          if (kind === 'page') newPage();
+          if (kind === 'column') nextColumn();
+        }
       }
     }
     const unused = state.areas.filter(area => !used.has(area.name));
