@@ -7,8 +7,8 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`b302afc` / #59](https://github.com/miyako/4d-ql/pull/59).
-**Available** means merged there; **In progress** is this unmerged increment;
+[`94915de` / #60](https://github.com/miyako/4d-ql/pull/60).
+**Available** means merged there; **In progress** is an unmerged increment (none currently);
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
@@ -39,17 +39,16 @@ promise of dates or full Write Pro parity.
 | 10.6. Paged columns | Bounded equal-column, sequential paragraph/list/image flow with explicit column breaks and matching browser print | Available on main via #56 |
 | 10.7. Continuous-section pages | Area-free compatible single-column boundaries share measured pages and matching browser print; unsupported seams retain explicit fallback | Available on main via #57; deployed |
 | 10.8. Paged table-cell lists | Native-evidenced bounded flat cell lists, mixed paragraphs, stable unequal columns and list-bearing leading headers in read-only pages and matching print | Available on main via #59; deployed |
-| 10.9. Paged horizontal table spans | Native-evidenced horizontal-only merges with a fully unmerged width-witness row, stable frozen geometry and complete-row/header fragments | Implemented in this version; deployment snapshot below |
-| 10.10. Further layout parity | Vertical/mixed spans, area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled, not part of this increment |
+| 10.9. Paged horizontal table spans | Native-evidenced horizontal-only merges with a fully unmerged width-witness row, stable frozen geometry and complete-row/header fragments | Available on main via #60; deployed |
+| 10.10. Further layout parity | Vertical/mixed spans, area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
 Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
-on main. The #57 baseline was deployed by successful Pages run
-[`43490891817`](https://github.com/miyako/4d-ql/actions/runs/43490891817)
-at `dbe9f4438bd8130f728118b5376b1f81fdcb2915`.
-The selected next increment is bounded read-only table-cell lists; it remains
-**In progress** until merged. Publication is separately gated by verification,
-review and CI; this status does not imply a deployed release. Arbitrary wrapping and
+on main. #60 was deployed by successful Pages run
+[`43515562104`](https://github.com/miyako/4d-ql/actions/runs/43515562104)
+at `94915de6bd21dfe2c8f33b50106a315951ed5148`.
+No increment is currently in progress; the feature campaign is paused and
+10.10/11 remain **Proposed**. Arbitrary wrapping and
 automatic native pagination remain unscheduled proposals.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
@@ -373,7 +372,8 @@ stay absent. The native defaults observed by the probe are all pages/all
 sections, paper origin and zero offsets for added pictures; new text boxes start
 on page 1, 8 cm wide, auto height, with 4 pt padding and front layout.
 The editor does not create/delete native anchored objects, change associations,
-alignment, wrapping, layering or display modes in this increment.
+alignment, wrapping, layering or display modes in the #51 increment; #52 below
+adds guarded creation/deletion and stored placement.
 
 Supported native text boxes containing ordinary paragraphs and inline formatting
 have their own text/formatting scope. Supported immutable text formulas keep
@@ -497,7 +497,7 @@ The isolated object guide and once-per-object print appendix remain unchanged.
 Native pagination, wrapping, layering, repetition and page targeting are not
 simulated in the browser; arbitrary z-order, other origins/wrap modes, formula
 execution and conversion of inline pictures to anchored objects remain outside
-this increment.
+the #52 increment.
 
 The independent full-4D `wp_object_probe` creates three documents (PNG
 document-page and section targets, plus an independently native-encoded JPEG) containing
@@ -527,7 +527,7 @@ class-renumbering counterexample are independently preserved in
 `~/.copilot/evidence-backups/4wp-objects-20261113-probes-33ac49fe/`.
 The #52 increment is merged and deployed at the baseline recorded above.
 
-## Paged browser preview (#57 available; table-cell lists in progress)
+## Paged browser preview (available through #60)
 
 Open **Paged browser preview** above the continuous editor. It is a separate,
 read-only projection of the whole document, even while authoring a header/footer.
@@ -645,7 +645,7 @@ List-bearing leading header rows repeat with their markers and frozen grid.
 Neither viewing nor printing converts the original XML or broadens table
 authoring, native-range/bookmark guards, undo/recovery or formula evaluation.
 
-Horizontal-span support **in this version** admits only complete native grids
+The **Available/deployed #60** horizontal-span support admits only complete native grids
 whose `rowspan` values are all one, with at least one fully unmerged witness row.
 That row may follow merged header/body rows; it supplies all underlying column
 widths after the whole table is measured at its physical flow width. Disposable
@@ -669,13 +669,12 @@ untouched original downloads. No authoring, bookmark/range guard, formula execut
 row-splitting, continuous-section or multi-column admission is broadened; all prior
 row/cell/column/list/grapheme/sheet limits remain. Native wrapping, pagination,
 page-count and border-conflict parity remain **Proposed**, not promised.
-Deployment is recorded separately: at this version's verification snapshot,
-the live site was #59 (`b302afc`), independently matched to Pages run
-[`43502491206`](https://github.com/miyako/4d-ql/actions/runs/43502491206).
-The horizontal-span release is tracked by its PR and subsequent Pages receipt,
-not inferred from the implementation status in this table.
+At the #60 verification snapshot the live site was #59 (`b302afc`, Pages run
+[`43502491206`](https://github.com/miyako/4d-ql/actions/runs/43502491206)); #60
+was subsequently deployed by Pages run
+[`43515562104`](https://github.com/miyako/4d-ql/actions/runs/43515562104).
 
-Verification for this version: **441 unit tests, 159 production browser tests,
+Horizontal-span (#60) verification: **441 unit tests, 159 production browser tests,
 2,524 installed-4D generation cases and 2,538 final strict import/export/reopen
 cases passed** under 4D 21.2 `F0012102`. All **2,498 #59 definitions** remain
 unchanged by name; **2,240 unaffected inputs and 2,761 dependency archives** were
@@ -1182,7 +1181,7 @@ and choose **Create from selection** (Enter also submits). Creation uses the
 original XML projection and native UTF-16 mapping, including empty paragraphs,
 Unicode, inline objects, native lists and scoped simple tables, not DOM
 `textContent` offsets. Interior ranges spanning cells within one table are
-accepted in this increment; ranges entering/leaving only part of a table
+accepted; ranges entering/leaving only part of a table
 remain protected.
 
 Choose a listed name to navigate and highlight it. The list and status show
