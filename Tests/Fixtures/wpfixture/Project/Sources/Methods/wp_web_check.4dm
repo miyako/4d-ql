@@ -20,7 +20,7 @@ Else
 			$result.flowWebExpected:=wp_web_stats($flowBaseline; False)
 			$result.flowSectionsExpected:=wp_section_stats($flowBaseline)
 			If (OB Is defined($case; "pagedTable"))
-				$result.tableExpected:=wp_paged_table_stats($flowBaseline; $case.pagedTable.rows)
+				$result.tableExpected:=wp_paged_table_stats($flowBaseline; $case.pagedTable.rows; Choose(OB Is defined($case.pagedTable; "columns"); $case.pagedTable.columns; 2))
 			End if
 			WP EXPORT DOCUMENT($flowBaseline; $root.file("Output/"+$case.name+"-expected.4wp").platformPath; wk 4wp)
 		End if
@@ -56,7 +56,7 @@ Else
 				$result.flowSectionsImported:=wp_section_stats($doc)
 			End if
 			If (OB Is defined($case; "pagedTable"))
-				$result.tableImported:=wp_paged_table_stats($doc; $case.pagedTable.rows)
+				$result.tableImported:=wp_paged_table_stats($doc; $case.pagedTable.rows; Choose(OB Is defined($case.pagedTable; "columns"); $case.pagedTable.columns; 2))
 			End if
 			If (OB Is defined($case; "section"))
 				$result.sectionImported:=wp_section_stats($doc)
@@ -82,7 +82,7 @@ Else
 					$result.flowSectionsReopened:=wp_section_stats($reopened)
 				End if
 				If (OB Is defined($case; "pagedTable"))
-					$result.tableReopened:=wp_paged_table_stats($reopened; $case.pagedTable.rows)
+					$result.tableReopened:=wp_paged_table_stats($reopened; $case.pagedTable.rows; Choose(OB Is defined($case.pagedTable; "columns"); $case.pagedTable.columns; 2))
 				End if
 				If (OB Is defined($case; "section"))
 					$result.sectionReopened:=wp_section_stats($reopened)

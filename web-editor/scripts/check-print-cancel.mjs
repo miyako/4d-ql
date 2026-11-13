@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium, expect } from '@playwright/test';
-import { preview } from 'vite';
+import { evidencePreview } from './evidence-preview.mjs';
 
 const directory = resolve(process.argv[2] || '');
 const paged = process.argv[3] === '--paged';
@@ -11,9 +11,10 @@ const tables = process.argv[3] === '--tables';
 const columns = process.argv[3] === '--columns';
 const seams = process.argv[3] === '--seams';
 const cellLists = process.argv[3] === '--cell-lists';
-const paginated = paged || expanded || tables || columns || seams || cellLists;
-assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded|--tables|--columns|--seams|--cell-lists]');
-const prefix = cellLists ? 'cell-lists-cancel' : seams ? 'seams-cancel' : columns ? 'columns-cancel' : tables ? 'tables-cancel' : expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
+const colspans = process.argv[3] === '--colspans';
+const paginated = paged || expanded || tables || columns || seams || cellLists || colspans;
+assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded|--tables|--columns|--seams|--cell-lists|--colspans]');
+const prefix = colspans ? 'colspans-cancel' : cellLists ? 'cell-lists-cancel' : seams ? 'seams-cancel' : columns ? 'columns-cancel' : tables ? 'tables-cancel' : expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
 const manifest = paginated ? JSON.parse(await readFile(resolve(directory, 'Input/cases.json'), 'utf8')) : null;
 if (paginated) {
   const files = new Set(await readdir(resolve(directory, 'Input')));
@@ -23,21 +24,21 @@ if (paginated) {
       'Choose fresh evidence: print-cancel downloads must not be overwritten');
   }
 }
-const server = await preview({ preview: { host: '127.0.0.1', port: 4190, strictPort: true } });
+const server = await evidencePreview(directory, 4190, prefix);
 const browser = await chromium.launch({ headless: false });
 try {
   const page = await browser.newPage({ acceptDownloads: true, locale: 'en-US' });
   const cdp = await browser.newBrowserCDPSession();
   await page.goto(server.resolvedUrls.local[0]);
-  await page.locator('#file').setInputFiles(resolve(directory, cellLists ? 'Input/cell-list-source-mixed.4wp' : seams ? 'Input/continuous-paged-source-overflow.4wp' : columns ? 'Input/paged-column-source-mixed.4wp' : tables ? 'Input/paged-table-source-mixed.4wp' : expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
-  await expect(page.locator('#paper')).toContainText(cellLists ? 'CELLSTART' : seams ? 'SEAMSTART' : columns ? 'COLUMNSTART' : tables ? 'TABLESTART' : expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
+  await page.locator('#file').setInputFiles(resolve(directory, colspans ? 'Input/colspan-source-rich.4wp' : cellLists ? 'Input/cell-list-source-mixed.4wp' : seams ? 'Input/continuous-paged-source-overflow.4wp' : columns ? 'Input/paged-column-source-mixed.4wp' : tables ? 'Input/paged-table-source-mixed.4wp' : expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
+  await expect(page.locator('#paper')).toContainText(colspans ? 'SPANSTART' : cellLists ? 'CELLSTART' : seams ? 'SEAMSTART' : columns ? 'COLUMNSTART' : tables ? 'TABLESTART' : expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
   if (paged) await page.locator('#editing-scope').selectOption('section1FirstFooter');
-  if (tables || columns || cellLists) await page.locator('#editing-scope').selectOption('section1FirstHeader');
+  if (tables || columns || cellLists || colspans) await page.locator('#editing-scope').selectOption('section1FirstHeader');
   await page.locator('#paper [contenteditable]').first().evaluate(element => {
     element.focus();
     getSelection().collapse(element.firstChild, 0);
   });
-  if (paginated) await page.locator('#paper [contenteditable]').first().fill(cellLists ? 'WEBCELL' : seams ? 'WEBSEAM' : columns ? 'WEBCOLUMN' : tables ? 'WEBTABLE' : expanded ? 'WEBEXPANDED' : 'WEBPAGED');
+  if (paginated) await page.locator('#paper [contenteditable]').first().fill(colspans ? 'WEBSPAN' : cellLists ? 'WEBCELL' : seams ? 'WEBSEAM' : columns ? 'WEBCOLUMN' : tables ? 'WEBTABLE' : expanded ? 'WEBEXPANDED' : 'WEBPAGED');
   else await page.keyboard.insertText('EDIT');
   await page.locator('#undo').click();
   await page.locator('#zoom').selectOption('1.5');
@@ -46,7 +47,7 @@ try {
   let pages;
   if (paginated) {
     await page.locator('#paged-panel > summary').click();
-    if (expanded || tables || columns || seams || cellLists) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
+    if (expanded || tables || columns || seams || cellLists || colspans) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
     else await expect(page.locator('#paged-view .browser-page')).toHaveCount(6);
     pages = await page.locator('#paged-view .browser-page').count();
   }
@@ -165,6 +166,9 @@ try {
       if (cellLists && phase === 'clean-with-redo') assert.deepEqual(sourceAfter,
         await readFile(resolve(directory, 'Input/cell-list-source-mixed.4wp')),
         'Actual print Cancel must leave clean cell-list source bytes unchanged');
+      if (colspans && phase === 'clean-with-redo') assert.deepEqual(sourceAfter,
+        await readFile(resolve(directory, 'Input/colspan-source-rich.4wp')),
+        'Actual print Cancel must leave clean merged-table source bytes unchanged');
     } else {
       assert.deepEqual(await exportBytes(resolve(directory, `Output/${prefix}-${phase}-after.4wp`)), sourceBefore);
     }
@@ -178,7 +182,9 @@ try {
   if (paginated) {
     for (const [phase, stage] of [['clean-with-redo', 'original'], ['dirty-with-undo', 'edited']]) {
       const name = `${prefix}-${phase}`;
-      manifest.cases.push(cellLists ? { name, file: `${name}.4wp`,
+      manifest.cases.push(colspans ? { name, file: `${name}.4wp`,
+        flow: { source: stage === 'original' ? 'colspan-source-rich.4wp' : 'colspan-target-rich.4wp', action: 'identity' },
+        resources: 'colspan-source-rich.4wp', pagedTable: { rows: 26, columns: 3 } } : cellLists ? { name, file: `${name}.4wp`,
         flow: { source: stage === 'original' ? 'cell-list-source-mixed.4wp' : 'cell-list-target-mixed.4wp', action: 'identity' },
         resources: 'cell-list-source-mixed.4wp', pagedTable: { rows: 26 } } : seams ? { name, file: `${name}.4wp`,
         flow: { source: stage === 'original' ? 'continuous-paged-source-overflow.4wp' : 'continuous-paged-target-overflow.4wp', action: 'identity' },
@@ -197,5 +203,5 @@ try {
   console.log('Actual headed Chromium print-preview cancellation preserved clean/redo and dirty/undo state, selection, zoom and IndexedDB snapshots.');
 } finally {
   await browser.close();
-  await new Promise(resolve => server.httpServer.close(resolve));
+  await server.close();
 }

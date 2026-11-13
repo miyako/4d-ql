@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
-import { preview } from 'vite';
+import { evidencePreview } from './evidence-preview.mjs';
 import { unzipSync, strFromU8 } from 'fflate';
 import { JSDOM } from 'jsdom';
 import { nativeMetadata } from '../src/native-ranges.js';
@@ -28,10 +28,7 @@ const manifestPath = resolve(directory, 'Input/cases.json');
 
 async function prepare() {
   await mkdir(resolve(directory, 'Input'), { recursive: true });
-  const server = await preview({
-    root, configFile: resolve(root, 'vite.config.js'),
-    preview: { host: '127.0.0.1', port: 4187, strictPort: true },
-  });
+  const server = await evidencePreview(directory, 4187, 'native-generation');
   const browser = await chromium.launch();
   const cases = [];
   const browserErrors = [];
@@ -254,7 +251,7 @@ async function prepare() {
     await writeFile(manifestPath, JSON.stringify({ cases }, null, 2));
   } finally {
     await browser.close();
-    await new Promise((resolve, reject) => server.httpServer.close(error => error ? reject(error) : resolve()));
+    await server.close();
   }
 }
 

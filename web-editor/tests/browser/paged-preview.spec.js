@@ -1,8 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { messages } from '../../src/i18n.js';
+import { inspectPDF } from '../../scripts/native-print-cases.mjs';
 
 const geometry = 'div.section0{-d4-page-width:300pt;-d4-page-height:360pt;-d4-page-margin:60pt 30pt}';
 const localPNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAASklEQVR4nO3OMQ0AIBBD0VPCjCtM4gBhYOA6kg79Scef9NU9s91Yu93vvgABAhQHch2rHhAgQHkg17HqAQEClAdyHaseECBAcaAH191RiEIeQFYAAAAASUVORK5CYII=';
@@ -45,6 +48,121 @@ function areas(section = 1) {
   return ['', 'First', 'Left', 'Right'].flatMap(variant => ['Header', 'Footer'].map(kind =>
     `<div class="section${section}${variant}${kind}" style="visibility:hidden;height:0"><p>S${section}${variant || 'Default'}${kind}</p></div>`)).join('');
 }
+
+test('exclusive production preview serves every intended dist asset byte', async ({ request }, testInfo) => {
+  const root = resolve('dist');
+  const assets = [];
+  const visit = async (relative = '') => {
+    for (const entry of readdirSync(resolve(root, relative), { withFileTypes: true })) {
+      const path = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await visit(path);
+      else {
+        const intended = readFileSync(resolve(root, path));
+        const response = await request.get(`/${path}`);
+        expect(response.status()).toBe(200);
+        const served = await response.body();
+        expect(served).toEqual(intended);
+        assets.push({ path, bytes: served.length, sha256: createHash('sha256').update(served).digest('hex') });
+      }
+    }
+  };
+  await visit();
+  await testInfo.attach('served-production-assets', { body: Buffer.from(JSON.stringify(assets, null, 2)), contentType: 'application/json' });
+});
+
+for (const headers of [0, 1, 2]) test(`horizontal spans retain later witness widths, merged content and ${headers} repeated leading headers`, async ({ page }, testInfo) => {
+  const row = index => `<tr${index < headers ? ' class="header"' : ''}>${index === 5 ?
+    `<td class="a"><p>R${index}A</p></td><td class="b"><p>R${index}B</p></td><td class="c"><p>R${index}C</p></td>` :
+    `<td colspan="2"><p><b>R${index}A</b></p><ol start="7"><li>R${index}B</li></ol></td><td class="c"><p>R${index}C</p></td>`}</tr>`;
+  await open(page, 'table{border-collapse:collapse}td{padding:3pt;border:1pt solid #234567}td.a{width:50pt}td.b{width:70pt}td.c{width:100pt}ol{margin:0;padding:0}li{font:12pt Arial;margin:0 0 0 24pt;line-height:18pt}tr.header{-d4-header:true}',
+    `<p style="-d4-section-break-after:continuous">SEAM</p><p>BEFORE</p><table>${Array.from({ length: 16 }, (_, index) => row(index)).join('')}</table><p>AFTER</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets.nth(1)).toBeVisible();
+  await expect(sheets.first()).toHaveAttribute('data-sections', '1 2');
+  const fragments = await sheets.evaluateAll(sheets => sheets.map(sheet => {
+    const origin = sheet.getBoundingClientRect();
+    return [...sheet.querySelectorAll('.page-body table tr')].map(row => [...row.cells].map(cell => {
+      const bounds = cell.getBoundingClientRect();
+      return { text: cell.textContent, span: cell.colSpan, width: bounds.width,
+        x: (bounds.left - origin.left) * .75, y: (bounds.top - origin.top) * .75,
+        right: (bounds.right - origin.left) * .75, bottom: (bounds.bottom - origin.top) * .75,
+        markers: [...cell.querySelectorAll('.paged-list-marker')].map(marker => marker.textContent) };
+    }));
+  }));
+  const rowIndex = row => Number(row[0].text.match(/R(\d+)A/)[1]);
+  const data = fragments.flat().filter(row => rowIndex(row) >= headers);
+  expect(data.map(rowIndex)).toEqual(Array.from({ length: 16 - headers }, (_, index) => index + headers));
+  const witness = data.find(row => rowIndex(row) === 5);
+  expect(witness.map(cell => cell.span)).toEqual([1, 1, 1]);
+  expect(witness[0].width).toBeLessThan(witness[1].width);
+  expect(witness[1].width).toBeLessThan(witness[2].width);
+  for (const fragment of fragments.filter(rows => rows.length)) {
+    for (let header = 0; header < headers; header++) expect(rowIndex(fragment[header])).toBe(header);
+    for (const row of fragment) {
+      expect(row.flatMap(cell => cell.text.match(/R\d+[ABC]/g))).toEqual(['A', 'B', 'C'].map(column => `R${rowIndex(row)}${column}`));
+      if (rowIndex(row) !== 5) {
+        expect(row.map(cell => cell.span)).toEqual([2, 1]);
+        expect(row[0].markers).toEqual(['7.']);
+        expect(Math.abs(row[0].width - witness[0].width - witness[1].width)).toBeLessThanOrEqual(.25);
+        expect(Math.abs(row[1].width - witness[2].width)).toBeLessThanOrEqual(.25);
+      }
+    }
+  }
+  const path = testInfo.outputPath(`colspans-${headers}.pdf`);
+  await page.pdf({ path, preferCSSPageSize: true, printBackground: true });
+  const printed = inspectPDF(path);
+  expect(printed.pages.length).toBe(await sheets.count());
+  const printedCells = fragments.map((rows, index) => rows.map(row => row.map(cell =>
+    printed.pages[index].words.filter(word => {
+      const x = (word.x + word.right) / 2;
+      const y = (word.y + word.bottom) / 2;
+      return x >= cell.x - .25 && x <= cell.right + .25 && y >= cell.y - .25 && y <= cell.bottom + .25;
+    }).sort((a, b) => Math.abs(a.y - b.y) > 1 ? a.y - b.y : a.x - b.x).map(word => word.text).join('').replace(/\s/gu, ''))));
+  expect(printedCells).toEqual(fragments.map(rows => rows.map(row => row.map(cell => cell.text.replace(/\s/gu, '')))));
+  await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('unsupported horizontal grids and vertical/mixed spans await terminal localized atomic fallback', async ({ page }) => {
+  const witness = '<tr><td><p>A</p></td><td><p>B</p></td><td><p>C</p></td></tr>';
+  for (const rows of [
+    '<tr><td colspan="2"><p>AB</p></td><td><p>C</p></td></tr><tr><td><p>A</p></td><td colspan="2"><p>BC</p></td></tr>',
+    '<tr><td rowspan="2"><p>A</p></td><td><p>B</p></td><td><p>C</p></td></tr><tr><td><p>B</p></td><td><p>C</p></td></tr>' + witness,
+    '<tr><td colspan="2" rowspan="2"><p>AB</p></td><td><p>C</p></td></tr><tr><td><p>C</p></td></tr>' + witness,
+    witness + '<tr><td colspan="4"><p>IRREGULAR</p></td></tr>',
+    witness + '<tr><td colspan="2"><table><tr><td><p>NESTED</p></td></tr></table></td><td><p>C</p></td></tr>',
+    witness + '<tr><td colspan="2"><p style="-d4-ref-name:\'Unknown\'">DATA</p></td><td><p>C</p></td></tr>',
+  ]) {
+    await open(page, '', `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`);
+    const before = await bytes(page);
+    await preview(page);
+    await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedTables);
+    await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+    expect(await bytes(page)).toEqual(before);
+  }
+});
+
+test('horizontal fragment geometry rejects a change beyond 0.25 CSS px without partial pages or changed source', async ({ page }) => {
+  await page.addInitScript(() => {
+    const bounds = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () {
+      const rect = bounds.call(this);
+      if (this.localName === 'td' && this.closest('.paged-measure table')?.style.tableLayout === 'fixed') {
+        return new DOMRect(rect.x, rect.y, rect.width + .26, rect.height);
+      }
+      return rect;
+    };
+  });
+  await open(page, 'td{padding:3pt}td.a{width:50pt}td.b{width:70pt}td.c{width:100pt}',
+    '<p>BEFORE</p><table><tr><td colspan="2"><p>AB</p></td><td class="c"><p>C</p></td></tr><tr><td class="a"><p>A</p></td><td class="b"><p>B</p></td><td class="c"><p>C</p></td></tr></table><p>AFTER</p>');
+  const before = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedTables);
+  await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+  expect(await bytes(page)).toEqual(before);
+});
 
 for (const headers of [0, 1, 2]) test(`flat cell lists preserve complete rows, counters and ${headers} repeated header rows`, async ({ page }, testInfo) => {
   const row = index => `<tr${index < headers ? ' class="header"' : ''}><td class="narrow">${index < headers ? '' : `<p>INTRO${index}</p>`}<ol start="7"><li>TOK${index}A</li><li>TOK${index}B</li></ol></td><td class="wide"><ul><li>VALUE${index}A${index < headers ? '' : ' wrapped across lines'}</li><li>VALUE${index}B</li></ul></td></tr>`;
@@ -445,7 +563,7 @@ test('intrinsic native column geometry is not stretched to the page body width',
 test('oversized rows, spanning cells and nested table-cell lists fall back atomically with the entire table retained', async ({ page }) => {
   for (const [table, reason] of [
     ['<table><tr><td><p>' + 'TOOBIG<br/>'.repeat(30) + '</p></td></tr></table>', 'pagedOverflow'],
-    ['<table><tr><td colspan="2"><p>MERGED</p></td></tr><tr><td><p>A</p></td><td><p>B</p></td></tr></table>', 'pagedTables'],
+    ['<table><tr><td colspan="2"><p>MERGED</p></td></tr><tr><td colspan="2"><p>NO WITNESS</p></td></tr></table>', 'pagedTables'],
     ['<table><tr><td><ul><li>LIST<ul><li>NESTED</li></ul></li></ul></td></tr></table>', 'pagedTables'],
   ]) {
     await open(page, '', `<p>BEFORE</p>${table}<p>TAIL</p>`);
