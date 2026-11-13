@@ -96,7 +96,7 @@ test('plain-text clipboard paste is literal and denied or stale reads report err
   await page.locator('#new').click();
   await page.locator('.editing-tools summary').click();
   await page.locator('#paste-plain').click();
-  await expect(page.locator('#paper > p')).toHaveText(['<b>Plain</b>', 'Next']);
+  await expect(page.locator('#paper .section-flow > p')).toHaveText(['<b>Plain</b>', 'Next']);
   await page.evaluate(() => { window.denyClipboard = true; });
   await page.locator('#paste-plain').click();
   await expect(page.getByRole('alert')).toContainText('clipboard');
@@ -105,7 +105,7 @@ test('plain-text clipboard paste is literal and denied or stale reads report err
   await page.locator('[contenteditable]').first().fill('Changed');
   await page.evaluate(() => window.finishClipboard('Old clipboard'));
   await expect(page.getByRole('alert')).toContainText('changed');
-  await expect(page.locator('#paper > p').first()).toHaveText('Changed');
+  await expect(page.locator('#paper .section-flow > p').first()).toHaveText('Changed');
   await select(page, 0, 0, 0, 7);
   await page.locator('[data-run]').first().evaluate(element => {
     element.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, shiftKey: true, bubbles: true }));
@@ -114,6 +114,6 @@ test('plain-text clipboard paste is literal and denied or stale reads report err
     clipboardData.setData('text/html', '<strong>Formatted</strong>');
     element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
   });
-  await expect(page.locator('#paper > p').first()).toHaveText('Literal');
+  await expect(page.locator('#paper .section-flow > p').first()).toHaveText('Literal');
   expect(await page.locator('[data-run]').first().evaluate(element => getComputedStyle(element).fontWeight)).toBe('400');
 });

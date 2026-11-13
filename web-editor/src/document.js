@@ -4,6 +4,7 @@ import { nativeBody, nativeBoundary, nativeMetadata, spliceBookmarks, writeBookm
 import { pageFields, pagePoints, validatePageGeometry } from './page-setup.js';
 import { paragraphBreak, breakProperties } from './sections.js';
 import { validateColumns, parseTabs, tabDeclarations, tabProperties, defaultTab } from './flow-settings.js';
+import { projectLayout } from './layout-preview.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
@@ -1937,6 +1938,7 @@ export class WriteProDocument {
           if (kind) {
             const marker = document.createElement('div');
             marker.className = `explicit-break ${kind === 'continuous' ? 'continuous-break' : ''}`;
+            marker.dataset.break = kind;
             marker.setAttribute('role', 'separator');
             marker.setAttribute('aria-label', labels[{ page: 'breakPage', section: 'breakSection', continuous: 'breakContinuous' }[kind]]);
             marker.textContent = marker.getAttribute('aria-label');
@@ -1946,23 +1948,6 @@ export class WriteProDocument {
       }
     };
     project(body, host);
-    const layout = this.sectionLayout();
-    if (!layout.reason) for (const section of layout.sections) {
-      const columns = this.columnSetup(section.index);
-      if (columns.reason || columns.settings.count === 1) continue;
-      const wrapper = document.createElement('div');
-      wrapper.className = 'section-columns';
-      wrapper.dataset.section = section.index;
-      wrapper.style.columnCount = String(columns.settings.count);
-      wrapper.style.columnGap = `${pagePoints(columns.settings.gap)}pt`;
-      const elements = section.elements.map(source => this.projection.get(source)).filter(element => element?.parentNode === host);
-      if (!elements.length) continue;
-      elements[0].before(wrapper);
-      for (const element of elements) {
-        const marker = element.nextElementSibling?.classList.contains('explicit-break') ? element.nextElementSibling : null;
-        wrapper.append(element);
-        if (marker) wrapper.append(marker);
-      }
-    }
+    projectLayout(this, host);
   }
 }

@@ -123,6 +123,11 @@ div.preserved-object { display: block; margin-top: 16px; }
 .tabs-panel input { width: 140px; }
 .tabs-panel p { line-height: 1.6; overflow-wrap: anywhere; }
 .section-columns { column-fill: balance; }
+.paper.layout-preview { background: transparent; box-shadow: none; }
+.section-paper { background: #fff; margin: 0 auto 24pt; box-shadow: 0 3px 14px #0000000e; display: flow-root; }
+.section-flow { display: flow-root; }
+.print-panel h3, .print-panel p { flex-basis: 100%; margin: 0; line-height: 1.6; }
+#print-document { display: none; }
 .section-controls select, #page-target { max-width: 100%; }
 .paper .explicit-break { border-block: 1px dashed var(--border); margin-block: 24pt; padding-block: 8pt; color: var(--muted); font: 11px/1.5 system-ui, sans-serif; text-align: center; overflow-wrap: anywhere; }
 .paper .continuous-break { margin-block: 8pt; border-bottom: 0; padding-block: 4pt; }
@@ -156,4 +161,20 @@ div.preserved-object { display: block; margin-top: 16px; }
   .paper { padding: 28px 22px; min-height: 550px; }
   .guide { display: block; padding: 8px 14px; }
   .paper [style*="width"] { max-width: 100%; }
+}
+@media print {
+  :root, :root[data-theme] { color-scheme: light; background: #fff; color: #222; }
+  body { margin: 0; background: #fff; }
+  body > :not(#print-document) { display: none !important; }
+  #print-document { display: block; margin: 0; padding: 0; min-width: 0; max-width: none; width: auto; min-height: 0; box-shadow: none; background: #fff; color: #222; zoom: 1; transform: none; }
+  #print-document .section-paper { width: auto; min-height: 0; padding: 0; margin: 0; box-shadow: none; }
+  #print-document .print-new-page { break-before: page; }
+  #print-document .text-run { white-space: pre-wrap; }
+  #print-document * { max-width: 100% !important; min-width: 0 !important; outline: none !important; caret-color: transparent; }
+  #print-document ::selection { background: transparent; color: inherit; }
+  #print-document table { width: 100%; table-layout: fixed; }
+  #print-document td, #print-document th { overflow-wrap: anywhere; }
+  #print-document img { height: auto !important; max-height: var(--print-height); }
+  #print-document .preserved-object:has(> img) { background: transparent; border: 0; padding: 0; }
+  #print-document .preserved-object { color: #233247; background: #fff; border: 1px solid #62738a; }
 }

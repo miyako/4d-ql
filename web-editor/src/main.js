@@ -8,6 +8,7 @@ import { readImage } from './image.js';
 import { pageUnits, paperPresets, pageFields, pageDisplay, pagePoints, pagePaperSize } from './page-setup.js';
 import { paragraphBreak } from './sections.js';
 import { tabTypes, tabLeaders, defaultTab } from './flow-settings.js';
+import { createPrintProjection, printCapability } from './printing.js';
 
 let locale = detectLanguage();
 let theme = 'system';
@@ -65,6 +66,7 @@ document.querySelector('#app').innerHTML = `
     <div class="file-actions">
       <button id="new" data-i18n="new"></button><button id="open" data-i18n="open"></button>
       <button id="download" class="primary" data-i18n="download"></button>
+      <button id="print-toggle" data-i18n="print" aria-expanded="false" aria-controls="print-panel"></button>
       <button id="history-toggle" data-i18n="history" aria-expanded="false" aria-controls="history-panel"></button>
       <button id="settings-toggle" class="icon-button" data-label="settings" aria-expanded="false" aria-controls="settings">⚙</button>
     </div>
@@ -116,6 +118,13 @@ document.querySelector('#app').innerHTML = `
       <section id="link-panel" class="tool-panel" hidden>
         <label><span data-i18n="linkURLLabel"></span><input id="link-url" type="url" maxlength="2048"></label>
         <button id="apply-link" data-i18n="applyLink"></button><button id="remove-link" data-i18n="removeLink"></button>
+      </section>
+      <section id="print-panel" class="tool-panel print-panel" aria-labelledby="print-heading" hidden>
+        <h3 id="print-heading" data-i18n="print"></h3>
+        <p data-i18n="printHelp"></p><p data-i18n="printLimits"></p>
+        <p id="print-protection" role="status" hidden></p>
+        <button id="print-open" data-i18n="printOpen"></button>
+        <button id="print-close" data-i18n="close"></button>
       </section>
       <section id="image-panel" class="tool-panel" hidden>
         <label><span data-i18n="imageWidth"></span><input id="image-width" type="number" min="12" max="1200" step="1"></label>
@@ -362,6 +371,7 @@ function render(caret = null) {
   model.selection = null;
   $('image-panel').hidden = true;
   model.render($('paper'), messages[locale]);
+  $('paper').setAttribute('aria-description', t('previewHelp'));
   const styleLabels = { Normal: 'normalStyle', Heading_1: 'heading1Style', Heading_2: 'heading2Style', Quote: 'quoteStyle' };
   $('paragraph-style').replaceChildren(...model.styleNames().map(name => new Option(styleLabels[name] ? t(styleLabels[name]) : name.replaceAll('_', ' '), name)));
   $('readonly-notice').hidden = !model.readOnly && !model.hasBookmarks;
@@ -382,6 +392,10 @@ function render(caret = null) {
   renderBookmarks();
   renderPageSetup();
   renderTabs();
+  const printBlocked = printCapability(model);
+  $('print-open').disabled = Boolean(printBlocked);
+  $('print-protection').hidden = !printBlocked;
+  $('print-protection').textContent = printBlocked ? t(printBlocked) : '';
 }
 
 function localize() {
@@ -594,7 +608,7 @@ $('paper').addEventListener('click', event => {
   selectedImage = null;
   $('image-panel').hidden = true;
   if (event.target.closest('[data-run],.preserved-object,.locked-content')) return;
-  const scope = event.target.closest('[data-block]') || $('paper');
+  const scope = event.target.closest('[data-block],.section-flow,.section-paper') || $('paper');
   const runs = scope.querySelectorAll('[data-run][contenteditable]');
   if (runs.length) focusRun(Number(runs[runs.length - 1].dataset.run));
 });
@@ -769,6 +783,66 @@ $('new').onclick = () => {
 $('open').onclick = () => $('file').click();
 $('file').onchange = event => openFile(event.target.files[0]);
 $('download').onclick = download;
+let printing = false;
+let printRoot = null;
+const printStyle = document.createElement('style');
+printStyle.media = 'print';
+document.head.append(printStyle);
+function preparePrint() {
+  if (composition) throw new DocumentError('printFailed');
+  const projection = createPrintProjection(model, messages[locale]);
+  printRoot?.remove();
+  printRoot = projection.root;
+  document.body.append(printRoot);
+  printStyle.textContent = projection.rules;
+  return printRoot;
+}
+function closePrintPanel() {
+  $('print-panel').hidden = true;
+  $('print-toggle').setAttribute('aria-expanded', 'false');
+  $('print-toggle').focus();
+}
+$('print-toggle').onclick = () => {
+  togglePanel('print-toggle', 'print-panel');
+  if (!$('print-panel').hidden) $('print-close').focus();
+};
+$('print-close').onclick = closePrintPanel;
+$('print-panel').onkeydown = event => {
+  if (event.key === 'Escape') { event.preventDefault(); closePrintPanel(); }
+};
+$('print-open').onclick = async () => {
+  if (printing) return;
+  printing = true;
+  try {
+    const printRevision = revision;
+    const root = preparePrint();
+    await document.fonts.ready;
+    await Promise.all([...root.querySelectorAll('img')].map(image => image.decode()));
+    if (revision !== printRevision || composition) throw new DocumentError('printFailed');
+    window.print();
+  } catch (error) {
+    console.error('Browser print preparation failed', error);
+    showError(error instanceof DocumentError ? error : new DocumentError('printFailed'));
+  } finally { printing = false; }
+};
+window.addEventListener('beforeprint', () => {
+  if (printing) return;
+  try { preparePrint(); }
+  catch (error) {
+    showError(error);
+    printRoot?.remove();
+    printRoot = document.createElement('div');
+    printRoot.id = 'print-document';
+    printRoot.textContent = t(error instanceof DocumentError ? error.code : 'printFailed');
+    document.body.append(printRoot);
+    printStyle.textContent = '';
+  }
+});
+window.addEventListener('afterprint', () => {
+  printRoot?.remove();
+  printRoot = null;
+  printStyle.textContent = '';
+});
 $('dismiss-error').onclick = () => { errorCode = null; $('error').hidden = true; };
 $('settings-toggle').onclick = () => {
   $('settings').hidden = !$('settings').hidden;
@@ -1028,15 +1102,6 @@ function renderPageSetup() {
   });
   $('break-list').replaceChildren(...breaks);
   $('break-remove').disabled = model.readOnly || !breaks.length;
-  for (const property of ['width', 'min-width', 'max-width', 'min-height', 'padding']) $('paper').style.removeProperty(property);
-  if (!setup.reason) {
-    const [width, height] = pagePaperSize(setup.geometry);
-    $('paper').style.width = `${width}pt`;
-    $('paper').style.minWidth = `${width}pt`;
-    $('paper').style.maxWidth = 'none';
-    $('paper').style.minHeight = `${height}pt`;
-    $('paper').style.padding = ['top', 'right', 'bottom', 'left'].map(field => `${pagePoints(setup.geometry[field])}pt`).join(' ');
-  }
 }
 
 function pageInheritance(reason = null) {
