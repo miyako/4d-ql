@@ -8,7 +8,7 @@ import { WriteProDocument } from '../src/document.js';
 import { createPrintProjection } from '../src/printing.js';
 import { messages } from '../src/i18n.js';
 
-function inspectPDF(path) {
+export function inspectPDF(path) {
   const xml = execFileSync('pdftotext', ['-bbox', path, '-'], { encoding: 'utf8' });
   const pages = [...xml.matchAll(/<page width="([\d.]+)" height="([\d.]+)">([\s\S]*?)<\/page>/g)].map(match => ({
     width: Number(match[1]), height: Number(match[2]),

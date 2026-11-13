@@ -10,6 +10,7 @@ import { paragraphBreak } from './sections.js';
 import { tabTypes, tabLeaders, defaultTab } from './flow-settings.js';
 import { createPrintProjection, printCapability } from './printing.js';
 import { areaLabel } from './header-messages.js';
+import { areaSides } from './headers-footers.js';
 
 let locale = detectLanguage();
 let theme = 'system';
@@ -19,6 +20,8 @@ let pageChanges = {};
 let pageTarget = 0;
 let columnDraft = null;
 let columnChanges = {};
+let headerDraft = null;
+let headerChanges = {};
 let tabDraft = null;
 let tabDefaultDraft = null;
 let tabDefaultChanges = {};
@@ -87,7 +90,18 @@ document.querySelector('#app').innerHTML = `
         <label><span data-i18n="headerSection"></span><select id="header-section" data-label="headerSection"></select></label>
         <label><span data-i18n="headerSetup"></span><select id="header-kind" data-label="headerSetup"><option value="Header" data-i18n="headerHeader"></option><option value="Footer" data-i18n="headerFooter"></option></select></label>
         <button id="header-create" data-i18n="headerCreate"></button><button id="header-remove" data-i18n="headerRemove"></button>
+        <button id="header-first" data-i18n="headerFirst" aria-pressed="false" aria-describedby="header-variant-help"></button>
+        <button id="header-facing" data-i18n="headerFacing" aria-pressed="false" aria-describedby="header-variant-help"></button>
+        <p id="header-variant-state" role="status"></p><p id="header-variant-help" data-i18n="headerVariantHelp"></p>
         <p id="scope-state" role="status"></p><p id="scope-help" data-i18n="headerHelp"></p><p data-i18n="headerStructure"></p><p id="scope-protection" role="status" hidden></p>
+        <details class="header-position"><summary data-i18n="headerPosition"></summary>
+          <p data-i18n="headerPositionHelp"></p><p id="header-position-state" role="status"></p>
+          <label><span data-i18n="pageUnits"></span><select id="header-units"><option>mm</option><option>cm</option><option>in</option><option>pt</option></select></label>
+          <form id="header-position-form" novalidate>
+            ${areaSides.map(side => `<label><span data-i18n="page${side[0].toUpperCase() + side.slice(1)}"></span><input id="header-${side}" type="number" step="any" min="0" required><span class="header-unit" aria-hidden="true"></span></label>`).join('')}
+            <button data-i18n="headerPositionApply"></button>
+          </form>
+        </details>
       </section>
       <div class="toolbar" role="toolbar" aria-label="Text formatting">
         <button id="undo" data-label="undo">↶</button><button id="redo" data-label="redo">↷</button>
@@ -431,7 +445,43 @@ function renderScopes() {
   $('header-remove').disabled = !area || Boolean(area.variant || reason ||
     state.variants.some(name => name.match(/^section(\d+)/)[1] === String(area.section)) ||
     [...area.element.querySelectorAll('*')].some(element => model.formula(element)));
+  const section = Number($('header-section').value);
+  const statuses = [];
+  for (const [id, variant, label] of [['header-first', 'First', 'headerFirst'], ['header-facing', 'Left', 'headerFacing']]) {
+    const enabled = state.variants.includes(`section${section}${variant}`);
+    $(id).setAttribute('aria-pressed', String(enabled));
+    statuses.push(`${t(label)}: ${t(enabled ? 'headerEnabled' : 'headerDisabled')}`);
+    $(id).disabled = Boolean(state.reason);
+  }
+  $('header-variant-state').textContent = `${t('headerSection')} ${section} · ${statuses.join(' · ')}`;
+  const position = model.headerPosition();
+  headerDraft = position.reason ? null : { ...position.values };
+  headerChanges = {};
+  $('header-position-state').textContent = position.reason ? t(position.reason) : areaLabel(position.area, messages[locale]);
+  for (const control of $('header-position-form').querySelectorAll('input,button')) control.disabled = Boolean(position.reason);
+  headerInputs();
 }
+
+function headerInputs() {
+  $('header-units').value = pageUnit;
+  for (const element of document.querySelectorAll('.header-unit')) element.textContent = pageUnit;
+  for (const side of areaSides) $('header-' + side).value = headerDraft ? pageDisplay(headerDraft[side], pageUnit) : '';
+}
+for (const [id, variant] of [['header-first', 'First'], ['header-facing', 'Left']]) $(id).onclick = () => perform('headerVariants', () => {
+  const section = Number($('header-section').value);
+  const enabled = $(id).getAttribute('aria-pressed') !== 'true';
+  model.headerVariantPlan(section, variant, enabled);
+  if (!enabled && !confirm(t('headerVariantRemove'))) return;
+  model.setHeaderVariant(section, variant, enabled);
+});
+for (const side of areaSides) $('header-' + side).oninput = event => {
+  headerChanges[side] = headerDraft[side] = `${event.target.value}${pageUnit}`;
+};
+$('header-position-form').onsubmit = event => {
+  event.preventDefault();
+  perform('headerPosition', () => model.setHeaderPosition(headerChanges));
+};
+$('header-units').onchange = event => changeUnits(event.target.value);
 
 $('editing-scope').onchange = () => {
   try {
@@ -1334,7 +1384,8 @@ $('tab-default-type').onchange = event => { tabDefaultChanges.type = tabDefaultD
 $('tab-default-leader').onchange = event => { tabDefaultChanges.leader = tabDefaultDraft.leader = event.target.value; };
 function changeUnits(unit) {
   try {
-    for (const field of pageFields) pagePoints(pageDraft[field]);
+    if (headerDraft) for (const side of areaSides) pagePoints(headerDraft[side]);
+    if (pageDraft) for (const field of pageFields) pagePoints(pageDraft[field]);
     if (columnDraft) pagePoints(columnDraft.gap);
     if (!$('tabs-panel').hidden && tabDraft && tabDefaultDraft) {
       pagePoints(tabDraft.position);
@@ -1342,11 +1393,12 @@ function changeUnits(unit) {
     }
     pageUnit = unit;
     remember();
-    tabInputs();
-    pageInputs();
-    columnInputs();
+    if (tabDraft) tabInputs();
+    if (pageDraft) pageInputs();
+    if (columnDraft) columnInputs();
+    headerInputs();
   } catch (error) {
-    $('page-units').value = $('tab-units').value = pageUnit;
+    $('page-units').value = $('tab-units').value = $('header-units').value = pageUnit;
     showError(error);
   }
 }

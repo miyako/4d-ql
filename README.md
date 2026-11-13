@@ -86,9 +86,11 @@ Section/default column count and gap, paragraph tab stops and real tab entry
 are available on main via [#47](https://github.com/miyako/4d-ql/pull/47).
 Section-sized continuous preview and local browser Print/Save-as-PDF are
 available on main via [#48](https://github.com/miyako/4d-ql/pull/48), without
-claiming exact 4D pagination. The next header/footer increment is **in progress**:
-separate native-section text/formatting scopes, guarded default-area creation/removal
-and a labeled print content appendix. It is not merged or deployed.
+claiming exact 4D pagination. Header/footer text editing, guarded default-area
+creation/removal and a labeled print content appendix are available on main via
+[#49](https://github.com/miyako/4d-ql/pull/49). The selected next increment,
+native section-local first/left/right variant controls and area positioning,
+is **in progress**, not merged or deployed.
 Advanced pictures/text boxes, floating objects and native pagination remain
 proposals, not started.
 See the editor README for the exact feature boundaries, local data

@@ -5,7 +5,7 @@ import { pageFields, pagePoints, validatePageGeometry } from './page-setup.js';
 import { paragraphBreak, breakProperties } from './sections.js';
 import { validateColumns, parseTabs, tabDeclarations, tabProperties, defaultTab } from './flow-settings.js';
 import { projectLayout } from './layout-preview.js';
-import { areaClass, headerAreas, headerContentReason, outsideArea, removeAreaRules } from './headers-footers.js';
+import { areaClass, headerAreas, headerContentReason, outsideArea, removeAreaRules, variantPlan, areaRules, areaPosition, areaSides, validateAreaPosition } from './headers-footers.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
@@ -263,6 +263,51 @@ export class WriteProDocument {
     this.scope = scope;
     this.selection = null;
     this.endGroup();
+  }
+  headerVariantPlan(section, variant, enabled) { return variantPlan(this, section, variant, enabled); }
+  setHeaderVariant(section, variant, enabled) {
+    const plan = this.headerVariantPlan(section, variant, enabled);
+    if (!plan.names.length) return;
+    this.mutate('headerVariants', () => {
+      if (enabled) {
+        const style = this.document.createElementNS(XHTML, 'style');
+        style.setAttribute('type', 'text/css');
+        const rules = [];
+        for (const value of plan.variants) {
+          rules.push(`div.section${section}${value}{white-space:normal}`);
+          for (const source of plan.sources) {
+            const name = `section${section}${value}${source.kind}`;
+            const copy = source.element.cloneNode(true);
+            copy.setAttribute('class', name);
+            this.document.querySelector('body').append(copy);
+            rules.push(...areaRules(this.document, source.name).map(rule => `div.${name}${rule.text}`));
+          }
+        }
+        style.textContent = rules.join('');
+        this.document.querySelector('head').append(style);
+      } else {
+        for (const area of plan.areas) area.element.remove();
+        for (const name of plan.names) removeAreaRules(this.document, name);
+      }
+      this.refresh();
+    }, null, false, plan);
+    if (!this.scopeRoot) this.setScope('body');
+    else { this.selection = null; this.endGroup(); }
+  }
+  headerPosition(name = this.scope) { return areaPosition(this, name); }
+  setHeaderPosition(changes, name = this.scope) {
+    const setup = this.headerPosition(name);
+    if (setup.reason) throw new DocumentError(setup.reason);
+    if (!changes || Object.keys(changes).some(key => !areaSides.includes(key))) throw new DocumentError('headerPositionInvalid');
+    const values = { ...setup.values, ...changes };
+    try { validateAreaPosition(values, setup.geometry); }
+    catch (error) {
+      if (!(error instanceof DocumentError)) throw error;
+      throw new DocumentError('headerPositionInvalid');
+    }
+    if (areaSides.every(side => values[side] === setup.values[side])) return;
+    this.mutate('headerPosition', () => this.writeSectionSettings(name.slice(7),
+      { margin: areaSides.map(side => values[side]).join(' ') }));
   }
   changeHeaderArea(section, kind, remove = false) {
     const state = this.headerAreas();
@@ -842,12 +887,15 @@ export class WriteProDocument {
   mutate(label, change, group = null, restore = false, structureArea = null) {
     const before = this.serialize();
     try {
+      const variant = label === 'headerVariants' && structureArea && typeof structureArea === 'object';
+      const structureNames = variant ? structureArea.names : structureArea;
       const structure = structureArea !== null;
-      if (structure && (label !== 'headerSetup' || !areaClass.test(structureArea))) throw new DocumentError('headerAssociation');
-      const header = !restore && !structure && this.scope !== 'body';
+      if (structure && !(variant ? structureNames.every(name => /^section[1-9]\d*(First|Left|Right)(Header|Footer)?$/.test(name)) :
+        label === 'headerSetup' && areaClass.test(structureArea))) throw new DocumentError('headerAssociation');
+      const header = !restore && !structure && label !== 'headerPosition' && this.scope !== 'body';
       if (header && (this.headerReason() || !['typing', 'format', 'paragraph', 'style', 'replace', 'cut', 'paste', 'link'].includes(label))) throw new DocumentError('headerUnsupported');
-      const outside = header || structure ? outsideArea(this.document, structureArea || this.scope, structure) : null;
-      const geometry = label === 'pageSetup' || label === 'sectionSetup' || label === 'columnsSetup';
+      const outside = header || structure ? outsideArea(this.document, structureNames || this.scope, structure) : null;
+      const geometry = label === 'pageSetup' || label === 'sectionSetup' || label === 'columnsSetup' || label === 'headerPosition';
       const breaks = () => [...this.document.querySelectorAll('body p,body li')].flatMap(node => {
         const values = this.values(node);
         const signature = ['page-break-after', '-d4-section-break-after', 'break-after'].map(key => values[key] || 'auto');
@@ -866,7 +914,7 @@ export class WriteProDocument {
       } : null;
       const result = change();
       if (header && (this.headerReason() || outsideArea(this.document, this.scope) !== outside)) throw new DocumentError('headerUnsupported');
-      if (structure && (this.headerAreas().reason || outsideArea(this.document, structureArea, true) !== outside)) throw new DocumentError('headerAssociation');
+      if (structure && (this.headerAreas().reason || outsideArea(this.document, structureNames, true) !== outside)) throw new DocumentError('headerAssociation');
       if (breaksBefore) {
         const afterBreaks = breaks();
         if (afterBreaks.length !== breaksBefore.length || breaksBefore.some(({ node, signature }, index) =>
@@ -876,8 +924,12 @@ export class WriteProDocument {
         [...this.document.querySelectorAll('meta[name="bookmarks"]')].map(node => node.outerHTML).join('') !== bookmarksBefore)) throw new DocumentError('protected');
       if (!restore) {
         const afterObjects = this.formulaElements();
-        if (afterObjects.length !== objects.length || objects.some(({ node, xml }, index) =>
-          afterObjects[index] !== node || node.outerHTML !== xml)) throw new DocumentError('protected');
+        const copies = variant ? structureArea.copies : [];
+        const originals = new Set(objects.map(object => object.node));
+        const added = afterObjects.filter(node => !originals.has(node)).map(node => node.outerHTML).sort();
+        const retained = afterObjects.filter(node => originals.has(node));
+        if (afterObjects.length !== objects.length + copies.length || objects.some(({ node, xml }, index) =>
+          retained[index] !== node || node.outerHTML !== xml) || JSON.stringify(added) !== JSON.stringify([...copies].sort())) throw new DocumentError('protected');
       }
       if (tracked) {
         const body = this.nativeView();
@@ -1046,7 +1098,8 @@ export class WriteProDocument {
     const selections = redo ? this.redoSelections : this.undoSelections;
     const areaXML = () => new Map([...this.document.querySelectorAll('body > div')]
       .filter(element => areaClass.test(element.getAttribute('class') || ''))
-      .map(element => [element.getAttribute('class'), element.outerHTML]));
+      .map(element => [element.getAttribute('class'), element.outerHTML +
+        JSON.stringify(this.styles.filter(rule => rule.selector === `div.${element.getAttribute('class')}`).map(rule => rule.values))]));
     const areasBefore = areaXML();
     const previousScope = this.scope;
     (redo ? this.undoLabels : this.redoLabels).push(labels.pop() || 'edit');

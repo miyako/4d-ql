@@ -7,7 +7,7 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`9d67432` / #48](https://github.com/miyako/4d-ql/pull/48).
+[`e2774c0` / #49](https://github.com/miyako/4d-ql/pull/49).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
@@ -29,12 +29,13 @@ promise of dates or full Write Pro parity.
 | 8.2. Sections and breaks | Insert/remove page and section breaks; defaults and section-specific settings without flattening inheritance | Available on main via #44; deployment status is separate |
 | 8.3. Columns and tabs | Column count/gap and paragraph tab stops, with explicit preview limits | Available on main via #47; deployment status is separate |
 | 8.4. Preview/output | Section-sized continuous preview and local browser printing without claiming exact 4D pagination | Available on main via #48 |
-| 9. Headers and footers | Section-aware text/formatting in stored default/first/left/right areas, protected default-area creation/removal, labeled print content appendix | In progress; this increment is not merged or deployed |
+| 9. Headers and footers | Section-aware text/formatting in stored default/first/left/right areas, protected default-area creation/removal, labeled print content appendix | Available on main via #49 |
+| 9.1. Header/footer variants and positioning | Section-local first-page and paired left/right toggles with native copying/removal semantics; four native area margins | In progress; this increment is not merged or deployed |
 | 10. Richer media and advanced layout | More picture formats, floating objects, text boxes, object wrapping and automatic native-equivalent pagination | Proposed; not started |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
-Steps 8.1–8.4 are available on main. The selected next phase is headers/footers;
-it remains **In progress** until merged. Publication is separately gated; this
+Steps 8.1–8.4 and basic header/footer editing are available on main. The selected
+next increment is header/footer variants and positioning; it remains **In progress** until merged. Publication is separately gated; this
 increment does not merge or deploy itself. Advanced pictures/text boxes,
 floating objects and automatic native pagination are proposals, not started.
 Native formula execution/a 4D backend, real-time collaboration and exact
@@ -219,7 +220,7 @@ import/export/reopen cases. Of the latter, 281 are column/tab cases: 109 model
 exports and 172 actual browser downloads. These are scoped attribute/content
 checks in full 4D 21.2 `F0012102`, not arbitrary document or visual-layout parity.
 
-## Headers and footers (in progress, not merged or deployed)
+## Headers and footers (basic editing available on main)
 
 The **Editing scope** selector separates the body from each stored header/footer,
 identified by **native section number, default/first/left/right variant and kind**.
@@ -237,10 +238,9 @@ Native document/default paper geometry is still `div.section0`; numbered
 sections inherit or override its geometry, not another section's header text.
 Absent header/footer areas are absent, not inherited content. Creating a native
 subsection copies existing default content, and creating left or right also
-creates its opposite. Those operations, variant enable/disable, header/footer
-distances/heights/margins and section association changes require **4D** here.
-Existing first/left/right stored areas can be edited without changing their
-enabling rules or any other area.
+creates its opposite. Existing first/left/right stored areas can be edited
+independently. The unmerged variant/positioning increment below adds explicit
+controls for those native operations, not automatic native pagination.
 
 The separate section/kind selectors create an **empty default** header/footer
 only in sections without variants. **Remove default area** confirms content
@@ -277,6 +277,69 @@ independently, effective area getters, local range coordinates, body bookmark
 pairs, geometry, formula XML and native reexports/reopens. The browser suite
 also covers scope-aware recovery, safe removal/undo, unsupported structures,
 six languages, mobile, themes, keyboard focus and content-appendix PDF output.
+
+### Variant controls and positioning (in progress, not merged or deployed)
+
+The **First page** and **Left/right pages** toggle buttons apply to the selected
+**Native section**, to **both header and footer**. Their pressed state and a
+section-labeled status distinguish enabled from disabled. **Editing scope**
+continues to identify the actual stored area being edited; changing the
+configuration target does not silently switch text scope.
+
+Enabling copies this section's current default areas, their paragraph/inline
+formatting, immutable formula subtrees and four distances. Missing default areas
+remain absent: neither an empty area nor another section's content is invented.
+Left/right are one native pair. Disabling **deletes** both affected kinds (and
+both sides for left/right), not merely their visibility. A localized confirmation
+explains that loss before changing XML. Defaults and other variants remain
+unchanged. Re-enabling copies defaults again rather than resurrecting deleted
+variant text; Undo/Redo, saved versions and IndexedDB recovery retain the
+original content. Formula-containing variants cannot be deleted. Ambiguous
+associations, unknown subsection/area declarations, unsupported objects and
+identity-bearing content protect the operation rather than being flattened.
+Default-area creation/removal remains limited to sections without variants.
+An enabled subsection with no stored area stays empty; native deletion probes
+confirm that it does not fall back to the default area.
+
+**Native area positioning** edits the four native `margin` distances of the
+active **Editing scope**, with its full section/variant/kind label. It does not
+change body page margins, paper geometry, section names or the wrapper's
+`visibility:hidden;height:0`; native content height is automatic. Top and bottom
+participate in native area/body clearance, not a browser fixed-height box.
+Native PDFs independently establish that header top/left margins move the
+first-page header, footer top/left margins move its footer, and changing the
+section's body bottom margin can move the footer even with unchanged area
+distances. These observations are not a general placement formula.
+
+mm/cm/in/pt reuse the shared preference-only unit framework. Only edited fields
+are saved: unit switches and no-op Apply preserve native units/fractions and
+create no undo step. New values must be finite, nonnegative and at most
+10,000 pt; opposing area margins must leave positive oriented paper width and
+height. Native accepts some off-paper configurations; rejecting them is a
+conservative editor constraint. Missing/ambiguous/shared/inline/conditional or
+unverified longhand margins are preserved and protected. Invalid values raise
+localized errors with no clamping or unrelated geometry reset.
+
+`wp_variant_probe` adds independent full-4D default/header-only/footer-only,
+empty, Unicode/formula, first-left landscape and left-first/right-first cases.
+It retains native copy/edit/remove/re-enable/distance mutations, local ranges,
+effective getters, XML and multi-page PDFs. Native PDFs prove first-page
+precedence, paired side selection, first-page side/orientation effects and
+absent second-section content. Model and actual browser/recovery downloads are
+reimported/exported/reopened in full 4D and compared with those independent
+targets, including body bookmarks and resource bytes. The browser preview and
+printing remain a **once-per-stored-area labeled appendix**, not native
+repeating placement, evaluated fields or native-equivalent pagination.
+Native-created regression archives in `tests/fixtures/headers/` come from
+`Output/variant-*.4wp`, never from the web model.
+
+This local increment passes **415 unit tests, 103 browser tests and 1,959
+full-4D F0012102 import/export/reopen cases**. The native gate retains the
+1,692-case #49 baseline and adds 267 variant/positioning cases, including real
+browser operations, Undo and recovered Redo downloads. Nine native originals,
+thirteen stages each and four separate area-deletion/creation counterexamples
+establish the independent expectations. This is scoped compatibility evidence,
+not arbitrary layout parity or a claim that this branch is merged/deployed.
 
 This unmerged increment passed **408 unit tests, 101 browser tests and 1,692
 full-4D import/export/reopen cases**. The unchanged 1,548-case printing baseline

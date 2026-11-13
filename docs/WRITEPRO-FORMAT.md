@@ -386,7 +386,7 @@ the section it starts in: with a continuous break, the new section's header
 appears only from its next page. With `-d4-page-first-right:false`, page 1 is
 a left page.
 
-### Header/footer editing evidence (in progress; full 4D F0012102)
+### Header/footer editing evidence (available on main via #49; full 4D F0012102)
 
 `wp_header_probe` creates seven independent native cases: default, first page,
 left/right, right/left, immutable text formulas, header-bookmark rejection and
@@ -406,8 +406,8 @@ pagination or native field evaluation.
   separate trailing `sectionNFirst|Left|RightHeader|Footer` divs. Native disabling
   removes the selected subsection; disabling left/right removes the pair.
   Editing one stored area's text does not change the default or opposite
-  subsection. The editor edits existing areas only; enable/disable remains
-  native-only.
+  subsection. The merged text editor edits existing areas; the separate
+  unmerged variant increment below adds enable/disable controls.
 - Each area has its **own** UTF-16 range domain starting at 1. Supported text
   formulas consume one local native slot, independently of cached/source length.
   Unicode insertion, paragraph/line breaks and formatting in an area do not
@@ -436,6 +436,56 @@ resource bytes are immutable. Tables, pictures, protected/anchored content,
 unsupported references and lists within areas have explicit capability notices.
 Browser print includes supported stored content once in a labeled appendix,
 not repeated page margins; native 4D remains the compatibility/placement authority.
+
+### Header/footer variants and positioning (in progress; full 4D F0012102)
+
+`wp_variant_probe` independently creates nine native cases and thirteen stages
+per case. `Output/variant-report.json` retains effective subsection/area getters,
+body bookmark pairs, local Unicode/formula ranges, geometry and native margin
+validation. Associated `.4wp` files and multi-page native PDFs are authoritative;
+`variant-pdf-report.json` records scoped word-coordinate/content assertions.
+
+- Enabling first copies **both** current section-default areas, including their
+  four margins and immutable formula subtrees. Header-only/footer-only defaults
+  copy only the present kind. Empty sections gain enabling rules but **no area
+  content**. Nothing inherits from another section. Enabling either facing side
+  creates both sides from defaults, not from first-page or the opposite variant.
+- Disabling first removes its stored header/footer wrappers and enabling/area
+  rules. Disabling either facing side removes the **pair**, including independently
+  edited nonempty text. Defaults and other subsections remain untouched.
+  Re-enabling freshly copies defaults, not the removed content. The UI confirms
+  destructive removal and makes it atomic for undo/version/recovery; immutable
+  formula removal and unknown/ambiguous associations/declarations stay guarded.
+- First-page content takes priority over facing-page content. Native PDFs cover
+  a three-page first section plus an absent-area second section. With
+  `-d4-page-first-right:false` and landscape orientation, the second physical
+  page uses the right variant and the third uses left; the first uses first-page
+  content. The next section does not borrow the preceding section's areas.
+  Separate native deletion/creation counterexamples prove that an absent area
+  inside an **enabled** first/facing subsection does not fall back to the
+  section-default area. Removing a default does not remove already-copied
+  variants. Creating a first-only header does not populate other scopes.
+- Native area `margin` stores top/right/bottom/left, independently of the body's
+  `-d4-page-margin`. Native setters preserve fractional values/units and export
+  the four-side group; negative values raise error 204, while zero and even
+  off-paper values are accepted. Changing body page margins does not rewrite
+  stored area margins or copy them into variants. Native PDF footer coordinates
+  can nevertheless move with the body's bottom margin.
+- Header top/left and footer top/left positioning are independently checked in
+  PDFs against native mutations. The wrapper's hidden `height:0` is serialization,
+  **not** a physical editable height. Content height is automatic. The editor
+  saves four explicit native margins, conservatively requiring finite values
+  through 10,000 pt and positive remaining oriented paper dimensions; it does not
+  claim exact native body-clearance or font/layout calculation.
+
+Variant transactions exclude only their precisely enumerated subsection/area
+wrappers and exact rules from the outside-XML invariant. Formula copies must be
+byte-identical subtrees; original formula node identities/order remain immutable.
+Position-only transactions preserve all body XML/bookmarks/formulas/resources,
+unknown declarations and sibling areas. Unsupported/shared/conditional/inline or
+unverified longhand margins are protected rather than normalized. Browser
+projection remains inert and allowlisted. Preview/printing still presents the
+stored content once in a labeled appendix, **not** native repeating placement.
 
 ## Formulas
 

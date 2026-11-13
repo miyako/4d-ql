@@ -53,6 +53,11 @@ h2 { font-size: 18px; font-weight: 600; margin: 5px 0 0; overflow-wrap: anywhere
 .scope-panel label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .scope-panel select { min-width: 0; max-width: 100%; }
 .scope-panel p { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.header-position { flex-basis: 100%; min-width: 0; }
+.header-position summary { cursor: pointer; }
+.header-position form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 10px; }
+.header-position input { width: 110px; max-width: 100%; }
+.scope-panel button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
 .paper.header-paper { width: min(100%, 650pt); min-width: 0; min-height: 150pt; padding: 24pt; }
 .header-appendix { border-top: 1pt solid #888; margin-top: 24pt; padding-top: 12pt; font: 10pt/1.5 system-ui, sans-serif; overflow-wrap: anywhere; }
 .header-appendix .header-paper { min-height: 0; padding: 0; }

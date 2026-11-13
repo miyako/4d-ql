@@ -62,6 +62,13 @@ if [error["code"] for error in report.get("bookmarkErrors", [])] != [110]:
     raise SystemExit("Missing native header-bookmark rejection evidence.")
 if any(len(case.get("stages", [])) != 14 for case in report["cases"]):
     raise SystemExit("Missing native header/footer mutation stages.")
+variants = json.loads((root / "variant-report.json").read_text())
+if variants.get("version") != "F0012102" or len(variants.get("cases", [])) != 9 or any(
+    len(case.get("stages", [])) != 13 for case in variants["cases"]
+):
+    raise SystemExit("Missing native variant copy/removal/positioning evidence.")
+if [[error["code"] for error in item["errors"]] for item in variants["validation"]] != [[204], [], [], [], [], [], []]:
+    raise SystemExit("Unexpected native area-margin validation behavior.")
 PY
 run_4d wp_layout_check layout-native.log
 [ -s "$DEST/Output/layout-report.json" ] || { echo "Full 4D produced no layout report; inspect $DEST/layout-native.log." >&2; exit 1; }

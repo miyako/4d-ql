@@ -1,0 +1,145 @@
+var $root : 4D.Folder:=Folder(Get 4D folder(Database folder); fk platform path)
+var $report : Object:=New object("version"; Application version(*); "cases"; New collection(); "validation"; New collection(); "observations"; New collection())
+var $doc; $body; $section; $target; $area; $item; $break : Object
+var $kind; $stage : Text
+For each ($kind; New collection("empty"; "header"; "footer"; "both"; "formula"; "geometry"; "leftFirst"; "rightFirst"; "multi"))
+	$doc:=WP New()
+	$body:=WP Get body($doc)
+	WP SET TEXT($body; "BODY ONE"; wk replace)
+	$break:=WP Insert break($body; wk page break; wk append)
+	WP SET TEXT($body; "BODY LEFT"; wk append)
+	$break:=WP Insert break($body; wk page break; wk append)
+	WP SET TEXT($body; "BODY RIGHT"; wk append)
+	$break:=WP Insert break($body; wk section break; wk append)
+	WP SET TEXT($body; "BODY TWO"; wk append)
+	WP NEW BOOKMARK(WP Text range($body; 1; 5); "variant_body")
+	WP SET ATTRIBUTES($doc; wk page margin; "72pt")
+	$section:=WP Get section($doc; 1)
+	WP SET ATTRIBUTES($section; wk section name; "Section One")
+	If ($kind#"empty") & ($kind#"footer")
+		$area:=WP New header($section)
+		WP SET TEXT($area; "HEADER 😀 日é"; wk replace)
+		If ($kind="formula")
+			WP INSERT FORMULA($area; Formula("HCACHE"); wk append)
+		End if
+	End if
+	If ($kind#"empty") & ($kind#"header")
+		$area:=WP New footer($section)
+		WP SET TEXT($area; "FOOTER"; wk replace)
+	End if
+	If ($kind="geometry")
+		WP SET ATTRIBUTES($doc; wk page first right; wk false)
+		WP SET ATTRIBUTES($section; wk page orientation; wk landscape; wk page margin top; "80pt"; wk page margin left; "84pt")
+		$area:=WP Get header($section)
+		WP SET ATTRIBUTES($area; wk margin top; "12.345mm"; wk margin right; "40pt"; wk margin bottom; "14pt"; wk margin left; "50pt")
+	End if
+	If ($kind="leftFirst")
+		$target:=WP New subsection($section; wk left page)
+	End if
+	If ($kind="rightFirst")
+		$target:=WP New subsection($section; wk right page)
+	End if
+	If ($kind="multi")
+		$target:=WP Get section($doc; 2)
+		WP SET ATTRIBUTES($target; wk section name; "Section Two"; wk page margin; "50pt"; wk page orientation; wk landscape)
+		$area:=WP New header($target)
+		WP SET TEXT($area; "SECOND HEADER"; wk replace)
+		$area:=WP New footer($target)
+		WP SET TEXT($area; "SECOND FOOTER"; wk replace)
+		$target:=WP New subsection($target; wk first page)
+		$area:=WP Get header($target)
+		WP SET TEXT($area; "SECOND FIRST"; wk replace)
+	End if
+	$item:=New object("name"; $kind; "stages"; New collection())
+	For each ($stage; New collection("original"; "first"; "left"; "edit"; "distance"; "firstFooterDistance"; "pageMargin"; "deleteLeft"; "right"; "deleteFirst"; "firstAgain"; "deleteRight"; "deleteFirstAgain"))
+		$section:=WP Get section($doc; 1)
+		Case of
+			: ($stage="first") | ($stage="firstAgain")
+				$target:=WP New subsection($section; wk first page)
+			: ($stage="left")
+				If ($kind#"leftFirst") & ($kind#"rightFirst")
+					$target:=WP New subsection($section; wk left page)
+				End if
+			: ($stage="right")
+				$target:=WP New subsection($section; wk right page)
+			: ($stage="edit")
+				$target:=WP Get subsection($section; wk left page)
+				$area:=WP Get header($target)
+				If ($area#Null)
+					WP SET TEXT($area; "LEFT UNIQUE"; wk replace)
+				End if
+				$target:=WP Get subsection($section; wk right page)
+				$area:=WP Get footer($target)
+				If ($area#Null)
+					WP SET TEXT($area; "RIGHT UNIQUE"; wk replace)
+				End if
+			: ($stage="distance")
+				$target:=WP Get subsection($section; wk first page)
+				$area:=WP Get header($target)
+				If ($area#Null)
+					WP SET ATTRIBUTES($area; wk margin top; "10.125pt"; wk margin right; "11.25pt"; wk margin bottom; "12.5pt"; wk margin left; "13.75pt")
+				End if
+				$target:=WP Get subsection($section; wk right page)
+				$area:=WP Get footer($target)
+				If ($area#Null)
+					WP SET ATTRIBUTES($area; wk margin top; "14.125pt"; wk margin right; "15.25pt"; wk margin bottom; "16.5pt"; wk margin left; "17.75pt")
+				End if
+			: ($stage="pageMargin")
+				WP SET ATTRIBUTES($section; wk page margin; "90pt")
+			: ($stage="firstFooterDistance")
+				$target:=WP Get subsection($section; wk first page)
+				$area:=WP Get footer($target)
+				If ($area#Null)
+					WP SET ATTRIBUTES($area; wk margin top; "18.125pt"; wk margin right; "19.25pt"; wk margin bottom; "20.5pt"; wk margin left; "21.75pt")
+				End if
+			: ($stage="deleteLeft")
+				WP DELETE SUBSECTION($section; wk left page)
+			: ($stage="deleteRight")
+				WP DELETE SUBSECTION($section; wk right page)
+			: ($stage="deleteFirst") | ($stage="deleteFirstAgain")
+				WP DELETE SUBSECTION($section; wk first page)
+		End case
+		WP EXPORT DOCUMENT($doc; $root.file("Output/variant-"+$kind+"-"+$stage+".4wp").platformPath; wk 4wp)
+		If ($kind="geometry") | ($kind="both")
+			WP EXPORT DOCUMENT($doc; $root.file("Output/variant-"+$kind+"-"+$stage+".pdf").platformPath; wk pdf)
+		End if
+		$doc:=WP Import document($root.file("Output/variant-"+$kind+"-"+$stage+".4wp").platformPath)
+		$item.stages.push(New object("name"; $stage; "stats"; wp_header_stats($doc)))
+	End for each
+	$report.cases.push($item)
+End for each
+For each ($kind; New collection("removeFirstHeader"; "removeRightFooter"; "removeDefaultHeader"; "createFirstHeader"))
+	$doc:=WP Import document($root.file("Output/variant-both-left.4wp").platformPath)
+	If ($kind="createFirstHeader")
+		$doc:=WP Import document($root.file("Output/variant-empty-left.4wp").platformPath)
+	End if
+	$section:=WP Get section($doc; 1)
+	Case of
+		: ($kind="removeFirstHeader")
+			$target:=WP Get subsection($section; wk first page)
+			WP DELETE HEADER($target)
+		: ($kind="removeRightFooter")
+			$target:=WP Get subsection($section; wk right page)
+			WP DELETE FOOTER($target)
+		: ($kind="removeDefaultHeader")
+			WP DELETE HEADER($section)
+		: ($kind="createFirstHeader")
+			$target:=WP Get subsection($section; wk first page)
+			$area:=WP New header($target)
+			WP SET TEXT($area; "FIRST ONLY"; wk replace)
+	End case
+	WP EXPORT DOCUMENT($doc; $root.file("Output/variant-observation-"+$kind+".4wp").platformPath; wk 4wp)
+	WP EXPORT DOCUMENT($doc; $root.file("Output/variant-observation-"+$kind+".pdf").platformPath; wk pdf)
+	$report.observations.push(New object("name"; $kind; "stats"; wp_header_stats($doc)))
+End for each
+var $savedErrors : Collection:=wpWebErrors
+var $value : Real
+For each ($value; New collection(-1; 0; 1; 12.345; 72; 900; 10000))
+	wpWebErrors:=New collection()
+	$doc:=WP New()
+	$area:=WP New header(WP Get section($doc; 1))
+	WP SET ATTRIBUTES($area; wk margin top; String($value)+"pt")
+	$report.validation.push(New object("value"; $value; "errors"; wpWebErrors; "stats"; wp_header_stats($doc)))
+End for each
+wpWebErrors:=$savedErrors
+$root.file("Output/variant-report.json").setText(JSON Stringify($report; *))
