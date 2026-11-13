@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { zipSync, unzipSync } from 'fflate';
 import { expect } from '@playwright/test';
 import { inspectPDF } from './native-print-cases.mjs';
@@ -91,4 +92,76 @@ export async function preparePagedCases(directory, cases, browser, url, download
     } finally { await page.close(); }
   }
   await writeFile(resolve(directory, 'Output/paged-browser-report.json'), JSON.stringify(results, null, 2));
+  await prepareExpandedCases(directory, cases, browser, url, download);
+}
+
+async function prepareExpandedCases(directory, cases, browser, url, download) {
+  const report = JSON.parse(await readFile(resolve(directory, 'Output/expanded-report.json'), 'utf8'));
+  assert.equal(report.version, 'F0012102');
+  assert.equal(report.cases.length, 3);
+  const results = [];
+  for (const item of report.cases) {
+    const source = `expanded-source-${item.name}.4wp`;
+    const files = unzipSync(await readFile(resolve(directory, `Output/expanded-${item.name}-original.4wp`)));
+    files['Resources/expanded-sentinel.bin'] = Uint8Array.of(0, 255, 17, 128);
+    const original = zipSync(files);
+    await writeFile(resolve(directory, 'Input', source), original);
+    const editedSource = `expanded-target-${item.name}.4wp`;
+    await writeFile(resolve(directory, 'Input', editedSource), await readFile(resolve(directory, `Output/expanded-${item.name}-edited.4wp`)));
+    const native = inspectPDF(resolve(directory, `Output/expanded-${item.name}.pdf`));
+    for (const token of item.tokens) assert(native.text.includes(token), `${item.name}: missing native PDF token ${token}`);
+    const page = await browser.newPage({ acceptDownloads: true });
+    try {
+      await page.goto(url);
+      await page.locator('#file').setInputFiles(resolve(directory, 'Input', source));
+      await expect(page.locator('#paper')).toContainText('EXPANDED');
+      const expected = { flow: { source, action: 'identity' }, resources: source };
+      await download(`expanded-before-${item.name}`, expected, page);
+      await page.locator('#paged-panel > summary').click();
+      await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
+      const bodies = page.locator('#paged-view .page-body');
+      const content = await bodies.allTextContents();
+      for (const token of item.tokens) assert(content.join('').includes(token), `${item.name}: lost preview token ${token}`);
+      assert(await bodies.evaluateAll(bodies => bodies.every(body => {
+        const bounds = body.getBoundingClientRect();
+        return [...body.querySelectorAll('.text-run,.preserved-object,img')].every(run =>
+          [...run.getClientRects()].every(rect => rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25 &&
+            rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25));
+      })), 'Measured fragment content exceeds body boundaries');
+      const count = await bodies.count();
+      await page.locator('#settings-toggle').click();
+      await page.locator('#zoom').selectOption('2');
+      await page.locator('#theme').selectOption('dark');
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(bodies).toHaveCount(count);
+      const path = resolve(directory, `Output/expanded-browser-${item.name}.pdf`);
+      await page.pdf({ path, preferCSSPageSize: true, printBackground: true });
+      const printed = inspectPDF(path);
+      assert.equal(printed.pages.length, count);
+      assert.deepEqual(printed.pages.map(sheet => sheet.words.map(word => word.text).filter(word => /^FLOW\d+$/.test(word)).sort()),
+        content.map(text => (text.match(/FLOW\d+/g) || []).sort()), 'Printed tokens must match measured page membership exactly');
+      if (item.name === 'images') {
+        assert.match(execFileSync('pdfimages', ['-list', path], { encoding: 'utf8' }), /\d+\s+\d+\s+image/);
+        await expect(page.locator('#paged-view img')).toHaveCount(1);
+        assert(printed.text.includes('EXPANDEDCACHE'));
+      }
+      await download(`expanded-after-${item.name}`, expected, page);
+      assert.deepEqual(new Uint8Array(await readFile(resolve(directory, `Input/expanded-after-${item.name}.4wp`))), original);
+      await page.locator('#paper [contenteditable]').first().fill('WEBEXPANDED');
+      const edited = { flow: { source: editedSource, action: 'identity' }, resources: source };
+      await download(`expanded-edited-${item.name}`, edited, page);
+      await page.locator('#undo').click();
+      await download(`expanded-undo-${item.name}`, expected, page);
+      await expect(page.locator('#draft-state')).toHaveText('Local draft saved');
+      await page.reload();
+      await expect(page.locator('#recovery-notice')).toBeVisible();
+      await page.locator('#redo').click();
+      await download(`expanded-recovered-redo-${item.name}`, edited, page);
+      await page.locator('#paged-panel > summary').click();
+      await expect(page.locator('#paged-view')).toContainText('WEBEXPANDED');
+      results.push({ name: item.name, browserPages: count, nativePages: native.pages.length, exactPageTokens: true,
+        unchangedOriginalArchive: true, independentNativeEditTarget: true, actualUndoRecoveryExports: true });
+    } finally { await page.close(); }
+  }
+  await writeFile(resolve(directory, 'Output/expanded-browser-report.json'), JSON.stringify(results, null, 2));
 }

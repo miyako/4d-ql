@@ -6,13 +6,15 @@ import { preview } from 'vite';
 
 const directory = resolve(process.argv[2] || '');
 const paged = process.argv[3] === '--paged';
-assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged]');
-const prefix = paged ? 'paged-cancel' : 'print-cancel';
-const manifest = paged ? JSON.parse(await readFile(resolve(directory, 'Input/cases.json'), 'utf8')) : null;
-if (paged) {
+const expanded = process.argv[3] === '--expanded';
+const paginated = paged || expanded;
+assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded]');
+const prefix = expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
+const manifest = paginated ? JSON.parse(await readFile(resolve(directory, 'Input/cases.json'), 'utf8')) : null;
+if (paginated) {
   const files = new Set(await readdir(resolve(directory, 'Input')));
   for (const phase of ['clean-with-redo', 'dirty-with-undo']) {
-    const name = `paged-cancel-${phase}`;
+    const name = `${prefix}-${phase}`;
     assert(!manifest.cases.some(entry => entry.name === name) && !files.has(`${name}.4wp`),
       'Choose fresh evidence: print-cancel downloads must not be overwritten');
   }
@@ -23,22 +25,25 @@ try {
   const page = await browser.newPage({ acceptDownloads: true, locale: 'en-US' });
   const cdp = await browser.newBrowserCDPSession();
   await page.goto(server.resolvedUrls.local[0]);
-  await page.locator('#file').setInputFiles(resolve(directory, paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
-  await expect(page.locator('#paper')).toContainText(paged ? 'PAGED1' : 'TAILEND');
+  await page.locator('#file').setInputFiles(resolve(directory, expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
+  await expect(page.locator('#paper')).toContainText(expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
   if (paged) await page.locator('#editing-scope').selectOption('section1FirstFooter');
   await page.locator('#paper [contenteditable]').first().evaluate(element => {
     element.focus();
     getSelection().collapse(element.firstChild, 0);
   });
-  if (paged) await page.locator('#paper [contenteditable]').first().fill('WEBPAGED');
+  if (paginated) await page.locator('#paper [contenteditable]').first().fill(expanded ? 'WEBEXPANDED' : 'WEBPAGED');
   else await page.keyboard.insertText('EDIT');
   await page.locator('#undo').click();
   await page.locator('#zoom').selectOption('1.5');
   await page.locator('#settings-toggle').click();
   await page.locator('#theme').selectOption('dark');
-  if (paged) {
+  let pages;
+  if (paginated) {
     await page.locator('#paged-panel > summary').click();
-    await expect(page.locator('#paged-view .browser-page')).toHaveCount(6);
+    if (expanded) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
+    else await expect(page.locator('#paged-view .browser-page')).toHaveCount(6);
+    pages = await page.locator('#paged-view .browser-page').count();
   }
   await page.locator('#print-toggle').click();
 
@@ -81,7 +86,7 @@ try {
   for (const phase of ['clean-with-redo', 'dirty-with-undo']) {
     if (phase === 'dirty-with-undo') await page.locator('#redo').click();
     await expect(page.locator('#draft-state')).toHaveText('Local draft saved');
-    if (paged) await expect(page.locator('#paged-view .browser-page')).toHaveCount(6);
+    if (paginated) await expect(page.locator('#paged-view .browser-page')).toHaveCount(pages);
     await page.locator('#paper [contenteditable]').first().evaluate(element => {
       element.focus();
       getSelection().setBaseAndExtent(element.firstChild, 1, element.firstChild, 3);
@@ -113,13 +118,13 @@ try {
     }, { timeout: 15000 }).toBe('canceled');
     await expect(page.locator('#print-document')).toHaveCount(0);
     await expect.poll(async () => (await cdp.send('Target.getTargets')).targetInfos.some(item => item.url === 'chrome://print/')).toBe(false);
-    if (paged) await expect(page.locator('#paged-view .browser-page')).toHaveCount(6);
+    if (paginated) await expect(page.locator('#paged-view .browser-page')).toHaveCount(pages);
     assert.deepEqual(await snapshot(), before, 'Real browser cancellation changed editing/history/recovery state');
     await page.screenshot({ path: resolve(directory, `Output/${prefix}-${phase}.png`) });
-    if (paged) {
+    if (paginated) {
       const pending = page.waitForEvent('download');
       await page.locator('#download').click();
-      await (await pending).saveAs(resolve(directory, `Input/paged-cancel-${phase}.4wp`));
+      await (await pending).saveAs(resolve(directory, `Input/${prefix}-${phase}.4wp`));
     }
     results.push({ phase, actualBrowserPrintPreview: true, cancelButtonClicked: true, unchangedEditorSelectionHistoryRecovery: true });
   }
@@ -127,10 +132,13 @@ try {
   await page.locator('#download').click();
   await (await pending).saveAs(resolve(directory, `Output/${prefix}-dirty.4wp`));
   assert((await readFile(resolve(directory, `Output/${prefix}-dirty.4wp`))).length > 0);
-  if (paged) {
+  if (paginated) {
     for (const [phase, stage] of [['clean-with-redo', 'original'], ['dirty-with-undo', 'edited']]) {
-      const name = `paged-cancel-${phase}`;
-      manifest.cases.push({ name, file: `${name}.4wp`, header: { expected: `paged-right-${stage}.4wp` }, resources: 'paged-source-right.4wp' });
+      const name = `${prefix}-${phase}`;
+      manifest.cases.push(expanded ? { name, file: `${name}.4wp`,
+        flow: { source: stage === 'original' ? 'expanded-source-images.4wp' : 'expanded-target-images.4wp', action: 'identity' },
+        resources: 'expanded-source-images.4wp' } :
+        { name, file: `${name}.4wp`, header: { expected: `paged-right-${stage}.4wp` }, resources: 'paged-source-right.4wp' });
     }
     await writeFile(resolve(directory, 'Input/cases.json'), JSON.stringify(manifest, null, 2));
   }

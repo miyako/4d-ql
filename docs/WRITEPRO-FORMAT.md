@@ -487,7 +487,7 @@ unverified longhand margins are protected rather than normalized. Browser
 projection remains inert and allowlisted. Continuous browser printing presents
 stored content once in a labeled appendix, **not** native repeating placement.
 
-### Paged browser projection (in-progress increment)
+### Paged browser projection (#53 merged; expanded increment in progress)
 
 `wp_paged_probe` extends the existing full-4D print gate with four independent
 six-page, two-section documents and native first-footer edit targets. Right-first
@@ -502,15 +502,29 @@ default. An enabled but absent area stays empty. Native area content is neither
 inherited across variants/sections nor fabricated. Unselected stored areas are
 retained once in a labeled browser appendix.
 
-Only whole, fitting, single-column body paragraphs and supported inert inline
-content are paginated. Explicit page/new-page-section boundaries and effective
+The merged #53 projection paginates whole, fitting, single-column paragraphs.
+The expanded increment also cuts paragraphs/flat list items at measured browser
+line boundaries and admits locally decoded inline pictures as indivisible atoms.
+Graphemes, source whitespace and styled wrappers remain intact; only disposable
+DOM fragments are created. Native flat sibling lists retain positional numbering
+and per-item indentation rather than being turned into arbitrary nested HTML.
+Explicit page/new-page-section boundaries and effective
 section paper geometry are projected on disposable models. Browser header-top
 and footer-bottom margin bands use stored area margins but deliberately do
 **not** claim native vertical coordinates, body-clearance calculation or page
-counts. Unsupported shapes/settings, continuous sections, oversized paragraphs
+counts. Unsupported shapes/settings, continuous sections, oversized lines/atoms
 or unsafe bands retain continuous view/printing with an explicit notice.
 Neither projection changes source XML/resources, formulas, bookmark coordinates,
 editing scopes, history or recovery.
+
+`wp_expanded_paged_probe` independently creates long formatted paragraph, native
+flat-list/level and inline-picture/formula documents, native first-paragraph edit
+targets, bookmark ranges and PDF references. Browser page-token membership,
+decoded image presence, measured bounds and original/Undo/recovered-Redo exports
+are checked separately. Native import/export/reopen checks effective getters,
+exact native reexported body/CSS, raw bookmark pairs, formulas and resource bytes
+against the independent native targets. Native PDF page counts remain reference
+evidence, **not** a layout-equivalence assertion.
 
 ## Formulas
 

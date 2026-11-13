@@ -154,14 +154,14 @@ test('preview resize/zoom/themes, print cancellation, edits and recovery preserv
   expect(contents(await bytes(page))).toEqual(contents(edited));
 });
 
-test('oversized blocks and areas fall back explicitly without partial pages or lost print content', async ({ page }, testInfo) => {
-  await open(page, '', '<p>' + Array.from({ length: 30 }, (_, i) => `LONG${i}<br/>`).join('') + '</p><p>TAIL</p>');
+test('oversized atoms and areas fall back explicitly without partial pages or lost print content', async ({ page }, testInfo) => {
+  await open(page, '', '<p><span style="font-size:240pt">HUGE</span></p><p>TAIL</p>');
   await preview(page);
   await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedOverflow);
   await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
   const output = await pdf(page, testInfo, 'fallback');
   const words = output.flatMap(sheet => sheet.words).join(' ');
-  for (let i = 0; i < 30; i++) expect(words).toContain(`LONG${i}`);
+  expect(words.replaceAll(' ', '')).toContain('HUGE');
   expect(words).toContain('TAIL');
   expect(words).toContain('Paged preview unavailable');
   await open(page, 'div.section1Header{margin:0pt}', '<p>BODY</p><div class="section1Header" style="visibility:hidden;height:0"><p>' + 'OVERFLOW<br/>'.repeat(10) + '</p></div>');
@@ -170,6 +170,139 @@ test('oversized blocks and areas fall back explicitly without partial pages or l
   await expect(page.locator('#paper')).toContainText('BODY');
   await page.locator('#editing-scope').selectOption('section1Header');
   await expect(page.locator('#paper')).toContainText('OVERFLOW');
+});
+
+test('long paragraphs split at measured lines with exact whitespace, Unicode and run formatting in preview and PDF', async ({ page }, testInfo) => {
+  const text = Array.from({ length: 40 }, (_, i) => `LINE${i} \u{1f600}e\u0301  `).join('\n');
+  await open(page, '', `<p style="margin-top:6pt;margin-bottom:9pt"><span style="font-weight:bold;color:#135724">${text}</span></p><p>TAIL</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  const bodies = page.locator('#paged-view .page-body');
+  expect(await bodies.count()).toBeGreaterThan(3);
+  expect((await bodies.allTextContents()).join('')).toBe(text + 'TAIL');
+  expect(await bodies.locator('p > span:not(.text-run)').evaluateAll(elements => elements.every(element =>
+    getComputedStyle(element).fontWeight === '700' && getComputedStyle(element).color === 'rgb(19, 87, 36)'))).toBe(true);
+  expect(await bodies.evaluateAll(elements => elements.every(body => {
+    const bounds = body.getBoundingClientRect();
+    return [...body.querySelectorAll('.text-run')].every(run => [...run.getClientRects()].every(rect =>
+      rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25));
+  }))).toBe(true);
+  const output = await pdf(page, testInfo, 'fragments');
+  const sorted = words => words.toSorted((a, b) => Number(a.slice(4)) - Number(b.slice(4)));
+  expect(output.map(sheet => sorted(sheet.words.filter(word => /^LINE\d+$/.test(word))))).toEqual(
+    (await bodies.allTextContents()).map(text => sorted(text.match(/LINE\d+/g) || [])));
+  expect(output.flatMap(sheet => sheet.words).filter(word => word === 'TAIL')).toHaveLength(1);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('flat lists keep native indentation, mixed markers, starts and one marker per split item', async ({ page }, testInfo) => {
+  const long = Array.from({ length: 30 }, (_, i) => `ITEMLINE${i}`).join('\n');
+  await open(page, 'li{font:12pt Arial;line-height:18pt;white-space:pre-wrap;margin:0}',
+    `<ol start="27"><li style="list-style-type:upper-latin;margin-left:12pt">${long}</li>` +
+    '<li style="list-style-type:decimal;margin-left:24pt;-d4-list-string-format-ltr:\'(#)\'">NEXT</li>' +
+    '<li style="-d4-list-style-type:hollow-square;margin-left:12pt">BULLET</li></ol><p>TAIL</p>');
+  const before = await bytes(page);
+  await preview(page);
+  expect(await page.locator('#paged-view .browser-page').count()).toBeGreaterThan(2);
+  expect(await page.locator('#paged-view .paged-list-marker').allTextContents()).toEqual(['AA.', '(28)', '\u25a1']);
+  expect(await page.locator('#paged-view ol').evaluateAll(lists => lists.map(list => list.start))).toEqual([27, 27, 27, 28, 29]);
+  const bodyText = await page.locator('#paged-view .page-body').allTextContents();
+  expect(bodyText.join('')).toBe(`AA.${long}(28)NEXT\u25a1BULLETTAIL`);
+  expect(await page.locator('#paged-view li').evaluateAll(elements => elements.filter(li =>
+    li.textContent.includes('ITEMLINE')).every(li => getComputedStyle(li).marginLeft === '16px'))).toBe(true);
+  const output = await pdf(page, testInfo, 'lists');
+  expect(output.flatMap(sheet => sheet.words).filter(word => word === 'AA.')).toHaveLength(1);
+  expect(output.flatMap(sheet => sheet.words).filter(word => word === '(28)')).toHaveLength(1);
+  expect(output.map(sheet => sheet.words.filter(word => /^ITEMLINE\d+$/.test(word)))).toEqual(
+    bodyText.map(text => text.match(/ITEMLINE\d+/g) || []));
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('inline images decode before measuring, move atomically and retain authored dimensions in print', async ({ page }, testInfo) => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAASklEQVR4nO3OMQ0AIBBD0VPCjCtM4gBhYOA6kg79Scef9NU9s91Yu93vvgABAhQHch2rHhAgQHkg17HqAQEClAdyHaseECBAcaAH191RiEIeQFYAAAAASUVORK5CYII=';
+  const image = `<img src="${png}" alt="LOCAL" style="width:90pt;height:72pt;-d4-img-display-mode:proportionalCentered"/>`;
+  await open(page, '', `<p>${Array.from({ length: 15 }, (_, i) => `BEFORE${i}<br/>`).join('')}LEFT${image}RIGHT<br/>END</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-view img')).toHaveCount(1);
+  expect(await page.locator('#paged-view .browser-page').count()).toBeGreaterThan(1);
+  const imageBounds = await page.locator('#paged-view img').boundingBox();
+  expect(imageBounds.width).toBeCloseTo(120);
+  expect(imageBounds.height).toBeCloseTo(96);
+  const count = await page.locator('#paged-view .browser-page').count();
+  const output = await pdf(page, testInfo, 'inline-image');
+  expect(output).toHaveLength(count);
+  await page.emulateMedia({ media: 'print' });
+  await page.evaluate(() => dispatchEvent(new Event('beforeprint')));
+  expect(await page.locator('#print-document img').evaluate(image => [image.getBoundingClientRect().width, image.getBoundingClientRect().height])).toEqual([120, 96]);
+  await page.emulateMedia({ media: 'screen' });
+  await page.evaluate(() => dispatchEvent(new Event('afterprint')));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('#paged-view img')).toHaveCount(1);
+  expect(await bytes(page)).toEqual(before);
+  await open(page, '', `<p>HEAD<img src="${png}" style="width:300pt;height:72pt"/>TAIL</p>`);
+  await preview(page);
+  await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedOverflow);
+  await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+});
+
+test('failed decoding and external images never return partial pages or fetch remote media', async ({ page }) => {
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('invalid.example')) requests.push(request.url()); });
+  for (const src of ['https://invalid.example/image.png', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA']) {
+    await open(page, '', `<p>HEAD<img src="${src}" alt="BROKEN"/>TAIL</p>`);
+    const before = await bytes(page);
+    await preview(page);
+    await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedShape);
+    await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+    await expect(page.locator('#paper')).toContainText('TAIL');
+    expect(await bytes(page)).toEqual(before);
+  }
+  expect(requests).toEqual([]);
+});
+
+test('automatic wrapped lines retain all words across style boundaries, whitespace and empty paragraphs', async ({ page }, testInfo) => {
+  const words = Array.from({ length: 150 }, (_, i) => `WORD${i}`);
+  const first = '  ' + words.slice(0, 75).join(' ') + ' ';
+  const second = words.slice(75).join(' ') + '  ';
+  await open(page, '', `<p>\u200b</p><p><span style="font-weight:bold">${first}</span><span style="font-style:italic">${second}</span></p><p>\u200b</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  const bodies = page.locator('#paged-view .page-body');
+  expect(await bodies.count()).toBeGreaterThan(2);
+  expect((await bodies.allTextContents()).join('')).toBe('\u200b' + first + second + '\u200b');
+  const output = await pdf(page, testInfo, 'wrapped');
+  expect(output.map(sheet => sheet.words.filter(word => /^WORD\d+$/.test(word)))).toEqual(
+    (await bodies.allTextContents()).map(text => text.match(/WORD\d+/g) || []));
+  expect(output.flatMap(sheet => sheet.words).filter(word => /^WORD\d+$/.test(word))).toEqual(words);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('fragment limits fail explicitly and keep every source character accessible', async ({ page }) => {
+  const text = 'SAFE '.repeat(20001);
+  await open(page, '', `<p>${text}</p><p>TAIL</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedOverflow);
+  await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+  expect(await page.locator('#paper p').first().textContent()).toBe(text);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('fragments preserve explicit section breaks and repeated area selection on physical pages', async ({ page }, testInfo) => {
+  await open(page, variants() + variants(2) + 'div.section2{-d4-page-orientation:landscape}',
+    '<p style="page-break-after:always;-d4-section-break-after:always">' +
+    Array.from({ length: 30 }, (_, i) => `SPLIT${i}<br/>`).join('') + '</p><p>SECOND</p>' + areas() + areas(2));
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets).toHaveCount(4);
+  expect(await sheets.evaluateAll(sheets => sheets.map(sheet => [sheet.dataset.section,
+    sheet.querySelector('.page-area').dataset.area]))).toEqual([
+    ['1', 'section1FirstHeader'], ['1', 'section1LeftHeader'], ['1', 'section1RightHeader'], ['2', 'section2FirstHeader'],
+  ]);
+  const output = await pdf(page, testInfo, 'split-section');
+  expect(output[3].words).toContain('SECOND');
+  expect([output[3].width, output[3].height]).toEqual([360, 300]);
 });
 
 test('inert formula cards keep source and stored text without page-field evaluation', async ({ page }, testInfo) => {

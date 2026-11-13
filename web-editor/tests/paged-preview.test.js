@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WriteProDocument } from '../src/document.js';
-import { pagedCapability, createPagedProjection, selectedPageArea } from '../src/paged-preview.js';
+import { pagedCapability, createPagedProjection, selectedPageArea, pageListMarker } from '../src/paged-preview.js';
 import { messages } from '../src/i18n.js';
 
 const source = (style, body) => `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Pages</title><style>${style}</style></head><body>${body}</body></html>`;
@@ -44,7 +44,7 @@ describe('derived paged projection safety and area selection', () => {
       ['div.section0{column-count:2}', '<p>TEXT</p>', 'pagedShape'],
       ['', '<p style="-d4-section-break-after:continuous">A</p><p>B</p>', 'pagedShape'],
       ['', '<table><tr><td><p>CELL</p></td></tr></table>', 'pagedShape'],
-      ['', '<ul><li>ITEM</li></ul>', 'pagedShape'],
+      ['', '<ul><li>ITEM<ul><li>NESTED</li></ul></li></ul>', 'pagedShape'],
       ['', '<p><img src="https://invalid.example"/></p>', 'pagedShape'],
       ['p{-d4-page-width:300pt}', '<p>TEXT</p>', 'pagedSettings'],
       ['p{-d4-page-first-right:false}', '<p>TEXT</p>', 'pagedSettings'],
@@ -58,5 +58,16 @@ describe('derived paged projection safety and area selection', () => {
       expect(() => createPagedProjection(model, messages.en)).toThrow(expect.objectContaining({ code: reason }));
       expect(model.pack()).toEqual(before);
     }
+  });
+
+  it('admits flat native levels and retains positional numbering and native marker formats', () => {
+    const model = new WriteProDocument(source('', '<ol start="27"><li style="margin-left:20pt;list-style-type:upper-latin">A</li><li style="list-style-type:decimal;-d4-list-string-format-ltr:\'(#)\'">B</li></ol>'));
+    expect(pagedCapability(model)).toBeNull();
+    expect(pageListMarker({ 'list-style-type': 'upper-latin' }, 27, 'ol')).toBe('AA.');
+    expect(pageListMarker({ 'list-style-type': 'lower-roman' }, 49, 'ol')).toBe('xlix.');
+    expect(pageListMarker({ '-d4-list-string-format-ltr': "'(#)'" }, 28, 'ol')).toBe('(28)');
+    expect(pageListMarker({ '-d4-list-style-type': 'hollow-square' }, 1, 'ul')).toBe('\u25a1');
+    for (const values of [{ '-d4-list-style-type': 'custom' }, { '-d4-list-level': '2' },
+      { '-d4-list-string-format-ltr': "'#.#'" }]) expect(() => pageListMarker(values, 1, 'ol')).toThrow();
   });
 });
