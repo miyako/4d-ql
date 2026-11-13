@@ -6,6 +6,31 @@ import { messages } from '../src/i18n.js';
 const source = (style, body) => `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Pages</title><style>${style}</style></head><body>${body}</body></html>`;
 
 describe('derived paged projection safety and area selection', () => {
+  it('admits rectangular paragraph tables and only leading native header rows, preserving the source', () => {
+    const table = rows => `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`;
+    const row = (style = '', cell = '<p>CELL</p>') => `<tr style="${style}"><td>${cell}</td><td><p>SECOND</p></td></tr>`;
+    for (const rows of [row() + row(), row('-d4-header:true') + row(), row('-d4-header:true') + row('-d4-header:true') + row()]) {
+      const model = new WriteProDocument(source('', table(rows)));
+      const before = model.pack();
+      expect(pagedCapability(model)).toBeNull();
+      expect(model.pack()).toEqual(before);
+    }
+    for (const rows of [row() + row('-d4-header:true'), row('-d4-header:true'), row('-d4-header:unknown') + row(),
+      row('', '<ul><li>LIST</li></ul>'), row('', '<table><tr><td><p>NESTED</p></td></tr></table>'),
+      '<tr><td colspan="2"><p>MERGED</p></td></tr>' + row(),
+      row() + '<tr><td><p>IRREGULAR</p></td></tr>', row('height:900pt')]) {
+      const model = new WriteProDocument(source('', table(rows)));
+      expect(pagedCapability(model)).toBe('pagedTables');
+    }
+    const cells = count => '<td><p>A</p></td>'.repeat(count);
+    for (const [rowCount, columnCount, reason] of [[1000, 1, null], [1001, 1, 'pagedTables'],
+      [10, 1000, null], [11, 910, 'pagedTables']]) {
+      const model = new WriteProDocument(source('', table(row())));
+      model.document.querySelector('table').innerHTML = `<tr>${cells(columnCount)}</tr>`.repeat(rowCount);
+      expect(pagedCapability(model)).toBe(reason);
+    }
+  }, 15000);
+
   it('selects first before facing, uses physical parity, and never borrows missing content', () => {
     const state = {
       variants: ['section1First', 'section1Left', 'section1Right', 'section2First', 'section2Left', 'section2Right'],

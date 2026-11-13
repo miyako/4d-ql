@@ -7,9 +7,10 @@ import { preview } from 'vite';
 const directory = resolve(process.argv[2] || '');
 const paged = process.argv[3] === '--paged';
 const expanded = process.argv[3] === '--expanded';
-const paginated = paged || expanded;
-assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded]');
-const prefix = expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
+const tables = process.argv[3] === '--tables';
+const paginated = paged || expanded || tables;
+assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded|--tables]');
+const prefix = tables ? 'tables-cancel' : expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
 const manifest = paginated ? JSON.parse(await readFile(resolve(directory, 'Input/cases.json'), 'utf8')) : null;
 if (paginated) {
   const files = new Set(await readdir(resolve(directory, 'Input')));
@@ -25,14 +26,15 @@ try {
   const page = await browser.newPage({ acceptDownloads: true, locale: 'en-US' });
   const cdp = await browser.newBrowserCDPSession();
   await page.goto(server.resolvedUrls.local[0]);
-  await page.locator('#file').setInputFiles(resolve(directory, expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
-  await expect(page.locator('#paper')).toContainText(expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
+  await page.locator('#file').setInputFiles(resolve(directory, tables ? 'Input/paged-table-source-mixed.4wp' : expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
+  await expect(page.locator('#paper')).toContainText(tables ? 'TABLESTART' : expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
   if (paged) await page.locator('#editing-scope').selectOption('section1FirstFooter');
+  if (tables) await page.locator('#editing-scope').selectOption('section1FirstHeader');
   await page.locator('#paper [contenteditable]').first().evaluate(element => {
     element.focus();
     getSelection().collapse(element.firstChild, 0);
   });
-  if (paginated) await page.locator('#paper [contenteditable]').first().fill(expanded ? 'WEBEXPANDED' : 'WEBPAGED');
+  if (paginated) await page.locator('#paper [contenteditable]').first().fill(tables ? 'WEBTABLE' : expanded ? 'WEBEXPANDED' : 'WEBPAGED');
   else await page.keyboard.insertText('EDIT');
   await page.locator('#undo').click();
   await page.locator('#zoom').selectOption('1.5');
@@ -41,7 +43,7 @@ try {
   let pages;
   if (paginated) {
     await page.locator('#paged-panel > summary').click();
-    if (expanded) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
+    if (expanded || tables) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
     else await expect(page.locator('#paged-view .browser-page')).toHaveCount(6);
     pages = await page.locator('#paged-view .browser-page').count();
   }
@@ -135,7 +137,9 @@ try {
   if (paginated) {
     for (const [phase, stage] of [['clean-with-redo', 'original'], ['dirty-with-undo', 'edited']]) {
       const name = `${prefix}-${phase}`;
-      manifest.cases.push(expanded ? { name, file: `${name}.4wp`,
+      manifest.cases.push(tables ? { name, file: `${name}.4wp`,
+        flow: { source: stage === 'original' ? 'paged-table-source-mixed.4wp' : 'paged-table-target-mixed.4wp', action: 'identity' },
+        resources: 'paged-table-source-mixed.4wp', pagedTable: { rows: 41 } } : expanded ? { name, file: `${name}.4wp`,
         flow: { source: stage === 'original' ? 'expanded-source-images.4wp' : 'expanded-target-images.4wp', action: 'identity' },
         resources: 'expanded-source-images.4wp' } :
         { name, file: `${name}.4wp`, header: { expected: `paged-right-${stage}.4wp` }, resources: 'paged-source-right.4wp' });

@@ -487,7 +487,7 @@ unverified longhand margins are protected rather than normalized. Browser
 projection remains inert and allowlisted. Continuous browser printing presents
 stored content once in a labeled appendix, **not** native repeating placement.
 
-### Paged browser projection (#53 merged; expanded increment in progress)
+### Paged browser projection (#54 merged; table increment in progress)
 
 `wp_paged_probe` extends the existing full-4D print gate with four independent
 six-page, two-section documents and native first-footer edit targets. Right-first
@@ -503,7 +503,7 @@ inherited across variants/sections nor fabricated. Unselected stored areas are
 retained once in a labeled browser appendix.
 
 The merged #53 projection paginates whole, fitting, single-column paragraphs.
-The expanded increment also cuts paragraphs/flat list items at measured browser
+The merged #54 increment also cuts paragraphs/flat list items at measured browser
 line boundaries and admits locally decoded inline pictures as indivisible atoms.
 Graphemes, source whitespace and styled wrappers remain intact; only disposable
 DOM fragments are created. Native flat sibling lists retain positional numbering
@@ -525,6 +525,31 @@ are checked separately. Native import/export/reopen checks effective getters,
 exact native reexported body/CSS, raw bookmark pairs, formulas and resource bytes
 against the independent native targets. Native PDF page counts remain reference
 evidence, **not** a layout-equivalence assertion.
+
+`wp_paged_table_probe` adds independently native-created rectangular tables,
+unequal 70/130 pt columns, row borders/padding/backgrounds, cell formatting and
+bookmarks, plus a mixed-section inline-picture/formula case. `wk header row count`
+serializes header membership as `-d4-header:true` on contiguous leading `tr`
+rules, not a `thead` wrapper or a `th`-tag inference. Native PDFs independently
+establish repeated headers; `wp_paged_table_stats` compares native header counts
+and every cell's width, padding, text, color, background and bold attributes
+after browser export and native import/reopen against independent originals and
+first-header edit targets. Existing body protection for bookmarked documents
+with hidden areas is unchanged; the gate uses the independently editable header
+scope for Undo/Redo/recovery rather than admitting a protected body operation.
+
+The browser uses the shared native grid validator and permits unmerged direct
+rows with paragraph-only cells. It measures the complete table once at the
+section's width, freezes the measured column geometry in disposable DOM, and
+places complete rows on pages. Leading native header rows repeat explicitly;
+every data row/cell appears once. Fragment cell widths/heights must remain within
+0.25 CSS px of the whole-table measurement. Nested/merged/irregular/data-source
+tables, cell lists, invalid/nonleading/all-header metadata and rows that cannot
+fit with their headers use explicit continuous fallback. The scope is bounded
+to 1,000 rows and 10,000 cells per table and the existing sheet/grapheme budgets.
+Source table XML, media, formulas, bookmarks and editing/recovery/history remain
+immutable. Browser row/page counts, carry-over rows, native row splitting,
+border-conflict behavior and automatic native pagination parity are not claimed.
 
 ## Formulas
 

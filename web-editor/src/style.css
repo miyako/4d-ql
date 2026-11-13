@@ -148,7 +148,7 @@ div.preserved-object { display: block; margin-top: 16px; }
 .browser-page, .browser-appendix { position: relative; box-sizing: border-box; background: #fff; color: #222; margin: 0 auto 24pt; box-shadow: 0 3px 14px #0000000e; break-after: page; }
 .browser-page:last-child, .browser-appendix:last-child { break-after: auto; }
 .page-body { position: absolute; display: flex; flex-direction: column; }
-.page-body > :is(p, ul, ol) { flex: none; }
+.page-body > :is(p, ul, ol, table) { flex: none; }
 .page-area { position: absolute; display: flow-root; }
 .page-area > p { margin-block: 0; }
 .unused-area { display: flow-root; }
@@ -209,12 +209,12 @@ div.preserved-object { display: block; margin-top: 16px; }
   #print-document .text-run { white-space: pre-wrap; }
   #print-document * { max-width: 100% !important; min-width: 0 !important; outline: none !important; caret-color: transparent; }
   #print-document ::selection { background: transparent; color: inherit; }
-  #print-document table { width: 100%; table-layout: fixed; }
-  #print-document td, #print-document th { overflow-wrap: anywhere; }
+  #print-document:not(.paged-document) table { width: 100%; table-layout: fixed; }
+  #print-document:not(.paged-document) td, #print-document:not(.paged-document) th { overflow-wrap: anywhere; }
   #print-document img { height: auto !important; max-height: var(--print-height); }
   #print-document .preserved-object:has(> img) { background: transparent; border: 0; padding: 0; }
   #print-document .preserved-object { color: #233247; background: #fff; border: 1px solid #62738a; }
-  #print-document.paged-document { width: max-content; }
+  #print-document.paged-document { width: auto; }
   #print-document.paged-document .paged-image { border: 0; padding: 0; }
   #print-document.paged-document .paged-image img { height: var(--paged-image-height) !important; }
   #print-document :is(.browser-page, .browser-appendix) { margin: 0; box-shadow: none; }
