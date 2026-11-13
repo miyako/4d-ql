@@ -249,8 +249,9 @@ export async function verifyHeaderCase(directory, entry, actual) {
   const open = async path => WriteProDocument.open(new Uint8Array(await readFile(resolve(directory, path))));
   const expected = await open(`Output/${entry.header.expected}`);
   const actualModel = await open(`Output/${entry.name}.4wp`);
-  const report = JSON.parse(await readFile(resolve(directory, `Output/${entry.header.expected.startsWith('variant-') ? 'variant' : 'header'}-report.json`), 'utf8'));
-  const [, kind, action] = entry.header.expected.match(/^(?:header|variant)-(.+?)-([^.]+)\.4wp$/);
+  const reportKind = entry.header.expected.startsWith('paged-') ? 'paged' : entry.header.expected.startsWith('variant-') ? 'variant' : 'header';
+  const report = JSON.parse(await readFile(resolve(directory, `Output/${reportKind}-report.json`), 'utf8'));
+  const [, kind, action] = entry.header.expected.match(/^(?:header|variant|paged)-(.+?)-([^.]+)\.4wp$/);
   const expectedStats = report.cases.find(item => item.name === kind).stages.find(stage => stage.name === action).stats;
   assert.deepEqual(actual.headerImported, expectedStats, `${entry.name}: native coordinates, body bookmarks, text or area margins differ`);
   assert.deepEqual(actual.headerImported, actual.headerReopened, `${entry.name}: native header getters changed on reopen`);

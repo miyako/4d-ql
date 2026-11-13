@@ -17,6 +17,7 @@ import { preparePrintCases } from './native-print-cases.mjs';
 import { prepareHeaderCases, prepareVariantCases, verifyHeaderCase } from './native-header-cases.mjs';
 import { prepareMediaCases, verifyMediaCase } from './native-media-cases.mjs';
 import { prepareObjectCases, verifyObjectCase } from './native-object-cases.mjs';
+import { preparePagedCases } from './native-paged-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtures = resolve(root, '../Tests/FourDFileKitTests/Fixtures/WritePro');
@@ -248,6 +249,7 @@ async function prepare() {
     await prepareSectionCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     await prepareFlowCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     await preparePrintCases(directory, cases, browser, server.resolvedUrls.local[0], download);
+    await preparePagedCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     assert.deepEqual(browserErrors, [], 'Browser runtime errors');
     await writeFile(manifestPath, JSON.stringify({ cases }, null, 2));
   } finally {

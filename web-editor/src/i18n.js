@@ -5,6 +5,7 @@ import { flowMessages } from './flow-messages.js';
 import { printMessages } from './print-messages.js';
 import { headerMessages } from './header-messages.js';
 import { mediaMessages } from './media-messages.js';
+import { pagedMessages } from './paged-messages.js';
 
 export const languages = {
   en: 'English', ja: '日本語', fr: 'Français', de: 'Deutsch', es: 'Español', it: 'Italiano',
@@ -168,7 +169,7 @@ const it = {
 };
 
 export const messages = { en, ja, fr, de, es, it };
-for (const language of Object.keys(messages)) Object.assign(messages[language], toolMessages[language], pageMessages[language], sectionMessages[language], flowMessages[language], printMessages[language], headerMessages[language], mediaMessages[language]);
+for (const language of Object.keys(messages)) Object.assign(messages[language], toolMessages[language], pageMessages[language], sectionMessages[language], flowMessages[language], printMessages[language], headerMessages[language], mediaMessages[language], pagedMessages[language]);
 
 export function detectLanguage(preferences = navigator.languages) {
   return preferences.map(value => value.split('-')[0]).find(value => value in messages) || 'en';
