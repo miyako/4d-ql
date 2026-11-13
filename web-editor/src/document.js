@@ -7,7 +7,11 @@ import { validateColumns, parseTabs, tabDeclarations, tabProperties, defaultTab 
 import { projectLayout } from './layout-preview.js';
 import { areaClass, headerAreas, headerContentReason, outsideArea, removeAreaRules, variantPlan, areaRules, areaPosition, areaSides, validateAreaPosition } from './headers-footers.js';
 import { mediaSource } from './media-source.js';
-import { storedObjects, objectState, objectScope, objectFields, outsideObject, validateObjectGeometry, setTextBoxGeometry } from './objects.js';
+import {
+  storedObjects, objectState, objectScope, objectFields, outsideObject, validateObjectGeometry, setTextBoxGeometry,
+  objectPlacement, placementProperties, validatePlacement, setObjectPlacement, objectCreationReason,
+  newObjectIdentity, objectDeletionReason, outsideObjectChange,
+} from './objects.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
@@ -244,6 +248,67 @@ export class WriteProDocument {
   get editingReadOnly() { return this.scope === 'body' ? this.readOnly : Boolean(this.headerReason()); }
   storedObjects() { return storedObjects(this); }
   objectState(name = this.scope) { return objectState(this, name); }
+  objectPlacement() { return objectPlacement(this); }
+  objectCreationReason() { return objectCreationReason(this); }
+  objectDeletionReason() { return objectDeletionReason(this); }
+  createObject(kind, content = '') {
+    const { id, className } = newObjectIdentity(this, kind);
+    const element = this.document.createElementNS(XHTML, kind === 'textBox' ? 'div' : 'img');
+    element.id = id;
+    element.setAttribute('class', className);
+    let dimensions = 'width:180pt;height:90pt;';
+    if (kind === 'textBox') {
+      if (typeof content !== 'string' || content.length > 10000 || !content.isWellFormed() ||
+        /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF\r\n]/u.test(content)) throw new DocumentError('objectTextInvalid');
+      const paragraph = this.document.createElementNS(XHTML, 'p');
+      paragraph.setAttribute('class', 'Normal');
+      paragraph.textContent = content;
+      element.append(paragraph);
+    } else {
+      if (typeof content !== 'string' || !/^data:image\/(?:png|jpeg);base64,/.test(content)) throw new DocumentError('imageType');
+      element.setAttribute('src', content);
+      element.setAttribute('alt', '');
+      const info = this.imageInfo(element);
+      if (!info.src || !['png', 'jpeg'].includes(info.type) || info.wrapped) throw new DocumentError(info.reason || 'imageType');
+      const scale = Math.min(1, 600 / Math.max(info.width, info.height));
+      dimensions = `width:${info.width * scale}pt;height:${info.height * scale}pt;`;
+    }
+    const style = `${element.localName}.${className}{${kind === 'textBox' ? 'padding:4pt;background-color:#FFFFFF;border-style:solid;border-width:1pt;' : ''}${dimensions}-d4-anchor-page:1;-d4-anchor-layout:front;position:absolute;display:none}`;
+    const plan = { objectChange: true, id, style, create: true };
+    this.mutate('objectCreate', () => {
+      const rule = this.document.createElementNS(XHTML, 'style');
+      rule.setAttribute('type', 'text/css');
+      rule.textContent = style;
+      this.document.querySelector('head').append(rule);
+      this.document.querySelector('body').append(element);
+      this.refresh();
+    }, null, false, plan);
+    this.setScope(`object:${id}`);
+  }
+  deleteObject() {
+    const reason = this.objectDeletionReason();
+    if (reason) throw new DocumentError(reason);
+    const { item } = this.objectState();
+    this.mutate('objectDelete', () => {
+      // Retain orphaned CSS and archive resources: they may have opaque native consumers.
+      item.element.remove();
+      this.refresh();
+    }, null, false, { objectChange: true, id: item.id, create: false });
+    this.setScope('body');
+  }
+  setObjectPlacement(changes) {
+    const state = this.objectPlacement();
+    if (state.reason) throw new DocumentError(state.reason);
+    if (!changes || !Object.keys(changes).length) throw new DocumentError('objectPlacementInvalid');
+    const values = { ...state.values, ...changes };
+    validatePlacement(this, values);
+    const changed = Object.fromEntries(Object.entries(changes).filter(([field, value]) => value !== state.values[field]));
+    if (!Object.keys(changed).length) return;
+    this.mutate('objectPlacement', () => {
+      setObjectPlacement(this, state, changed);
+      this.refresh();
+    });
+  }
   setObjectGeometry(changes) {
     const state = this.objectState();
     if (state.geometryReason) throw new DocumentError(state.geometryReason);
@@ -896,16 +961,21 @@ export class WriteProDocument {
   mutate(label, change, group = null, restore = false, structureArea = null) {
     const before = this.serialize();
     try {
+      const lifecycle = !restore && ['objectCreate', 'objectDelete'].includes(label) && structureArea?.objectChange;
+      const lifecycleBefore = lifecycle ? outsideObjectChange(this.document, structureArea) : null;
       const variant = label === 'headerVariants' && structureArea && typeof structureArea === 'object';
       const structureNames = variant ? structureArea.names : structureArea;
-      const structure = structureArea !== null;
+      const structure = structureArea !== null && !lifecycle;
       if (structure && !(variant ? structureNames.every(name => /^section[1-9]\d*(First|Left|Right)(Header|Footer)?$/.test(name)) :
         label === 'headerSetup' && areaClass.test(structureArea))) throw new DocumentError('headerAssociation');
       const objectGeometry = !restore && label === 'objectGeometry';
-      const object = !restore && objectScope(this.scope) && !structure && label !== 'headerPosition';
+      const objectPlacement = !restore && label === 'objectPlacement';
+      const object = !restore && objectScope(this.scope) && !structure && !lifecycle && label !== 'headerPosition';
       if (objectGeometry && (!object || this.objectState().geometryReason)) throw new DocumentError('objectProtected');
-      const objectBefore = object ? outsideObject(this.document, this.scope.slice(7), objectGeometry) : null;
-      const header = !restore && !structure && label !== 'headerPosition' && !objectGeometry && this.scope !== 'body';
+      if (objectPlacement && (!object || this.objectPlacement().reason)) throw new DocumentError('objectProtected');
+      const objectMask = objectPlacement ? placementProperties : objectGeometry;
+      const objectBefore = object ? outsideObject(this.document, this.scope.slice(7), objectMask) : null;
+      const header = !restore && !structure && !lifecycle && label !== 'headerPosition' && !objectGeometry && !objectPlacement && this.scope !== 'body';
       if (header && (this.headerReason() || !['typing', 'format', 'paragraph', 'style', 'replace', 'cut', 'paste', 'link'].includes(label))) throw new DocumentError('headerUnsupported');
       const outside = !object && (header || structure) ? outsideArea(this.document, structureNames || this.scope, structure) : null;
       const geometry = label === 'pageSetup' || label === 'sectionSetup' || label === 'columnsSetup' || label === 'headerPosition';
@@ -917,16 +987,20 @@ export class WriteProDocument {
       const breaksBefore = !restore && !geometry && label !== 'breakEdit' ? breaks() : null;
       const bodyBefore = geometry ? this.document.querySelector('body').outerHTML : null;
       const bookmarksBefore = geometry ? [...this.document.querySelectorAll('meta[name="bookmarks"]')].map(node => node.outerHTML).join('') : null;
-      if (!restore && !geometry && !header && !structure && !objectGeometry && this.readOnly) throw new DocumentError('protected');
-      const metadata = restore || geometry || header || structure || objectGeometry ? { bookmarks: {} } : nativeMetadata(this.document);
+      const independent = geometry || header || structure || objectGeometry || objectPlacement || lifecycle;
+      if (!restore && !independent && this.readOnly) throw new DocumentError('protected');
+      const metadata = restore || independent ? { bookmarks: {} } : nativeMetadata(this.document);
       const objects = restore ? [] : this.formulaElements().map(node => ({ node, xml: node.outerHTML }));
-      const tracked = !restore && !geometry && !header && !structure && !objectGeometry && (this.tracksNativeEdits || label === 'bookmark' || label === 'breakEdit');
+      const tracked = !restore && !independent && (this.tracksNativeEdits || label === 'bookmark' || label === 'breakEdit');
       this.nativeTransaction = tracked ? {
         text: this.nativeView().text,
         bookmarks: metadata.bookmarks, meta: metadata.meta,
       } : null;
       const result = change();
-      if (object && (this.objectState().reason || outsideObject(this.document, this.scope.slice(7), objectGeometry) !== objectBefore)) throw new DocumentError('objectProtected');
+      if (object && (this.objectState().reason || outsideObject(this.document, this.scope.slice(7), objectMask) !== objectBefore)) throw new DocumentError('objectProtected');
+      if (lifecycle && (outsideObjectChange(this.document, structureArea) !== lifecycleBefore ||
+        (structureArea.create ? this.objectState(`object:${structureArea.id}`).reason :
+          this.document.getElementById(structureArea.id)))) throw new DocumentError('objectProtected');
       if (header && (this.headerReason() || !object && outsideArea(this.document, this.scope) !== outside)) throw new DocumentError('headerUnsupported');
       if (structure && (this.headerAreas().reason || outsideArea(this.document, structureNames, true) !== outside)) throw new DocumentError('headerAssociation');
       if (breaksBefore) {
@@ -953,8 +1027,8 @@ export class WriteProDocument {
           JSON.stringify(nativeMetadata(this.document).bookmarks) !== JSON.stringify(this.nativeTransaction.bookmarks)) throw new DocumentError('protected');
       }
       const after = this.serialize();
-      const hasBookmarks = restore || geometry || header || structure || objectGeometry ? this.hasBookmarks : Object.keys(nativeMetadata(this.document).bookmarks).length > 0;
-      if (!restore && !geometry && !header && !structure && !objectGeometry && !tracked && hasBookmarks) throw new DocumentError('protected');
+      const hasBookmarks = restore || independent ? this.hasBookmarks : Object.keys(nativeMetadata(this.document).bookmarks).length > 0;
+      if (!restore && !independent && !tracked && hasBookmarks) throw new DocumentError('protected');
       if (after !== before) {
         parse(after);
         const resources = Object.entries(this.files).reduce((sum, [name, bytes]) => sum + (name === this.entry ? 0 : bytes.length), 0);

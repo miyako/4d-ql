@@ -7,7 +7,7 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`caf6b31` / #50](https://github.com/miyako/4d-ql/pull/50).
+[`f7cf3c9` / #51](https://github.com/miyako/4d-ql/pull/51).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
@@ -31,12 +31,16 @@ promise of dates or full Write Pro parity.
 | 8.4. Preview/output | Section-sized continuous preview and local browser printing without claiming exact 4D pagination | Available on main via #48 |
 | 9. Headers and footers | Section-aware text/formatting in stored default/first/left/right areas, protected default-area creation/removal, labeled print content appendix | Available on main via #49 |
 | 9.1. Header/footer variants and positioning | Section-local first-page and paired left/right toggles with native copying/removal semantics; four native area margins | Available on main via #50 |
-| 10.1. Advanced images and text boxes | Bounded native picture decoding, isolated anchored-picture/text-box views, scoped box text/formatting and object size/offset editing | In progress; this local increment is not merged or deployed |
-| 10.2. Further layout parity | Repeating browser headers/footers, arbitrary object wrapping/layers and automatic native-equivalent pagination | Proposed; unscheduled, not part of this increment |
+| 10.1. Advanced images and text boxes | Bounded native picture decoding, isolated anchored-picture/text-box views, scoped box text/formatting and object size/offset editing | Available on main via #51 |
+| 10.2. Object lifecycle and stored placement | Guarded picture/text-box creation and deletion; native section/page targets, alignment and front/behind/square-wrap metadata | In progress; this local increment is not merged or deployed |
+| 10.3. Further layout parity | Repeating browser headers/footers, arbitrary object wrapping/layers and automatic native-equivalent pagination | Proposed; unscheduled, not part of this increment |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
-Steps 8.1–8.4 and header/footer variants/positioning are available on main.
-The selected next increment is advanced images and text boxes; it remains
+Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
+on main. The #51 baseline was deployed by successful Pages run
+[`43382135286`](https://github.com/miyako/4d-ql/actions/runs/43382135286)
+at `f7cf3c9e6bd3454dfcac8e753c39e5ee4eecb411`.
+The selected next increment is object lifecycle and stored placement; it remains
 **In progress** until merged. Publication is separately gated; this increment
 does not push, open a PR, merge or deploy itself. Repeating browser headers,
 arbitrary wrapping and automatic native pagination remain unscheduled proposals.
@@ -351,7 +355,7 @@ mutation stages. Native-original PDF observations verify first/right selection,
 cached formula text, absent-section content and mixed page geometry; they do not
 assert browser/native page-count or repetition parity.
 
-## Advanced images and text boxes (in progress)
+## Advanced images and text boxes (available on main)
 
 The **Editing scope** selector includes stored anchored pictures and text boxes
 by their original native IDs. These are isolated authoring views, not objects
@@ -425,14 +429,95 @@ browser downloads, Undo and recovered Redo with those independent getter/text
 expectations and retained source bytes. Fixtures in `tests/fixtures/media/`
 are native-generated originals, not editor-generated expectations.
 
-This local increment passed **424 unit tests, 114 browser tests and 2,060
+The merged #51 baseline passed **424 unit tests, 114 browser tests and 2,060
 full-4D F0012102 import/export/reopen cases**. The 1,959-case #50 manifest is
 unchanged; 101 media cases add 23 model exports and 78 actual browser, recovery,
 Undo and recovered-Redo downloads. Browser checks include measured isolated
 object widths, malformed/decode-failing sources, immutable print content and
 all six languages/themes on mobile. These are scoped preservation and getter
-checks, not a claim of native browser layout parity. The increment remains
-unmerged and undeployed.
+checks, not a claim of native browser layout parity.
+
+## Object lifecycle and stored native placement (in progress)
+
+**Create text box** creates a separate native box with an optional single
+paragraph (up to 10,000 UTF-16 units), 180 × 90 pt, on page 1 in front of text.
+An empty box retains an ordinary editable paragraph. **Create anchored picture**
+accepts a local, browser-decoded bounded PNG/JPEG, retaining its original bytes.
+Its initial dimensions use the pixel dimensions as points, proportionally
+reduced to at most 600 pt on the longest side; normal object dimension limits
+also apply. Neither action consumes a body selection or shifts body bookmarks.
+New native IDs/classes avoid existing IDs, CSS (including orphaned rules) and
+opaque serialized references. Unsafe cascades/associations fail atomically.
+
+**Delete selected object** requires confirmation and only removes a supported,
+unambiguously identified object. Formula-bearing boxes/pictures, nested or
+unknown content, identity-bearing descendants and externally referenced IDs
+remain protected. All nonactive XML, formulas, section/header associations,
+original picture sources and raw body bookmark pairs are retained. Deletion
+intentionally retains orphaned CSS and archive resources: their other native
+consumers cannot be inferred safely. Original files are never modified.
+
+**Stored native placement** supports a numbered document page or all pages of
+all sections, or all pages of one existing section. Combining a specific section
+and a specific page is deliberately protected. Enter the literal `all` or a
+positive integer from 1 to 10,000 for the page; this is a native target, not a
+browser-generated page number or an assertion that the page currently exists.
+Horizontal offset/center/right, vertical offset/center/bottom and native
+front/behind/square-wrap relationships are editable. Left/top native alignment
+getters are zero, so **Offset (left/top)** is the single zero-alignment mode.
+Clearing alignment removes the class declaration and any picture inline override before
+offset editing becomes available. Placement applies only changed fields;
+unchanged units, auto dimensions, offsets, display modes and associations retain
+their source representations. Text boxes use their unique `div._divN` rules,
+and placement controls require the same unique `img._imgN` ownership for pictures.
+Native layer changes can renumber classes without renaming objects; controls
+follow the actual unique class, never derive its number from the object ID.
+Unverified inline box placement and arbitrary imported z-index values remain
+protected, like inline box geometry.
+Unrelated declarations and unknown structures are never rewritten.
+
+Controls use the existing six languages, system/light/dark appearance and
+responsive keyboard-accessible forms. Every action is one document-wide
+Undo/Redo, version and recovery transaction; a two-object edit is two actions.
+Undoing a creation/deleting an object selects the body when the old scope no
+longer exists; restoring an object selects that object's scope. Failed/no-op
+changes do not create history entries. Delayed picture reads refuse stale
+documents rather than inserting into a replacement document.
+
+These are **native export controls, not a native-layout browser preview**.
+The isolated object guide and once-per-object print appendix remain unchanged.
+Native pagination, wrapping, layering, repetition and page targeting are not
+simulated in the browser; arbitrary z-order, other origins/wrap modes, formula
+execution and conversion of inline pictures to anchored objects remain outside
+this increment.
+
+The independent full-4D `wp_object_probe` creates three documents (PNG
+document-page and section targets, plus an independently native-encoded JPEG) containing
+body bookmarks/formulas, a nonactive formula box, a picture and a header.
+Fourteen stages record picture/box creation, document-page versus section
+targeting, center/right/bottom and left/top alignment, explicit alignment
+clearing/offsets, all three supported text relationships, repetition, deletion
+and recreation. Every stage retains the original native body tape/bookmark.
+`native-object-cases.mjs` compares model exports and actual browser downloads,
+reload recovery, Undo and recovered Redo with these independently native-created
+getter/text oracles, and checks raw source XML/media/resources independently.
+
+Verification for this local increment: **429 unit tests, 115 browser tests and
+2,240 full-4D F0012102 import/export/reopen cases**. All 2,060 #51 case
+definitions remain exactly unchanged; 180 lifecycle cases add 36 model exports
+and 144 actual browser, recovery, Undo and recovered-Redo downloads. The final
+production build regenerates all lifecycle downloads; the unchanged baseline
+inputs and independent native probes are byte/SHA-checked when reused for the
+final complete native import/export/reopen pass.
+
+Final evidence: `~/.copilot/evidence/4wp-objects-20261113-gate-04/`;
+independent byte/SHA-verified backup:
+`~/.copilot/evidence-backups/4wp-objects-20261113-gate-04-33ac49fe/`.
+`reproduction.json` records oracle/input provenance, and `SHA256-MANIFEST.json`
+in the backup records every retained file. Earlier standalone probes and the
+class-renumbering counterexample are independently preserved in
+`~/.copilot/evidence-backups/4wp-objects-20261113-probes-33ac49fe/`.
+This increment remains local, unmerged and undeployed.
 
 ## Layout preview and browser printing (available on main)
 

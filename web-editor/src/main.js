@@ -106,6 +106,14 @@ document.querySelector('#app').innerHTML = `
           </form>
         </details>
       </section>
+      <section class="object-panel" aria-labelledby="object-create-heading">
+        <h3 id="object-create-heading" data-i18n="objects"></h3>
+        <p data-i18n="objectCreationHelp"></p><p id="object-create-state" role="status"></p>
+        <label><span data-i18n="objectInitialText"></span><input id="object-text" maxlength="10000"></label>
+        <button id="object-create-box" data-i18n="objectCreateBox"></button>
+        <button id="object-create-picture" data-i18n="objectCreatePicture"></button>
+        <input id="object-picture-file" type="file" accept="image/png,image/jpeg" hidden>
+      </section>
       <section id="object-panel" class="object-panel" aria-labelledby="object-heading" hidden>
         <h3 id="object-heading" data-i18n="objects"></h3>
         <p data-i18n="objectHelp"></p><p id="object-state" role="status"></p>
@@ -115,6 +123,24 @@ document.querySelector('#app').innerHTML = `
           ${Object.keys(objectFields).map(field => `<label><span data-i18n="object${field[0].toUpperCase() + field.slice(1)}"></span><input id="object-${field}" data-label="object${field[0].toUpperCase() + field.slice(1)}" type="number" step="any" min="0" placeholder="auto"><span class="object-unit" aria-hidden="true"></span></label>`).join('')}
           <button data-i18n="objectApply"></button>
         </form>
+        <form id="object-placement-form" novalidate>
+          <h4 data-i18n="objectPlacement"></h4>
+          <label><span data-i18n="objectSection"></span><select id="object-section"></select></label>
+          <label><span data-i18n="objectPage"></span><input id="object-page" placeholder="all" aria-describedby="object-placement-help"></label>
+          <p id="object-placement-help" data-i18n="objectPlacementHelp"></p>
+          <label><span data-i18n="objectHAlign"></span><select id="object-hAlign">
+            <option value="offset" data-i18n="objectOffset"></option><option value="center" data-i18n="center"></option><option value="right" data-i18n="right"></option>
+          </select></label>
+          <label><span data-i18n="objectVAlign"></span><select id="object-vAlign">
+            <option value="offset" data-i18n="objectOffset"></option><option value="center" data-i18n="center"></option><option value="bottom" data-i18n="objectBottom"></option>
+          </select></label>
+          <label><span data-i18n="objectLayout"></span><select id="object-layout">
+            <option value="front" data-i18n="objectFront"></option><option value="behind" data-i18n="objectBehind"></option><option value="wrap-square" data-i18n="objectWrap"></option>
+          </select></label>
+          <button data-i18n="objectPlacementApply"></button>
+        </form>
+        <button id="object-delete" data-i18n="objectDelete" aria-describedby="object-delete-state"></button>
+        <p id="object-delete-state" role="status"></p>
       </section>
       <div class="toolbar" role="toolbar" aria-label="Text formatting">
         <button id="undo" data-label="undo">↶</button><button id="redo" data-label="redo">↷</button>
@@ -454,6 +480,9 @@ function renderScopes() {
   $('scope-protection').hidden = !reason;
   $('scope-protection').textContent = reason ? t(reason) : '';
   const object = model.objectState();
+  const creationReason = model.objectCreationReason();
+  $('object-create-state').textContent = creationReason ? t(creationReason) : '';
+  for (const id of ['object-create-box', 'object-create-picture', 'object-text']) $(id).disabled = Boolean(creationReason);
   $('scope-state').textContent = object.item ? `${t(object.item.kind)} · ${object.item.id}` : area ? areaLabel(area, messages[locale]) : t('bodyScope');
   $('header-create').disabled = Boolean(state.reason || state.variants.some(name => name.match(/^section(\d+)/)[1] === $('header-section').value) || state.areas.some(item =>
     item.section === Number($('header-section').value) && (item.variant || item.kind === $('header-kind').value)));
@@ -482,6 +511,14 @@ function renderScopes() {
   $('object-metadata').textContent = JSON.stringify(Object.fromEntries(Object.entries(object.values).filter(([key]) =>
     key.startsWith('-d4-anchor-') || key === '-d4-img-display-mode')), null, 2);
   for (const control of $('object-form').querySelectorAll('input,button')) control.disabled = Boolean(object.geometryReason);
+  const placement = model.objectPlacement();
+  $('object-section').replaceChildren(new Option(t('objectAll'), 'all'),
+    ...model.sectionLayout().sections.map(section => new Option(String(section.index), String(section.index))));
+  for (const field of ['section', 'page', 'hAlign', 'vAlign', 'layout']) $('object-' + field).value = placement.values[field];
+  for (const control of $('object-placement-form').querySelectorAll('input,select,button')) control.disabled = Boolean(placement.reason);
+  const deletionReason = model.objectDeletionReason();
+  $('object-delete').disabled = Boolean(deletionReason);
+  $('object-delete-state').textContent = deletionReason ? t(deletionReason) : '';
   objectInputs();
 }
 
@@ -505,6 +542,30 @@ $('object-form').onsubmit = event => {
   if (Object.keys(objectChanges).length) perform('objectGeometry', () => model.setObjectGeometry(objectChanges));
 };
 $('object-units').onchange = event => changeUnits(event.target.value);
+$('object-placement-form').onsubmit = event => {
+  event.preventDefault();
+  perform('objectPlacement', () => model.setObjectPlacement(Object.fromEntries(
+    ['section', 'page', 'hAlign', 'vAlign', 'layout'].map(field => [field, $('object-' + field).value]))));
+};
+$('object-section').onchange = () => {
+  if ($('object-section').value !== 'all') $('object-page').value = 'all';
+};
+$('object-create-box').onclick = () => perform('objectCreate', () => model.createObject('textBox', $('object-text').value));
+$('object-create-picture').onclick = () => $('object-picture-file').click();
+$('object-picture-file').onchange = async event => {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  const originalModel = model, originalXML = model.serialize();
+  try {
+    const image = await readImage(file);
+    if (model !== originalModel || model.serialize() !== originalXML) throw new DocumentError('staleInsertion');
+    perform('objectCreate', () => model.createObject('anchoredPicture', image.src));
+  } catch (error) { showError(error); }
+};
+$('object-delete').onclick = () => {
+  if (confirm(t('objectDeleteConfirm'))) perform('objectDelete', () => model.deleteObject());
+};
 
 function headerInputs() {
   $('header-units').value = pageUnit;

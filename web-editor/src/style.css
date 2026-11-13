@@ -151,8 +151,10 @@ div.preserved-object { display: block; margin-top: 16px; }
 .paper [data-image][role="button"] { cursor: pointer; border: 1px solid transparent; padding: 0; background: transparent; }
 .paper [data-image][role="button"]:focus { outline: 2px solid #327fce; }
 .paper [data-image] img { display: block; }
-#object-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
-#object-form label { display: grid; gap: 4px; }
+:is(#object-form, #object-placement-form) { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+:is(#object-form, #object-placement-form) label { display: grid; gap: 4px; }
+#object-placement-form h4 { flex-basis: 100%; margin: 0; }
+.object-panel input { min-width: 0; max-width: 100%; }
 #object-metadata { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
 .preserved-object small { display: block; font: 11px/1.5 system-ui, sans-serif; }
 .document-footer label { display: flex; align-items: center; gap: 6px; }

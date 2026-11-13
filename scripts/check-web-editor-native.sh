@@ -63,6 +63,15 @@ for case in report["cases"]:
         raise SystemExit("Missing native media creation/operation evidence.")
     if any(stage["stats"]["body"] != stages[0]["stats"]["body"] for stage in stages):
         raise SystemExit("Native object mutation changed the body tape or bookmarks.")
+objects = json.loads((root / "object-report.json").read_text())
+if objects.get("version") != "F0012102" or len(objects.get("cases", [])) != 3:
+    raise SystemExit("Missing independent native object lifecycle evidence.")
+for case in objects["cases"]:
+    stages = case["stages"]
+    if len(stages) != 14 or [len(stages[i]["stats"]["objects"]) for i in [0, 1, 2, 11, 12, 13]] != [2, 3, 4, 3, 2, 4]:
+        raise SystemExit("Missing native object creation/deletion/recreation stages.")
+    if any(stage["stats"]["body"] != stages[0]["stats"]["body"] for stage in stages):
+        raise SystemExit("Native object lifecycle changed body coordinates or bookmarks.")
 PY
 run_4d wp_header_check header-native.log
 [ -s "$DEST/Output/header-report.json" ] || { echo "Full 4D produced no header report; inspect $DEST/header-native.log." >&2; exit 1; }
