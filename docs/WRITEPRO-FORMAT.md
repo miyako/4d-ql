@@ -487,7 +487,7 @@ unverified longhand margins are protected rather than normalized. Browser
 projection remains inert and allowlisted. Continuous browser printing presents
 stored content once in a labeled appendix, **not** native repeating placement.
 
-### Paged browser projection (#54 merged; table increment in progress)
+### Paged browser projection (#55 merged; column increment in progress)
 
 `wp_paged_probe` extends the existing full-4D print gate with four independent
 six-page, two-section documents and native first-footer edit targets. Right-first
@@ -550,6 +550,39 @@ to 1,000 rows and 10,000 cells per table and the existing sheet/grapheme budgets
 Source table XML, media, formulas, bookmarks and editing/recovery/history remain
 immutable. Browser row/page counts, carry-over rows, native row splitting,
 border-conflict behavior and automatic native pagination parity are not claimed.
+
+`wp_paged_column_probe` independently authors seven full-4D documents: two,
+three (zero gap), four columns, explicit column/page breaks, a landscape section
+with a three-column override, a divider-rule counterexample and a five-column
+narrow counterexample. Original/first-header edit targets retain body bookmarks,
+lists, a local picture, a text formula and first/facing/default areas. Effective
+`wk column count`/`wk column spacing` and section paper getters are recorded
+alongside independent native PDFs, rather than treating browser exports as a
+column-layout oracle.
+
+Native equal columns occupy the oriented page's text width less `(count-1)*gap`,
+divided by `count`. The two-column 480-by-420 pt explicit-break oracle has
+60 pt vertical/36 pt horizontal margins, 18 pt gap and 195 pt columns. Native PDF
+`COLA` starts at x=36 pt, `COLB` at x=249 pt on the same page; a second column
+break puts `COLC` at x=36 pt on page 2. A page break puts `PAGED` on page 3,
+not the unused second column of page 2. The first/left/right headers follow
+physical pages, not column slots. Native paragraph column breaks serialize as
+`break-after:column`, distinct from `page-break-after:always`.
+
+The in-progress browser subset admits 2-4 equal LTR columns without divider
+rules, gaps from 0 through 72 pt and at least 72 pt of text width per column.
+It reuses the count/gap resolver, oriented paper geometry, measured visual-line
+fragments, native list markers and indivisible local image/formula atoms.
+Disposable column slots fill sequentially top-to-bottom then left-to-right;
+the last page is deliberately not balanced. Explicit page breaks skip remaining
+slots and new-page sections reset geometry and first-area selection. The
+same finished DOM is cloned for browser print. Every supported body character
+occurs once; shared inline ancestor wrappers are retained even on middle
+fragments. Native page counts, final-column balancing, word wrapping and formula
+evaluation are not reproduced. Multi-column tables, divider rules, custom
+column shapes/spanners, RTL/vertical flow, nested/conflicting breaks and
+out-of-bound geometry use localized atomic continuous fallback. Single-column
+table behavior and all established limits/protections remain unchanged.
 
 ## Formulas
 

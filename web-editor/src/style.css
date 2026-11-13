@@ -149,6 +149,9 @@ div.preserved-object { display: block; margin-top: 16px; }
 .browser-page:last-child, .browser-appendix:last-child { break-after: auto; }
 .page-body { position: absolute; display: flex; flex-direction: column; }
 .page-body > :is(p, ul, ol, table) { flex: none; }
+.page-body.page-columns { flex-direction: row; }
+.page-column { display: flex; flex-direction: column; flex: none; min-width: 0; height: 100%; }
+.page-column > :is(p, ul, ol) { flex: none; }
 .page-area { position: absolute; display: flow-root; }
 .page-area > p { margin-block: 0; }
 .unused-area { display: flow-root; }

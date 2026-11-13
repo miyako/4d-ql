@@ -1,11 +1,48 @@
 import { describe, expect, it } from 'vitest';
 import { WriteProDocument } from '../src/document.js';
-import { pagedCapability, createPagedProjection, selectedPageArea, pageListMarker } from '../src/paged-preview.js';
+import { pagedCapability, createPagedProjection, selectedPageArea, pageListMarker, pagedColumnGeometry } from '../src/paged-preview.js';
 import { messages } from '../src/i18n.js';
 
 const source = (style, body) => `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Pages</title><style>${style}</style></head><body>${body}</body></html>`;
 
 describe('derived paged projection safety and area selection', () => {
+  it('admits bounded equal native columns and exact inherited gap geometry without source changes', () => {
+    const paper = { width: 480, margins: [60, 36, 60, 36] };
+    for (const [count, gap, width] of [[2, 18, 195], [3, 0, 136], [4, 18, 88.5], [4, 40, 72]]) {
+      const model = new WriteProDocument(source(`div.section0{column-count:${count};column-gap:${gap}pt}`, '<p>TEXT</p>'));
+      const before = model.pack();
+      expect(pagedColumnGeometry(model, 1, paper)).toEqual({ count, gap, width });
+      expect(pagedCapability(model)).toBeNull();
+      expect(model.pack()).toEqual(before);
+    }
+    const model = new WriteProDocument(source('div.section0{column-count:2;column-gap:18pt}div.section2{column-count:3;column-gap:0pt}',
+      '<p style="page-break-after:always;-d4-section-break-after:always">FIRST</p><p>SECOND</p>'));
+    expect(pagedColumnGeometry(model, 2, paper)).toEqual({ count: 3, gap: 0, width: 136 });
+  });
+
+  it('rejects unsupported column shapes, rules, direction and column-content breaks atomically', () => {
+    for (const [style, body] of [
+      ['div.section0{column-count:5}', '<p>TEXT</p>'],
+      ['div.section0{column-gap:73pt}', '<p>TEXT</p>'],
+      ['div.section0{column-rule-style:solid}', '<p>TEXT</p>'],
+      ['div.section1{column-width:100pt}', '<p>TEXT</p>'],
+      ['p{column-span:all}', '<p>TEXT</p>'],
+      ['@media print{div.section1{column-rule-style:none}}', '<p>TEXT</p>'],
+      ['p{direction:rtl}', '<p>TEXT</p>'],
+      ['', '<p style="column-span:all">TEXT</p>'],
+      ['', '<p><span style="break-after:column">TEXT</span></p>'],
+      ['', '<p style="break-after:column;page-break-after:always">A</p><p>B</p>'],
+      ['', '<p>BEFORE</p><table><tr><td><p>CELL</p></td></tr></table><p>AFTER</p>'],
+    ]) {
+      const model = new WriteProDocument(source(`div.section0{column-count:2}${style}`, body));
+      const before = model.pack();
+      expect(pagedCapability(model)).toBe('pagedColumns');
+      expect(() => createPagedProjection(model, messages.en)).toThrow(expect.objectContaining({ code: 'pagedColumns' }));
+      expect(model.pack()).toEqual(before);
+    }
+    const model = new WriteProDocument(source('div.section0{column-count:2}', '<p style="break-after:column">A</p><p>B</p>'));
+    expect(pagedCapability(model)).toBeNull();
+  });
   it('admits rectangular paragraph tables and only leading native header rows, preserving the source', () => {
     const table = rows => `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`;
     const row = (style = '', cell = '<p>CELL</p>') => `<tr style="${style}"><td>${cell}</td><td><p>SECOND</p></td></tr>`;
@@ -66,7 +103,6 @@ describe('derived paged projection safety and area selection', () => {
 
   it('rejects unsupported shapes/settings without substituting partial pages', () => {
     for (const [style, body, reason] of [
-      ['div.section0{column-count:2}', '<p>TEXT</p>', 'pagedShape'],
       ['', '<p style="-d4-section-break-after:continuous">A</p><p>B</p>', 'pagedShape'],
       ['', '<table><tr><td><p>CELL</p></td></tr></table>', 'pagedShape'],
       ['', '<ul><li>ITEM<ul><li>NESTED</li></ul></li></ul>', 'pagedShape'],

@@ -45,6 +45,100 @@ function areas(section = 1) {
     `<div class="section${section}${variant}${kind}" style="visibility:hidden;height:0"><p>S${section}${variant || 'Default'}${kind}</p></div>`)).join('');
 }
 
+test('equal columns exhaust vertical capacity sequentially with exact preview/print geometry and no balancing', async ({ page }, testInfo) => {
+  await open(page, 'div.section0{column-count:2;column-gap:18pt}',
+    Array.from({ length: 40 }, (_, i) => `<p>LINE${i}</p>`).join(''));
+  const before = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-view .browser-page')).toHaveCount(2);
+  const columns = page.locator('#paged-view .page-column');
+  const tokens = (await columns.allTextContents()).map(text => text.match(/LINE\d+/g) || []);
+  expect(tokens.map(items => items.length)).toEqual([13, 13, 13, 1]);
+  expect(tokens.flat()).toEqual(Array.from({ length: 40 }, (_, i) => `LINE${i}`));
+  const bounds = await columns.evaluateAll(columns => columns.map(column => {
+    const rect = column.getBoundingClientRect();
+    const page = column.closest('.browser-page').getBoundingClientRect();
+    return { x: (rect.left - page.left) * .75, width: rect.width * .75,
+      fits: [...column.children].every(child => child.getBoundingClientRect().bottom <= rect.bottom + .25) };
+  }));
+  expect(bounds.map(item => Math.round(item.x))).toEqual([30, 159, 30, 159]);
+  for (const column of bounds) {
+    expect(column.width).toBeCloseTo(111, 1);
+    expect(column.fits).toBe(true);
+  }
+  const output = await pdf(page, testInfo, 'columns');
+  expect(output.map(sheet => sheet.words.filter(word => /^LINE\d+$/.test(word)).sort((a, b) =>
+    Number(a.slice(4)) - Number(b.slice(4))))).toEqual([tokens[0].concat(tokens[1]), tokens[2].concat(tokens[3])]);
+  const bbox = execFileSync('pdftotext', ['-bbox', testInfo.outputPath('columns.pdf'), '-'], { encoding: 'utf8' });
+  expect(Number(/<word xMin="([\d.]+)"[^>]*>LINE13<\/word>/.exec(bbox)[1])).toBeCloseTo(159, 1);
+  await page.locator('#settings-toggle').click();
+  await page.locator('#zoom').selectOption('2');
+  await page.locator('#theme').selectOption('dark');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await pdf(page, testInfo, 'columns-mobile')).toEqual(output);
+  expect(await columns.allTextContents()).toEqual(tokens.map(items => items.join('')));
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('column and page breaks retain physical parity and section-local first areas across mixed geometry', async ({ page }, testInfo) => {
+  await open(page, `div.section0{column-count:2;column-gap:18pt}${variants()}${variants(2)}div.section2{column-count:3;column-gap:0pt;-d4-page-orientation:landscape}`,
+    '<p style="break-after:column">A</p><p style="break-after:column">B</p><p style="page-break-after:always">C</p><p style="page-break-after:always;-d4-section-break-after:always">D</p><p style="break-after:column">E</p><p>F</p>' + areas() + areas(2));
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets).toHaveCount(4);
+  expect(await sheets.evaluateAll(sheets => sheets.map(sheet => [...sheet.querySelectorAll('.page-column')].map(column => column.textContent))))
+    .toEqual([['A', 'B'], ['C', ''], ['D', ''], ['E', 'F', '']]);
+  expect(await sheets.evaluateAll(sheets => sheets.map(sheet => sheet.querySelector('.page-area').dataset.area)))
+    .toEqual(['section1FirstHeader', 'section1LeftHeader', 'section1RightHeader', 'section2FirstHeader']);
+  expect((await pdf(page, testInfo, 'column-breaks')).slice(0, 4).map(sheet => [sheet.width, sheet.height]))
+    .toEqual([[300, 360], [300, 360], [300, 360], [360, 300]]);
+});
+
+test('column fragments retain Unicode, whitespace, list markers and run formatting without editing the source', async ({ page }, testInfo) => {
+  const text = Array.from({ length: 45 }, (_, i) => `TOKEN${i} \u{1f600}e\u0301  `).join('\n');
+  await open(page, 'div.section0{column-count:3;column-gap:12pt;-d4-page-width:480pt}',
+    `<p><span style="font-weight:bold;color:#135724">${text}</span></p><ol start="27"><li style="margin-left:18pt;list-style-type:upper-alpha">LIST</li></ol><p>TAIL</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-view .browser-page')).toHaveCount(2);
+  expect(await page.locator('#paged-view .page-column p .text-run').allTextContents()).toEqual(expect.arrayContaining(['TAIL']));
+  expect((await page.locator('#paged-view .page-column p .text-run').allTextContents()).join('')).toBe(text + 'TAIL');
+  await expect(page.locator('#paged-view .paged-list-marker')).toHaveText('AA.');
+  expect(await page.locator('#paged-view .page-column p .text-run').filter({ hasText: /TOKEN\d+/ }).evaluateAll(runs =>
+    runs.length > 0 && runs.every(run => getComputedStyle(run).fontWeight === '700' &&
+      getComputedStyle(run).color === 'rgb(19, 87, 36)'))).toBe(true);
+  const output = await pdf(page, testInfo, 'column-fragments');
+  expect(output.flatMap(sheet => sheet.words).filter(word => /^TOKEN\d+$/.test(word)).sort((a, b) =>
+    Number(a.slice(5)) - Number(b.slice(5)))).toEqual(Array.from({ length: 45 }, (_, i) => `TOKEN${i}`));
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('unsupported columns fall back atomically, retaining continuous content and existing print safety', async ({ page }, testInfo) => {
+  for (const [style, body] of [
+    ['div.section0{column-count:5}', '<p>RETAINED</p>'],
+    ['div.section0{column-count:4}', '<p>RETAINED</p>'],
+    ['div.section0{column-count:2;column-rule-style:solid}', '<p>RETAINED</p>'],
+    ['div.section0{column-count:2}', '<p>BEFORE</p><table><tr><td><p>RETAINED</p></td></tr></table><p>TAIL</p>'],
+  ]) {
+    await open(page, style, body);
+    const before = await bytes(page);
+    await preview(page);
+    await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedColumns);
+    await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+    const output = (await pdf(page, testInfo, 'column-fallback')).flatMap(sheet => sheet.words).join('');
+    if (/column-count:[45]/.test(style)) expect(output).toContain('Browserprintingrequiresatleast72pt');
+    else expect(output).toContain('RETAINED');
+    await expect(page.locator('#paper')).toContainText('RETAINED');
+    expect(await bytes(page)).toEqual(before);
+    await page.locator('#settings-toggle').click();
+    for (const language of ['ja', 'fr', 'de', 'es', 'it']) {
+      await page.locator('#language').selectOption(language);
+      await expect(page.locator('#paged-status')).toHaveText(messages[language].pagedColumns);
+    }
+    await page.locator('#language').selectOption('en');
+  }
+});
+
 test('rectangular tables split at measured rows with stable unequal columns, repeated native headers and matching print', async ({ page }, testInfo) => {
   const rows = Array.from({ length: 30 }, (_, index) => `<tr><td class="narrow"><p><span style="font-weight:bold;color:#135724">ROW${index}</span></p></td><td class="wide"><p>VALUE${index}</p></td></tr>`).join('');
   await open(page, 'table{border-collapse:collapse;width:200pt;margin:3pt 0}td{border:1pt solid #234567;padding:3pt}td.narrow{width:70pt}td.wide{width:130pt}tr.header{background-color:#ddeeff;-d4-header:true}',
@@ -476,9 +570,9 @@ for (const locale of ['en', 'ja', 'fr', 'de', 'es', 'it']) {
   test(`paged controls, fallback and keyboard work on mobile in ${locale}`, async ({ page }) => {
     await page.addInitScript(locale => localStorage.setItem('4wp-language', locale), locale);
     await page.setViewportSize({ width: 390, height: 844 });
-    await open(page, 'div.section0{column-count:2}', '<p>BODY</p>');
+    await open(page, 'div.section0{column-count:2;column-rule-style:solid}', '<p>BODY</p>');
     await page.locator('#paged-panel > summary').click();
-    await expect(page.locator('#paged-status')).toHaveText(messages[locale].pagedShape);
+    await expect(page.locator('#paged-status')).toHaveText(messages[locale].pagedColumns);
     expect(await page.locator('#paged-panel').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     await page.locator('#paged-panel > summary').focus();
     await page.keyboard.press('Escape');

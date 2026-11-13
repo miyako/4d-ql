@@ -21,7 +21,7 @@ export function inspectPDF(path) {
 }
 
 // Independent native getter values, not the editor's page/section resolver.
-function geometry(native) {
+export function geometry(native) {
   const points = value => {
     const [, number, unit] = String(value).match(/^([\d.]+)(pt|cm|mm|in)$/);
     return Number(number) * { pt: 1, cm: 72 / 2.54, mm: 72 / 25.4, in: 72 }[unit];
