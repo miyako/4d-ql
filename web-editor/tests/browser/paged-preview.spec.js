@@ -46,6 +46,74 @@ function areas(section = 1) {
     `<div class="section${section}${variant}${kind}" style="visibility:hidden;height:0"><p>S${section}${variant || 'Default'}${kind}</p></div>`)).join('');
 }
 
+for (const headers of [0, 1, 2]) test(`flat cell lists preserve complete rows, counters and ${headers} repeated header rows`, async ({ page }, testInfo) => {
+  const row = index => `<tr${index < headers ? ' class="header"' : ''}><td class="narrow">${index < headers ? '' : `<p>INTRO${index}</p>`}<ol start="7"><li>TOK${index}A</li><li>TOK${index}B</li></ol></td><td class="wide"><ul><li>VALUE${index}A${index < headers ? '' : ' wrapped across lines'}</li><li>VALUE${index}B</li></ul></td></tr>`;
+  const body = `<p style="-d4-section-break-after:continuous">SEAMSTART</p><p>BEFORE</p><table>${Array.from({ length: 16 }, (_, index) => row(index)).join('')}</table><p>AFTER</p>`;
+  await open(page, 'ul,ol{margin:0;padding:0}li{font:12pt Arial;margin:0 0 0 24pt;line-height:18pt;white-space:pre-wrap}table{border-collapse:collapse}td{padding:3pt;border:1pt solid #234567}td.narrow{width:80pt}td.wide{width:90pt}tr.header{-d4-header:true;background-color:#ddeeff}',
+    body);
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets.nth(1)).toBeVisible();
+  await expect(sheets.first()).toHaveAttribute('data-sections', '1 2');
+  const fragments = await sheets.evaluateAll(sheets => sheets.map(sheet => {
+    const origin = sheet.getBoundingClientRect();
+    return [...sheet.querySelectorAll('.page-body table tr')].map(row => [...row.cells].map(cell => {
+      const bounds = cell.getBoundingClientRect();
+      return {
+        text: cell.textContent, intro: cell.querySelector('p')?.textContent, width: bounds.width,
+        x: (bounds.left - origin.left) * .75, y: (bounds.top - origin.top) * .75,
+        right: (bounds.right - origin.left) * .75, bottom: (bounds.bottom - origin.top) * .75,
+        markers: [...cell.querySelectorAll('.paged-list-marker')].map(marker => marker.textContent),
+      };
+    }));
+  }));
+  const data = fragments.flat().filter(row => row[0].intro);
+  expect(data.map(row => row[0].intro)).toEqual(Array.from({ length: 16 - headers }, (_, index) => `INTRO${index + headers}`));
+  for (const fragment of fragments.filter(rows => rows.length)) {
+    for (let header = 0; header < headers; header++) expect(fragment[header][0].text).toContain(`TOK${header}A`);
+    for (const row of fragment) {
+      expect(row[0].markers).toEqual(['7.', '8.']);
+      expect(row[1].markers).toEqual(['\u25cf', '\u25cf']);
+      expect(row.map(cell => cell.width)).toEqual(fragments.flat()[0].map(cell => cell.width));
+    }
+  }
+  const path = testInfo.outputPath(`cell-lists-${headers}.pdf`);
+  await page.pdf({ path, preferCSSPageSize: true, printBackground: true });
+  const bbox = execFileSync('pdftotext', ['-bbox', path, '-'], { encoding: 'utf8' });
+  const printed = [...bbox.matchAll(/<page[^>]*>([\s\S]*?)<\/page>/g)].map(sheet =>
+    [...sheet[1].matchAll(/<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">([^<]*)<\/word>/g)]
+      .map(word => ({ x: Number(word[1]), y: Number(word[2]), right: Number(word[3]), bottom: Number(word[4]), text: word[5] })));
+  expect(printed.length).toBe(await sheets.count());
+  const printCells = fragments.map((rows, index) => rows.map(row => row.map(cell =>
+    printed[index].filter(word => {
+      const x = (word.x + word.right) / 2;
+      const y = (word.y + word.bottom) / 2;
+      return x >= cell.x - .25 && x <= cell.right + .25 && y >= cell.y - .25 && y <= cell.bottom + .25;
+    }).sort((a, b) => Math.abs(a.y - b.y) > 1 ? a.y - b.y : a.x - b.x).map(word => word.text).join('').replace(/\s/gu, ''))));
+  expect(printCells).toEqual(fragments.map(rows => rows.map(row => row.map(cell => cell.text.replace(/\s/gu, '')))));
+  await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('cell-list unsupported counters and marker/cell overflow keep explicit atomic fallback', async ({ page }) => {
+  for (const list of [
+    '<ol reversed=""><li>A</li></ol>', '<ol><li value="7">A</li></ol>', '<ul><li>A<ul><li>NESTED</li></ul></li></ul>',
+    '<ol start="3999"><li>A</li><li>B</li></ol>', '<ul><li style="-d4-list-level:2">A</li></ul>',
+    '<ul><li style="list-style-type:unknown">A</li></ul>',
+    '<ol start="3998"><li style="margin-left:0">A</li></ol>',
+    '<ol><li style="font-size:300pt;margin-left:300pt">OVERSIZE</li></ol>',
+  ]) {
+    await open(page, 'ul,ol{margin:0;padding:0}li{font:12pt Arial;margin-left:24pt}td{width:90pt}',
+      `<p>BEFORE</p><table><tr><td>${list}</td></tr></table><p>AFTER</p>`);
+    const before = await bytes(page);
+    await preview(page);
+    await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedTables);
+    await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+    expect(await bytes(page)).toEqual(before);
+  }
+});
+
 test('compatible continuous seams share measured physical pages and retain source identities and print membership', async ({ page }, testInfo) => {
   const first = Array.from({ length: 10 }, (_, i) => `<p${i === 9 ? ' style="-d4-section-break-after:continuous"' : ''}>SEAM1TOKEN${i}</p>`).join('');
   const second = Array.from({ length: 6 }, (_, i) => `<p${i === 5 ? ' style="-d4-section-break-after:continuous"' : ''}>SEAM2TOKEN${i}</p>`).join('');
@@ -374,11 +442,11 @@ test('intrinsic native column geometry is not stretched to the page body width',
   expect(projected).toEqual(original);
 });
 
-test('oversized rows, spanning cells and table-cell lists fall back atomically with the entire table retained', async ({ page }) => {
+test('oversized rows, spanning cells and nested table-cell lists fall back atomically with the entire table retained', async ({ page }) => {
   for (const [table, reason] of [
     ['<table><tr><td><p>' + 'TOOBIG<br/>'.repeat(30) + '</p></td></tr></table>', 'pagedOverflow'],
     ['<table><tr><td colspan="2"><p>MERGED</p></td></tr><tr><td><p>A</p></td><td><p>B</p></td></tr></table>', 'pagedTables'],
-    ['<table><tr><td><ul><li>LIST</li></ul></td></tr></table>', 'pagedTables'],
+    ['<table><tr><td><ul><li>LIST<ul><li>NESTED</li></ul></li></ul></td></tr></table>', 'pagedTables'],
   ]) {
     await open(page, '', `<p>BEFORE</p>${table}<p>TAIL</p>`);
     const before = await bytes(page);

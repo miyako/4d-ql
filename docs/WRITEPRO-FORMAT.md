@@ -487,7 +487,7 @@ unverified longhand margins are protected rather than normalized. Browser
 projection remains inert and allowlisted. Continuous browser printing presents
 stored content once in a labeled appendix, **not** native repeating placement.
 
-### Paged browser projection (#56 available; continuous-section increment in progress)
+### Paged browser projection (#57 available; table-cell-list increment in progress)
 
 `wp_paged_probe` extends the existing full-4D print gate with four independent
 six-page, two-section documents and native first-footer edit targets. Right-first
@@ -539,17 +539,46 @@ with hidden areas is unchanged; the gate uses the independently editable header
 scope for Undo/Redo/recovery rather than admitting a protected body operation.
 
 The browser uses the shared native grid validator and permits unmerged direct
-rows with paragraph-only cells. It measures the complete table once at the
+rows with paragraphs or supported bounded flat cell lists. It measures the complete table once at the
 section's width, freezes the measured column geometry in disposable DOM, and
 places complete rows on pages. Leading native header rows repeat explicitly;
 every data row/cell appears once. Fragment cell widths/heights must remain within
 0.25 CSS px of the whole-table measurement. Nested/merged/irregular/data-source
-tables, cell lists, invalid/nonleading/all-header metadata and rows that cannot
+tables, unsupported cell lists, invalid/nonleading/all-header metadata and rows that cannot
 fit with their headers use explicit continuous fallback. The scope is bounded
 to 1,000 rows and 10,000 cells per table and the existing sheet/grapheme budgets.
 Source table XML, media, formulas, bookmarks and editing/recovery/history remain
 immutable. Browser row/page counts, carry-over rows, native row splitting,
 border-conflict behavior and automatic native pagination parity are not claimed.
+
+The table-cell-list increment is **In progress**, not merged or deployed.
+`wp_cell_list_probe` independently authors 18 installed-4D originals, header/body
+edit targets and PDFs, with paragraph-level getters and unequal 90/140 pt columns.
+Flat native lists may coexist with cell paragraphs. A contiguous `ol start="7"`
+with two items prints 7 and 8; applying a start to both native paragraphs produces
+two separate `ol start="7"` elements, both printing 7. Starts are independent
+between cells and rows. Whole-cell start getters may return the native mixed
+value sentinel (-2147483648); paragraph getters and the original XML remain
+authoritative, never a made-up common counter.
+
+Supported cell styles are `disc`, `circle`, `square`, `hollow-square`, `diamond`,
+`decimal`, lower/upper Latin and lower/upper Roman. Independent native PDF
+codepoints establish cell `disc` as U+25CF and `diamond` as U+2666; the shared
+marker helper applies these only in cell context, retaining existing body output.
+The subset preserves native list font, indentation, computed bold/color, wrapped
+items, mixed cell paragraphs, decoded local pictures and inert formula subtrees.
+Counters remain 1-3,999 with the existing single-`#`, quoted LTR format subset.
+At most 10,000 list items are admitted per table, in addition to the existing
+row/cell/grid/sheet/grapheme limits. Nested, reversed, per-item-value,
+paragraph-wrapped, custom/unknown-level lists and unsafe marker/cell geometry
+explicitly fall back. Content and markers must remain inside their own complete
+cells within 0.25 CSS px. List-bearing native leading headers repeat without
+counter loss or duplication. Prepared disposable lists are measured with the
+whole table once, before the same frozen-grid complete-row preview/print path.
+Source XML/resources, native ranges, selection and history/recovery are unchanged.
+No table authoring, row splitting, merged grids, nesting or native pagination
+parity is added. #57's compatible continuous-section pages are Available on main
+and deployed; broader layout/native parity remains Proposed and unscheduled.
 
 `wp_paged_column_probe` independently authors seven full-4D documents: two,
 three (zero gap), four columns, explicit column/page breaks, a landscape section
@@ -615,8 +644,8 @@ is reused without relaxing authoring guards. A rich-content browser regression
 checks residual seam capacity, later table fragments, stable widths, repeated
 leading headers, complete ordered fitting content and exact print membership.
 Geometry-changing, area-bearing, multi-column or otherwise unsupported seams
-use localized atomic continuous fallback. #56 is available and deployed;
-this increment is unmerged/in progress. Broader continuous-seam parity remains
+use localized atomic continuous fallback. #57 is available on main and deployed;
+the bounded table-cell-list increment is unmerged/in progress. Broader continuous-seam parity remains
 Proposed and unscheduled.
 
 ## Formulas

@@ -6,15 +6,15 @@ import { preview } from 'vite';
 import { chromium, expect } from '@playwright/test';
 import { preparePagedCases } from './native-paged-cases.mjs';
 
-assert(process.argv[2] && process.argv[3], 'Usage: reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_56_BASELINE [--compare]');
+assert(process.argv[2] && process.argv[3], 'Usage: reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_57_BASELINE [--compare]');
 assert(!process.argv[4] || process.argv[4] === '--compare', 'Unknown baseline reproduction mode');
 const directory = resolve(process.argv[2]);
 const baseline = resolve(process.argv[3]);
 assert.notEqual(directory, baseline, 'Baseline evidence must never be overwritten');
 assert(!(await readdir(directory)).includes('SHA256-MANIFEST.json'), 'Sealed evidence must never be overwritten');
 const prior = JSON.parse(await readFile(resolve(baseline, 'Input/cases.json'), 'utf8')).cases;
-assert.equal(prior.length, 2337, 'The exact #56 baseline, including actual Cancel definitions, is required');
-const affected = entry => /^(paged-|expanded-|tables-cancel-|columns-cancel-)/.test(entry.name);
+assert.equal(prior.length, 2409, 'The exact #57 baseline, including actual Cancel definitions, is required');
+const affected = entry => /^(paged-|expanded-|tables-cancel-|columns-cancel-|continuous-paged-|seams-cancel-)/.test(entry.name);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const compare = async () => {
   const current = JSON.parse(await readFile(resolve(directory, 'Input/cases.json'), 'utf8')).cases;
@@ -36,7 +36,7 @@ const compare = async () => {
     baseline, baselineDefinitions: prior.length, unchangedDefinitions: prior.length,
     finalCases: current.length, unaffectedInputs: hashes.length, unaffectedHashes: hashes,
     independentlyComparedDependencies: dependencies.length,
-    regeneratedBaselinePagedExports: prior.filter(affected).length, newContinuousCases: current.length - prior.length,
+    regeneratedBaselinePagedExports: prior.filter(affected).length, newCellListCases: current.length - prior.length,
   }, null, 2));
   console.log(`${prior.length} baseline definitions, ${hashes.length} unaffected hashes and ${dependencies.length} dependencies unchanged; ${current.length} final cases.`);
 };
@@ -79,7 +79,7 @@ if (process.argv[4] === '--compare') {
     const byName = new Map(cases.map(entry => [entry.name, entry]));
     for (const entry of prior.filter(entry => !entry.name.includes('-cancel-'))) assert.deepEqual(byName.get(entry.name), entry);
     await writeFile(resolve(directory, 'Input/cases.json'), JSON.stringify({ cases }, null, 2));
-    console.log('Final production paged exports regenerated; run all six actual Cancel modes before --compare and --recheck.');
+    console.log('Final production paged exports regenerated; run all seven actual Cancel modes before --compare and --recheck.');
   } finally {
     await browser.close();
     await new Promise(resolve => server.httpServer.close(resolve));
