@@ -12,6 +12,7 @@ import { prepareFormulaCases, verifyFormulaCase } from './native-formula-cases.m
 import { prepareComplexCases } from './native-complex-cases.mjs';
 import { preparePageCases, verifyPageCase } from './native-page-cases.mjs';
 import { prepareSectionCases, verifySectionCase } from './native-section-cases.mjs';
+import { prepareFlowCases, verifyFlowCase } from './native-flow-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtures = resolve(root, '../Tests/FourDFileKitTests/Fixtures/WritePro');
@@ -237,6 +238,7 @@ async function prepare() {
     await prepareComplexCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     await preparePageCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     await prepareSectionCases(directory, cases, browser, server.resolvedUrls.local[0], download);
+    await prepareFlowCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     assert.deepEqual(browserErrors, [], 'Browser runtime errors');
     await writeFile(manifestPath, JSON.stringify({ cases }, null, 2));
   } finally {
@@ -265,6 +267,7 @@ async function verify() {
     if (entry.formula) await verifyFormulaCase(directory, entry, actual);
     if (entry.page) await verifyPageCase(directory, entry, actual);
     if (entry.section) await verifySectionCase(directory, entry, actual);
+    if (entry.flow) await verifyFlowCase(directory, entry, actual);
     if (entry.resources) {
       const source = unzipSync(await readFile(resolve(directory, 'Input', entry.resources)));
       const edited = unzipSync(await readFile(resolve(directory, 'Input', entry.file)));

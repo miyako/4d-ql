@@ -13,6 +13,14 @@ Else
 	var $case; $result; $doc; $reopened : Object
 	For each ($case; $manifest.cases)
 		$result:=New object("name"; $case.name)
+		If (OB Is defined($case; "flow"))
+			var $flowBaseline : Object:=WP Import document($root.file("Input/"+$case.flow.source).platformPath)
+			wp_layout_apply($flowBaseline; $case.flow)
+			$result.flowExpected:=wp_layout_stats($flowBaseline)
+			$result.flowWebExpected:=wp_web_stats($flowBaseline; False)
+			$result.flowSectionsExpected:=wp_section_stats($flowBaseline)
+			WP EXPORT DOCUMENT($flowBaseline; $root.file("Output/"+$case.name+"-expected.4wp").platformPath; wk 4wp)
+		End if
 		If (OB Is defined($case; "section"))
 			var $sectionBaseline : Object:=WP Import document($root.file("Input/"+$case.section.source).platformPath)
 			wp_section_apply($sectionBaseline; $case.section)
@@ -31,6 +39,10 @@ Else
 		End if
 		$doc:=WP Import document($root.file("Input/"+$case.file).platformPath)
 		If ($doc#Null)
+			If (OB Is defined($case; "flow"))
+				$result.flowImported:=wp_layout_stats($doc)
+				$result.flowSectionsImported:=wp_section_stats($doc)
+			End if
 			If (OB Is defined($case; "section"))
 				$result.sectionImported:=wp_section_stats($doc)
 			End if
@@ -41,6 +53,10 @@ Else
 			WP EXPORT DOCUMENT($doc; $root.file("Output/"+$case.name+".4wp").platformPath; wk 4wp)
 			$reopened:=WP Import document($root.file("Output/"+$case.name+".4wp").platformPath)
 			If ($reopened#Null)
+				If (OB Is defined($case; "flow"))
+					$result.flowReopened:=wp_layout_stats($reopened)
+					$result.flowSectionsReopened:=wp_section_stats($reopened)
+				End if
 				If (OB Is defined($case; "section"))
 					$result.sectionReopened:=wp_section_stats($reopened)
 				End if

@@ -3,6 +3,7 @@ import { DocumentError, MAX_ARCHIVE, MAX_EXPANDED, readArchive, writeArchive } f
 import { nativeBody, nativeBoundary, nativeMetadata, spliceBookmarks, writeBookmarks } from './native-ranges.js';
 import { pageFields, pagePoints, validatePageGeometry } from './page-setup.js';
 import { paragraphBreak, breakProperties } from './sections.js';
+import { validateColumns, parseTabs, tabDeclarations, tabProperties, defaultTab } from './flow-settings.js';
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
 const SAFE_TAGS = new Set(['p', 'li', 'ul', 'ol', 'span', 'a', 'br', 'img', 'table', 'tbody', 'thead', 'tfoot', 'tr', 'td', 'th', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'div']);
@@ -323,13 +324,16 @@ export class WriteProDocument {
       if (field in changes && ['width', 'height'].includes(field)) next[field] = `${Math.round(pagePoints(next[field]))}pt`;
     }
     validatePageGeometry(next);
-    for (const [index, settings] of current.sections) {
+    this.validateColumnGeometry(0, next);
+    for (const index of new Set([...current.sections.keys(), ...this.sectionLayout().sections.map(section => section.index)])) {
       if (!index) continue;
+      const settings = current.sections.get(index) || {};
       try { validatePageGeometry({ ...next, ...settings }); }
       catch (error) {
         if (!(error instanceof DocumentError)) throw error;
         throw new DocumentError('pageSectionMargins');
       }
+      this.validateColumnGeometry(index, { ...next, ...settings });
     }
     const properties = {};
     for (const field of ['width', 'height', 'orientation']) {
@@ -393,6 +397,147 @@ export class WriteProDocument {
       this.document.querySelector('head').append(style);
     }
     this.styles = rules(this.document);
+  }
+
+  columnSetup(index = 0) {
+    const sections = new Map([[0, {}]]);
+    try {
+      const setup = this.pageSetup();
+      if (setup.reason || this.sectionLayout().reason ||
+        index && !this.sectionLayout().sections.some(section => section.index === index)) throw new DocumentError('columnsUnsupported');
+      for (const element of this.document.querySelectorAll('head style')) {
+        const ast = css.parse(element.textContent, { onParseError: () => { throw new DocumentError('columnsUnsupported'); } });
+        const scoped = new Set();
+        ast.children.forEach(rule => {
+          if (rule.type !== 'Rule') return;
+          const match = css.generate(rule.prelude).match(/^div\.section(0|[1-9]\d*)$/);
+          if (!match) return;
+          const number = Number(match[1]);
+          if (!Number.isSafeInteger(number)) throw new DocumentError('columnsUnsupported');
+          const settings = sections.get(number) || {};
+          rule.block.children.forEach(node => {
+            if (node.type !== 'Declaration' || !/^column-(count|gap)$/i.test(node.property)) return;
+            if (node.important || node.property !== node.property.toLowerCase()) throw new DocumentError('columnsUnsupported');
+            scoped.add(node);
+            const value = css.generate(node.value);
+            if (node.property === 'column-count') {
+              if (!/^(?:[1-9]|1\d|20)$/.test(value)) throw new DocumentError('columnsUnsupported');
+              settings.count = Number(value);
+            } else {
+              pagePoints(value);
+              settings.gap = value;
+            }
+          });
+          sections.set(number, settings);
+        });
+        css.walk(ast, node => {
+          if (node.type === 'Declaration' && /^column-(count|gap)$/i.test(node.property) && !scoped.has(node)) throw new DocumentError('columnsUnsupported');
+        });
+      }
+      if ([...this.document.querySelectorAll('[style]')].some(element => /column-(count|gap)\s*:/i.test(element.getAttribute('style')))) throw new DocumentError('columnsUnsupported');
+      const defaults = { count: 1, gap: '12pt', ...sections.get(0) };
+      for (const section of this.sectionLayout().sections) {
+        validateColumns({ ...defaults, ...sections.get(section.index) }, { ...setup.geometry, ...setup.sections.get(section.index) });
+      }
+      return { settings: { ...defaults, ...sections.get(index) }, overrides: sections.get(index) || {}, sections, reason: null };
+    } catch (error) {
+      if (!(error instanceof DocumentError) && error.name !== 'SyntaxError') throw error;
+      return { settings: { count: 1, gap: '12pt' }, overrides: {}, sections, reason: 'columnsUnsupported' };
+    }
+  }
+
+  validateColumnGeometry(index, geometry) {
+    const setup = this.columnSetup(index);
+    if (!setup.reason) validateColumns(setup.settings, geometry);
+  }
+
+  setColumns(index, changes) {
+    const current = this.columnSetup(index);
+    if (current.reason) throw new DocumentError(current.reason);
+    if (!changes || Object.keys(changes).some(key => !['count', 'gap'].includes(key)) ||
+      !Number.isSafeInteger(index) || index < 0) throw new DocumentError('columnsInvalid');
+    const defaults = this.columnSetup().settings;
+    const properties = {};
+    for (const key of Object.keys(changes)) {
+      const value = changes[key];
+      if (value === null && !index) throw new DocumentError('columnsInvalid');
+      if (value !== current.overrides[key] && !(value === null && !Object.hasOwn(current.overrides, key))) properties[`column-${key}`] = value === null ? null : String(value);
+    }
+    const next = { ...current.settings, ...Object.fromEntries(Object.entries(changes).map(([key, value]) => [key, value ?? defaults[key]])) };
+    const page = this.pageSetup();
+    validateColumns(next, index ? this.sectionSetup(index).geometry : page.geometry);
+    if (!index) for (const section of this.sectionLayout().sections) {
+      validateColumns({ ...next, ...current.sections.get(section.index) }, this.sectionSetup(section.index).geometry);
+    }
+    if (!Object.keys(properties).length) return;
+    return this.mutate('columnsSetup', () => this.writeSectionSettings(index, properties));
+  }
+
+  paragraphTabs(block) {
+    if (!block || !['p', 'li'].includes(block.localName)) throw new DocumentError('selection');
+    // Native exports use one named style plus optional generated direct formatting.
+    const classes = [...block.classList];
+    if (classes.filter(name => !/^_p\d+$/.test(name)).length > 1) throw new DocumentError('tabsUnsupported');
+    for (const style of this.document.querySelectorAll('head style')) {
+      const ast = css.parse(style.textContent, { onParseError: () => { throw new DocumentError('tabsUnsupported'); } });
+      const scoped = new Set();
+      ast.children.forEach(rule => {
+        if (rule.type !== 'Rule') return;
+        const selectors = css.generate(rule.prelude).split(',');
+        if (!selectors.every(selector => /^(?:p|li)(?:\.[\w-]+)?$/.test(selector))) return;
+        rule.block.children.forEach(node => {
+          if (node.type === 'Declaration' && tabProperties.includes(node.property) && !node.important) scoped.add(node);
+        });
+      });
+      css.walk(ast, node => {
+        if (node.type === 'Declaration' && /^-d4-tab-/i.test(node.property) && !scoped.has(node)) throw new DocumentError('tabsUnsupported');
+      });
+    }
+    if ([...this.document.querySelectorAll('[style]')].some(element =>
+      !['p', 'li'].includes(element.localName) && /-d4-tab-/i.test(element.getAttribute('style')))) throw new DocumentError('tabsUnsupported');
+    const inline = css.parse(block.getAttribute('style') || '', {
+      context: 'declarationList', onParseError: () => { throw new DocumentError('tabsUnsupported'); },
+    });
+    inline.children.forEach(node => {
+      if (node.type === 'Declaration' && /^-d4-tab-/i.test(node.property) &&
+        (!tabProperties.includes(node.property) || node.important)) throw new DocumentError('tabsUnsupported');
+    });
+    return parseTabs(this.values(block));
+  }
+
+  tabBlocks(selection) {
+    const range = this.range(selection);
+    return this.blocks.filter(block => {
+      if (!range.intersectsNode(block)) return false;
+      if (range.collapsed || block.contains(range.startContainer) || !block.contains(range.endContainer)) return true;
+      const prefix = this.document.createRange();
+      prefix.setStart(block, 0);
+      prefix.setEnd(range.endContainer, range.endOffset);
+      return prefix.toString().replace(/\u200b/g, '').length > 0 || Boolean(prefix.cloneContents().querySelector('img,br'));
+    });
+  }
+
+  setParagraphTabs(selection, change) {
+    const blocks = this.tabBlocks(selection);
+    if (!blocks.length) throw new DocumentError('selection');
+    const updates = blocks.map(block => {
+      const current = this.paragraphTabs(block);
+      const next = change(structuredClone(current));
+      const properties = tabDeclarations(next);
+      return JSON.stringify(current) === JSON.stringify(next) ? null : { block, properties };
+    }).filter(Boolean);
+    if (!updates.length) return;
+    return this.mutate('tabsSetup', () => {
+      for (const { block, properties } of updates) {
+        for (const [property, value] of Object.entries(properties)) {
+          if (this.values(block)[property] !== value) setProperty(block, property, value);
+        }
+      }
+    });
+  }
+
+  resetParagraphTabs(selection) {
+    return this.setParagraphTabs(selection, () => ({ stops: [], default: { ...defaultTab } }));
   }
 
   sectionLayout() {
@@ -489,6 +634,7 @@ export class WriteProDocument {
       }
     }
     validatePageGeometry(next);
+    this.validateColumnGeometry(index, next);
     if (Object.hasOwn(changes, 'name') && changes.name !== current.name) {
       if (typeof changes.name !== 'string' || changes.name.length > 1024 || !changes.name.isWellFormed() ||
         changes.name.trim() !== changes.name || /[\u0000-\u001f\u007f\ufffe\uffff'"\\]/u.test(changes.name)) throw new DocumentError('sectionNameInvalid');
@@ -633,7 +779,7 @@ export class WriteProDocument {
   mutate(label, change, group = null, restore = false) {
     const before = this.serialize();
     try {
-      const geometry = label === 'pageSetup' || label === 'sectionSetup';
+      const geometry = label === 'pageSetup' || label === 'sectionSetup' || label === 'columnsSetup';
       const breaks = () => [...this.document.querySelectorAll('body p,body li')].flatMap(node => {
         const values = this.values(node);
         const signature = ['page-break-after', '-d4-section-break-after', 'break-after'].map(key => values[key] || 'auto');
@@ -1769,6 +1915,12 @@ export class WriteProDocument {
         }
         if (['td', 'th'].includes(tag)) element.dataset.cell = this.cells.push(child) - 1;
         if (isBlock) element.dataset.block = this.blocks.push(child) - 1;
+        if (isBlock) {
+          try {
+            if (child.textContent.includes('\t')) element.style.tabSize = `${pagePoints(this.paragraphTabs(child).default.position)}pt`;
+          }
+          catch (error) { if (!(error instanceof DocumentError)) throw error; }
+        }
         const isLocked = locked || this.protected(child);
         if (isLocked) element.classList.add('locked-content');
         if (tag === 'a') element.classList.add('inert-link');
@@ -1794,5 +1946,23 @@ export class WriteProDocument {
       }
     };
     project(body, host);
+    const layout = this.sectionLayout();
+    if (!layout.reason) for (const section of layout.sections) {
+      const columns = this.columnSetup(section.index);
+      if (columns.reason || columns.settings.count === 1) continue;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'section-columns';
+      wrapper.dataset.section = section.index;
+      wrapper.style.columnCount = String(columns.settings.count);
+      wrapper.style.columnGap = `${pagePoints(columns.settings.gap)}pt`;
+      const elements = section.elements.map(source => this.projection.get(source)).filter(element => element?.parentNode === host);
+      if (!elements.length) continue;
+      elements[0].before(wrapper);
+      for (const element of elements) {
+        const marker = element.nextElementSibling?.classList.contains('explicit-break') ? element.nextElementSibling : null;
+        wrapper.append(element);
+        if (marker) wrapper.append(marker);
+      }
+    }
   }
 }

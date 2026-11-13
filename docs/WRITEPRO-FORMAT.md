@@ -45,7 +45,7 @@ attribute reference is
   `font-size:60%` span.
 - Right-to-left paragraphs are written with `direction:rtl;unicode-bidi:bidi-override`,
   yet 4D lays them out with normal bidi, so the override is dropped.
-- Tab stops: `-d4-tab-stop-offset`, `-d4-tab-stop-type` (`left right center decimal`)
+- Tab stops: `-d4-tab-stop-offset`, `-d4-tab-stop-type` (`left right center decimal bar`)
   and `-d4-tab-stop-leading`; the last value is the default interval.
 
 ## Lists
@@ -302,7 +302,61 @@ reports are retained in `Output/section-report.json` and adjacent files.
 
 The browser shows localized explicit-break markers on its continuous surface.
 It does not render automatic native pagination, section page surfaces or editable
-headers/footers. Columns/tabs and browser-printing improvements are later work.
+headers/footers. Browser-printing improvements are later work.
+
+### Column/tab authoring evidence (full 4D F0012102)
+
+`wp_layout_probe` creates document/default/section column and paragraph-tab
+archives independently of the web model. `Output/layout-report.json` retains
+49 primary cases (four column variants and 45 alignment/leader combinations),
+named-style/direct-format cascade/reset observations and ten HTML-import
+counterexamples. Genuine 4WP archive-import probes also confirmed inline
+tab overrides before model implementation. The full gate compares independent
+`wp_layout_apply` mutations against actual model/browser exports, native
+effective getters and exact native reexports, not merely ZIP readability.
+
+- Native document defaults use `div.section0 { column-count:2;column-gap:18pt }`;
+  numbered sections override each independently. Native reset removes only
+  the count/gap overrides. Existing `column-rule-*` declarations survive.
+  Factory values are one column and `12pt`. Native supports counts through 20.
+  The editor additionally requires gaps to leave positive usable text width
+  in every affected section; native accepts gaps that produce unusable layout.
+- Paragraph `-d4-tab-stop-offset`, `-d4-tab-stop-type` and
+  `-d4-tab-stop-leading` are parallel arrays. The **last** entry describes
+  default repeating tabs. For example `36pt 72pt 18pt`, `left right center`,
+  `'' '.' '_'` means absolute left/right stops at 36/72 pt, then an 18 pt
+  center-aligned repeating interval with underscore leaders.
+- Native types are left (`0`), right (`1`), center (`2`), decimal (`3`) and
+  bar (`4`), for both absolute and default tabs. No leader, dot, dash and
+  underscore survive the supported setter/import/export/reopen matrix.
+  Other single characters can work (Japanese/non-BMP examples are retained),
+  but multi-character leading strings are truncated. Quote/backslash leaders
+  expose native parsing/reexport losses; these are not supported editable
+  leaders and are not represented as a successful native roundtrip matrix.
+  Their editor no-op exports are separately checked for byte identity.
+- Native tab reset is **not style inheritance reset**. Resetting tabs/defaults
+  on a paragraph with a tabbed named style materializes factory values:
+  no absolute stops, a `1.25cm` left interval, no leader. A different paragraph
+  without that named style can instead lose its generated override entirely.
+  The editor writes the effective factory group, leaving the named style and
+  unrelated paragraph declarations untouched. Removing one stop preserves
+  the other stops and the default interval/type/leader, including fractional
+  precision and different settings across selected paragraphs.
+- Native defaults applied at document level can materialize on paragraphs
+  rather than becoming an inheritable body CSS rule. Supported native exports
+  use named `p.Name,li.Name` rules, generated `_pN` direct-format rules and/or
+  inline overrides. Partial offset-only formatting retains style-supplied
+  type/leading arrays when lengths agree. The editor protects ambiguous scopes,
+  malformed arrays and unverified style combinations instead of flattening them.
+- U+0009 remains a real UTF-16 text character. Browser entry uses registered
+  native splices and existing table/formula/bookmark guards; formatting does
+  not change those offsets. Independent native cases include inline images,
+  table-cell tabs, Unicode, formulas and hidden headers.
+
+The browser balances columns per section on its continuous surface and uses
+the default tab interval as approximate CSS spacing. It does **not** implement
+absolute tab alignment, bar/decimal alignment, leaders, native font metrics,
+automatic page flow or printing.
 
 Headers and footers follow the body as
 `<div class="section1Header|section3FirstHeader|section1LeftHeader|…Footer" style="visibility: hidden; height: 0">`.

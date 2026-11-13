@@ -7,6 +7,7 @@ import { LocalHistory } from './history.js';
 import { readImage } from './image.js';
 import { pageUnits, paperPresets, pageFields, pageDisplay, pagePoints, pagePaperSize } from './page-setup.js';
 import { paragraphBreak } from './sections.js';
+import { tabTypes, tabLeaders, defaultTab } from './flow-settings.js';
 
 let locale = detectLanguage();
 let theme = 'system';
@@ -14,6 +15,12 @@ let pageUnit = 'mm';
 let pageDraft = null;
 let pageChanges = {};
 let pageTarget = 0;
+let columnDraft = null;
+let columnChanges = {};
+let tabDraft = null;
+let tabDefaultDraft = null;
+let tabDefaultChanges = {};
+let tabOriginalPosition = null;
 try {
   const savedLanguage = localStorage.getItem('4wp-language');
   if (savedLanguage in messages) locale = savedLanguage;
@@ -91,6 +98,8 @@ document.querySelector('#app').innerHTML = `
         <button id="find-toggle" data-i18n="find" aria-expanded="false" aria-controls="find-panel"></button>
         <button id="bookmarks-toggle" data-i18n="bookmarks" aria-expanded="false" aria-controls="bookmarks-panel"></button>
         <button id="page-toggle" data-i18n="pageSetup" aria-expanded="false" aria-controls="page-panel"></button>
+        <button id="tabs-toggle" data-i18n="tabsSetup" aria-expanded="false" aria-controls="tabs-panel"></button>
+        <button id="insert-tab" data-i18n="insertTab"></button>
       </div>
       <details class="editing-tools"><summary data-i18n="moreTools"></summary><div class="tool-groups">
         <label><span data-i18n="spacing"></span><select id="spacing"><option value="0">0 pt</option><option value="6">6 pt</option><option value="12">12 pt</option><option value="18">18 pt</option><option value="24">24 pt</option></select></label>
@@ -160,6 +169,14 @@ document.querySelector('#app').innerHTML = `
           <p><span data-i18n="pageNativeSize"></span>: <output id="page-native-size" aria-live="polite"></output></p>
           <button id="page-apply" type="submit" data-i18n="pageApply"></button>
         </form>
+        <form id="columns-form" novalidate aria-describedby="flow-preview columns-protection">
+          <h3 data-i18n="columnsSetup"></h3><p id="columns-protection" role="status"></p>
+          <label id="column-inherit-count-label"><input id="column-inherit-count" type="checkbox"><span data-i18n="columnInheritCount"></span></label>
+          <label><span data-i18n="columnCount"></span><input id="column-count" type="number" min="1" max="20" step="1"></label>
+          <label id="column-inherit-gap-label"><input id="column-inherit-gap" type="checkbox"><span data-i18n="columnInheritGap"></span></label>
+          <label><span data-i18n="columnGap"></span><input id="column-gap" type="number" min="0" step="any"><span class="page-unit" aria-hidden="true"></span></label>
+          <button id="columns-apply" type="submit" data-i18n="pageApply"></button>
+        </form>
         <p data-i18n="breakHelp"></p>
         <div class="section-controls">
           <label><span data-i18n="breakInsert"></span><select id="break-kind">
@@ -168,7 +185,28 @@ document.querySelector('#app').innerHTML = `
           <label><span data-i18n="breakChoose"></span><select id="break-list"></select></label><button id="break-remove" data-i18n="breakRemove"></button>
         </div>
         <p data-i18n="sectionPreview"></p>
+        <p id="flow-preview" data-i18n="flowPreview"></p>
         <button id="page-close" data-i18n="close"></button>
+      </section>
+      <section id="tabs-panel" class="tool-panel tabs-panel" aria-labelledby="tabs-heading" hidden>
+        <h3 id="tabs-heading" data-i18n="tabsSetup"></h3><p data-i18n="tabsHelp"></p>
+        <p id="tabs-status" role="status"></p><p data-i18n="flowPreview"></p>
+        <label><span data-i18n="pageUnits"></span><select id="tab-units"><option>mm</option><option>cm</option><option>in</option><option>pt</option></select></label>
+        <form id="tab-stop-form" novalidate>
+          <label><span data-i18n="tabStop"></span><select id="tab-stop-list"></select></label>
+          <label><span data-i18n="tabPosition"></span><input id="tab-position" type="number" min="0" step="any"><span class="tab-unit" aria-hidden="true"></span></label>
+          <label><span data-i18n="tabType"></span><select id="tab-type">${tabTypes.map(type => `<option value="${type}" data-i18n="tab${type[0].toUpperCase() + type.slice(1)}"></option>`).join('')}</select></label>
+          <label><span data-i18n="tabLeader"></span><select id="tab-leader">${tabLeaders.map((leader, index) => `<option value="${leader}" ${index ? '' : 'data-i18n="tabNone"'}>${leader}</option>`).join('')}</select></label>
+          <button id="tab-stop-apply" type="submit" data-i18n="tabSet"></button>
+          <button id="tab-stop-remove" type="button" data-i18n="tabRemove"></button>
+        </form>
+        <form id="tab-default-form" novalidate>
+          <label><span data-i18n="tabInterval"></span><input id="tab-interval" type="number" min="0" step="any"><span class="tab-unit" aria-hidden="true"></span></label>
+          <label><span data-i18n="tabType"></span><select id="tab-default-type">${tabTypes.map(type => `<option value="${type}" data-i18n="tab${type[0].toUpperCase() + type.slice(1)}"></option>`).join('')}</select></label>
+          <label><span data-i18n="tabLeader"></span><select id="tab-default-leader">${tabLeaders.map((leader, index) => `<option value="${leader}" ${index ? '' : 'data-i18n="tabNone"'}>${leader}</option>`).join('')}</select></label>
+          <button id="tab-default-apply" type="submit" data-i18n="tabDefaultApply"></button>
+        </form>
+        <button id="tab-reset" data-i18n="tabReset"></button><button id="tabs-close" data-i18n="close"></button>
       </section>
       <p id="recovery-notice" class="notice" data-i18n="recovered" hidden></p>
       <div id="error" class="notice error" role="alert" hidden><strong data-i18n="errorTitle"></strong><p id="error-message"></p><button id="dismiss-error" data-i18n="close"></button></div>
@@ -224,6 +262,7 @@ function updateStatus() {
   $('break-insert').disabled = model.readOnly || !selection;
   $('break-remove').disabled = model.readOnly || !$('break-list').options.length;
   $('paragraph').disabled = model.readOnly;
+  $('insert-tab').disabled = !editable || !selection;
   $('insert-table').disabled = model.readOnly || Boolean(sourceBlock && sourceBlock.parentElement.localName !== 'body');
   $('insert-image').disabled = model.readOnly;
   const cell = active !== null && $('paper').querySelector(`[data-run="${active}"]`)?.closest('[data-cell]');
@@ -342,6 +381,7 @@ function render(caret = null) {
   refreshFindCount();
   renderBookmarks();
   renderPageSetup();
+  renderTabs();
 }
 
 function localize() {
@@ -519,7 +559,12 @@ function captureSelection(inputCaret = false) {
     if (!inputCaret && before && JSON.stringify(before) !== JSON.stringify(after)) model.endGroup();
   }
 }
-document.addEventListener('selectionchange', () => { captureSelection(); updateStatus(); });
+document.addEventListener('selectionchange', () => {
+  const before = JSON.stringify(selection);
+  captureSelection();
+  updateStatus();
+  if (before !== JSON.stringify(selection)) renderTabs();
+});
 
 $('paper').addEventListener('focusin', event => {
   if (event.target.dataset.run !== undefined) {
@@ -970,6 +1015,7 @@ function renderPageSetup() {
   }
   pageInheritance(reason);
   pageInputs();
+  renderColumns();
   const breaks = model.blocks.flatMap((block, index) => {
     if (block.localName !== 'p' || block.parentElement.localName !== 'body') return [];
     try {
@@ -1029,16 +1075,7 @@ $('page-panel').addEventListener('keydown', event => {
   if (event.key === 'Escape') { event.preventDefault(); closePageSetup(); }
 });
 $('page-units').onchange = event => {
-  // Invalid in-progress fields cannot be converted without losing the user's input.
-  try {
-    for (const field of pageFields) pagePoints(pageDraft[field]);
-    pageUnit = event.target.value;
-    remember();
-    pageInputs();
-  } catch (error) {
-    $('page-units').value = pageUnit;
-    showError(error);
-  }
+  changeUnits(event.target.value);
 };
 for (const field of pageFields) $('page-' + field).oninput = event => {
   pageChanges[field] = pageDraft[field] = `${event.target.value}${pageUnit}`;
@@ -1065,6 +1102,155 @@ $('page-form').onsubmit = event => {
   else perform('pageSetup', () => model.setPageSetup(pageChanges));
   $('page-apply').focus();
 };
+
+function columnInputs() {
+  if (!columnDraft) return;
+  $('column-count').value = columnDraft.count;
+  $('column-gap').value = pageDisplay(columnDraft.gap, pageUnit);
+}
+function renderColumns() {
+  const setup = model.columnSetup(pageTarget);
+  columnDraft = { ...setup.settings };
+  columnChanges = {};
+  $('columns-protection').textContent = setup.reason ? t(setup.reason) : '';
+  for (const control of $('columns-form').querySelectorAll('input,button')) control.disabled = Boolean(setup.reason);
+  for (const field of ['count', 'gap']) {
+    $('column-inherit-' + field + '-label').hidden = !pageTarget;
+    $('column-inherit-' + field).checked = pageTarget > 0 && !Object.hasOwn(setup.overrides, field);
+    $('column-' + field).disabled ||= $('column-inherit-' + field).checked;
+  }
+  columnInputs();
+}
+for (const field of ['count', 'gap']) {
+  $('column-inherit-' + field).onchange = event => {
+    columnChanges[field] = event.target.checked ? null : columnDraft[field];
+    if (event.target.checked) columnDraft[field] = model.columnSetup().settings[field];
+    $('column-' + field).disabled = event.target.checked;
+    columnInputs();
+  };
+  $('column-' + field).oninput = event => {
+    columnChanges[field] = columnDraft[field] = field === 'count' && event.target.value !== '' ? Number(event.target.value) : field === 'count' ? NaN : `${event.target.value}${pageUnit}`;
+  };
+}
+$('columns-form').onsubmit = event => {
+  event.preventDefault();
+  perform('columnsSetup', () => model.setColumns(pageTarget, columnChanges));
+  $('columns-apply').focus();
+};
+
+function selectedTabSettings() {
+  captureSelection();
+  if (protectedSelection) throw new DocumentError('protected');
+  if (!selection) throw new DocumentError('selection');
+  return model.tabBlocks(selection).map(block => model.paragraphTabs(block));
+}
+function tabInputs() {
+  $('tab-units').value = pageUnit;
+  for (const unit of document.querySelectorAll('.tab-unit')) unit.textContent = pageUnit;
+  if ($('tabs-panel').hidden || !tabDraft || !tabDefaultDraft) return;
+  $('tab-position').value = pageDisplay(tabDraft.position, pageUnit);
+  $('tab-type').value = tabDraft.type;
+  $('tab-leader').value = tabDraft.leader;
+  $('tab-interval').value = pageDisplay(tabDefaultDraft.position, pageUnit);
+  $('tab-default-type').value = tabDefaultDraft.type;
+  $('tab-default-leader').value = tabDefaultDraft.leader;
+}
+function chooseTabStop() {
+  const settings = selectedTabSettings();
+  const position = $('tab-stop-list').value;
+  tabOriginalPosition = position === 'new' ? null : Number(position);
+  const stops = settings.flatMap(item => item.stops);
+  tabDraft = { ...(stops.find(stop => pagePoints(stop.position) === tabOriginalPosition) || { ...defaultTab, position: '36pt' }) };
+  $('tab-stop-remove').disabled = tabOriginalPosition === null;
+  tabInputs();
+}
+function renderTabs() {
+  if ($('tabs-panel').hidden) return;
+  let settings;
+  let reason;
+  try { settings = selectedTabSettings(); if (!settings.length) throw new DocumentError('selection'); }
+  catch (error) {
+    if (!(error instanceof DocumentError)) throw error;
+    reason = error.code;
+  }
+  for (const control of $('tabs-panel').querySelectorAll('input,select,button:not(#tabs-close)')) control.disabled = Boolean(reason);
+  $('tabs-status').textContent = reason ? t(reason) : `${settings.length} · ${t('tabsSelected')}${settings.some(item => JSON.stringify(item) !== JSON.stringify(settings[0])) ? ` · ${t('mixed')}` : ''}`;
+  if (reason) { tabDraft = null; tabDefaultDraft = null; return; }
+  const positions = [...new Set(settings.flatMap(item => item.stops.map(stop => pagePoints(stop.position))))].sort((a, b) => a - b);
+  $('tab-stop-list').replaceChildren(new Option(t('tabNew'), 'new'), ...positions.map(position =>
+    new Option(`${pageDisplay(`${position}pt`, pageUnit)} ${pageUnit}`, String(position))));
+  tabDefaultDraft = { ...settings[0].default };
+  tabDefaultChanges = {};
+  chooseTabStop();
+}
+function tabPerform(operation) {
+  const bookmark = model.selection;
+  perform('tabsSetup', () => { operation(); return bookmark ? { selection: bookmark } : null; });
+}
+$('tabs-toggle').onclick = () => {
+  captureSelection();
+  togglePanel('tabs-toggle', 'tabs-panel');
+  if (!$('tabs-panel').hidden) { renderTabs(); $('tabs-close').focus(); }
+};
+function closeTabs() {
+  $('tabs-panel').hidden = true;
+  $('tabs-toggle').setAttribute('aria-expanded', 'false');
+  $('tabs-toggle').focus();
+}
+$('tabs-close').onclick = closeTabs;
+$('tabs-panel').addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); closeTabs(); }
+});
+$('tab-stop-list').onchange = () => { try { chooseTabStop(); } catch (error) { showError(error); } };
+$('tab-position').oninput = event => { tabDraft.position = `${event.target.value}${pageUnit}`; };
+$('tab-type').onchange = event => { tabDraft.type = event.target.value; };
+$('tab-leader').onchange = event => { tabDraft.leader = event.target.value; };
+$('tab-interval').oninput = event => { tabDefaultChanges.position = tabDefaultDraft.position = `${event.target.value}${pageUnit}`; };
+$('tab-default-type').onchange = event => { tabDefaultChanges.type = tabDefaultDraft.type = event.target.value; };
+$('tab-default-leader').onchange = event => { tabDefaultChanges.leader = tabDefaultDraft.leader = event.target.value; };
+function changeUnits(unit) {
+  try {
+    for (const field of pageFields) pagePoints(pageDraft[field]);
+    if (columnDraft) pagePoints(columnDraft.gap);
+    if (!$('tabs-panel').hidden && tabDraft && tabDefaultDraft) {
+      pagePoints(tabDraft.position);
+      pagePoints(tabDefaultDraft.position);
+    }
+    pageUnit = unit;
+    remember();
+    tabInputs();
+    pageInputs();
+    columnInputs();
+  } catch (error) {
+    $('page-units').value = $('tab-units').value = pageUnit;
+    showError(error);
+  }
+}
+$('tab-units').onchange = event => changeUnits(event.target.value);
+$('tab-stop-form').onsubmit = event => {
+  event.preventDefault();
+  const stop = { ...tabDraft };
+  const original = tabOriginalPosition;
+  tabPerform(() => model.setParagraphTabs(currentSelection(), settings => {
+    const position = pagePoints(stop.position);
+    if (original !== position && settings.stops.some(item => pagePoints(item.position) === position)) throw new DocumentError('tabsDuplicate');
+    settings.stops = settings.stops.filter(item => pagePoints(item.position) !== original && pagePoints(item.position) !== position);
+    settings.stops.push(stop);
+    settings.stops.sort((a, b) => pagePoints(a.position) - pagePoints(b.position));
+    return settings;
+  }));
+};
+$('tab-stop-remove').onclick = () => {
+  const position = tabOriginalPosition;
+  tabPerform(() => model.setParagraphTabs(currentSelection(), settings => ({ ...settings, stops: settings.stops.filter(stop => pagePoints(stop.position) !== position) })));
+};
+$('tab-default-form').onsubmit = event => {
+  event.preventDefault();
+  const changes = { ...tabDefaultChanges };
+  tabPerform(() => model.setParagraphTabs(currentSelection(), settings => ({ ...settings, default: { ...settings.default, ...changes } })));
+};
+$('tab-reset').onclick = () => tabPerform(() => model.resetParagraphTabs(currentSelection()));
+$('insert-tab').onclick = () => perform('typing', () => model.replaceText(currentSelection(), '\t'));
 $('find-toggle').onclick = () => { togglePanel('find-toggle', 'find-panel'); if (!$('find-panel').hidden) $('find-query').focus(); };
 $('history-toggle').onclick = () => { togglePanel('history-toggle', 'history-panel'); renderHistory(); };
 $('bookmarks-toggle').onclick = () => {
