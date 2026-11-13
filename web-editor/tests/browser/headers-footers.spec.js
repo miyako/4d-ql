@@ -16,7 +16,8 @@ async function download(page) {
   await page.locator('#download').click();
   const bytes = readFileSync(await (await pending).path());
   const archive = unzipSync(bytes);
-  return { bytes, archive, xml: strFromU8(archive['Document.html']).replace(/<meta name="datetimeModified"[^>]*\/>/g, '') };
+  return { bytes, archive, xml: strFromU8(Object.entries(archive).find(([name]) => /\.html$/i.test(name))[1])
+    .replace(/<meta name="datetimeModified"[^>]*\/>/g, '') };
 }
 test('header edits, cross-run formatting, undo/reload and scope switches preserve body bookmarks and nonactive areas', async ({ page }) => {
   await open(page, 'AB<span style="-d4-ref:\'1+1\'">CACHED</span>CD');
@@ -156,5 +157,84 @@ for (const locale of ['en', 'ja', 'fr', 'de', 'es', 'it']) {
     }
     await page.locator('#editing-scope').selectOption('section1FirstHeader');
     await expect(page.locator('#scope-state')).toContainText(messages[locale].headerFirst);
+    await expect(page.locator('#header-facing')).toHaveText(messages[locale].headerFacing);
+    await page.locator('.header-position summary').click();
+    await expect(page.locator('#header-position-state')).toHaveText(messages[locale].headerPositionProtected);
+    expect(await page.locator('.scope-panel').evaluate(panel => panel.scrollWidth <= panel.clientWidth)).toBe(true);
   });
 }
+
+test('paired variant deletion requires confirmation, preserves defaults and recovers Undo/Redo downloads', async ({ page }) => {
+  let accept = false;
+  const confirmations = [];
+  page.on('dialog', async dialog => {
+    confirmations.push(dialog.message());
+    if (accept) await dialog.accept(); else await dialog.dismiss();
+  });
+  await page.goto('/');
+  await page.locator('#file').setInputFiles(new URL('../fixtures/headers/variant-both-original.4wp', import.meta.url).pathname);
+  const original = await download(page);
+  await page.locator('#header-facing').click();
+  await expect(page.locator('#header-facing')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#editing-scope option[value="section1LeftFooter"]')).toHaveCount(1);
+  await page.locator('#editing-scope').selectOption('section1LeftHeader');
+  await page.locator('#paper [contenteditable]').fill('UNIQUE LEFT');
+  const edited = await download(page);
+  await page.locator('#history-toggle').click();
+  await page.locator('#version-name').fill('Variant original');
+  await page.locator('#save-version').click();
+  await expect(page.locator('#draft-state')).toHaveText(messages.en.draftSaved);
+  await page.locator('#header-facing').click();
+  expect(confirmations).toEqual([messages.en.headerVariantRemove]);
+  expect((await download(page)).xml).toBe(edited.xml);
+  accept = true;
+  await page.locator('#header-facing').click();
+  await expect(page.locator('#editing-scope')).toHaveValue('body');
+  expect((await download(page)).xml).not.toContain('UNIQUE LEFT');
+  await page.locator('#undo').click();
+  expect((await download(page)).xml).toBe(edited.xml);
+  await expect(page.locator('#draft-state')).toHaveText(messages.en.draftSaved);
+  await page.reload();
+  await page.locator('#redo').click();
+  await expect(page.locator('#header-facing')).toHaveAttribute('aria-pressed', 'false');
+  await page.locator('#header-facing').click();
+  const recreated = await download(page);
+  expect(recreated.xml).not.toContain('UNIQUE LEFT');
+  expect(recreated.xml).toContain('HEADER 😀 日é');
+  for (const [name, bytes] of Object.entries(original.archive)) if (!/\.html$/i.test(name)) expect(recreated.archive[name]).toEqual(bytes);
+  await page.locator('#history-toggle').click();
+  await page.locator('#version-list li').filter({ hasText: 'Variant original' }).getByRole('button', { name: 'Restore', exact: true }).click();
+  expect((await download(page)).xml).toBe(edited.xml);
+  await expect(page.locator('#editing-scope')).toHaveValue('body');
+  await page.locator('#undo').click();
+  expect((await download(page)).xml).toBe(recreated.xml);
+});
+
+test('native positioning preserves precision across unit changes and recovery, rejecting invalid values explicitly', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#file').setInputFiles(new URL('../fixtures/headers/variant-geometry-original.4wp', import.meta.url).pathname);
+  await page.locator('#editing-scope').selectOption('section1Header');
+  await page.locator('.header-position summary').click();
+  const before = await download(page);
+  for (const unit of ['pt', 'cm', 'in', 'mm']) await page.locator('#header-units').selectOption(unit);
+  await page.locator('#header-position-form button').click();
+  expect((await download(page)).bytes).toEqual(before.bytes);
+  await page.locator('#header-units').selectOption('pt');
+  await page.locator('#header-right').fill('11.25');
+  await page.locator('#header-position-form button').click();
+  const changed = await download(page);
+  expect(changed.xml).toContain('12.345mm 11.25pt 14pt 50pt');
+  await page.locator('#header-left').fill('-1');
+  await page.locator('#header-position-form button').click();
+  await expect(page.locator('#error')).toContainText(messages.en.headerPositionInvalid);
+  expect((await download(page)).xml).toBe(changed.xml);
+  await expect(page.locator('#draft-state')).toHaveText(messages.en.draftSaved);
+  await page.reload();
+  await expect(page.locator('#editing-scope')).toHaveValue('section1Header');
+  expect((await download(page)).xml).toBe(changed.xml);
+  await page.locator('#undo').click();
+  await expect(page.locator('#editing-scope')).toHaveValue('section1Header');
+  expect((await download(page)).xml).toBe(before.xml);
+  await page.locator('#redo').click();
+  expect((await download(page)).xml).toBe(changed.xml);
+});

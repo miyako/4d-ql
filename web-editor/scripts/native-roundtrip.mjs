@@ -14,7 +14,7 @@ import { preparePageCases, verifyPageCase } from './native-page-cases.mjs';
 import { prepareSectionCases, verifySectionCase } from './native-section-cases.mjs';
 import { prepareFlowCases, verifyFlowCase } from './native-flow-cases.mjs';
 import { preparePrintCases } from './native-print-cases.mjs';
-import { prepareHeaderCases, verifyHeaderCase } from './native-header-cases.mjs';
+import { prepareHeaderCases, prepareVariantCases, verifyHeaderCase } from './native-header-cases.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtures = resolve(root, '../Tests/FourDFileKitTests/Fixtures/WritePro');
@@ -88,6 +88,7 @@ async function prepare() {
       await download(`${name}-browser`, { reference: `${name}-original`, edited });
     }
     await prepareHeaderCases(directory, cases, browser, server.resolvedUrls.local[0], download);
+    await prepareVariantCases(directory, cases, browser, server.resolvedUrls.local[0], download);
     const rangeReport = JSON.parse(await readFile(resolve(directory, 'Output/range-report.json'), 'utf8'));
     for (const kind of ['split', 'lineBreak', 'richPaste', 'join']) {
       const native = rangeReport.operations.find(item => item.name === kind);

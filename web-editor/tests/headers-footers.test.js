@@ -3,11 +3,117 @@ import { WriteProDocument } from '../src/document.js';
 import { messages } from '../src/i18n.js';
 import { createPrintProjection } from '../src/printing.js';
 import { outsideArea } from '../src/headers-footers.js';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const source = (content = 'HEADER', extra = '', css = '') =>
   `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Areas</title><meta name="bookmarks" content="{&quot;body&quot;:[0,2]}"/><style>div.section0{-d4-page-margin:36pt}div.section1Header{margin:1cm 36pt 0.5cm}${css}</style></head><body><p style="-d4-section-break-after:continuous">BODY ONE</p><p>BODY TWO</p><div class="section1Header" style="visibility:hidden;height:0"><p class="Normal">${content}</p></div>${extra}</body></html>`;
 const render = model => model.render(document.createElement('article'), messages.en);
 const range = (start = 0, end = start) => ({ startRun: 0, endRun: 0, start, end });
+const native = name => WriteProDocument.open(new Uint8Array(readFileSync(resolve(`tests/fixtures/headers/variant-${name}.4wp`))));
+
+describe('native subsection controls and positioning', () => {
+  it('copies both defaults into first and paired left/right scopes, without inheriting absent section content', () => {
+    const model = native('both-original');
+    const body = model.document.querySelector('body > p').outerHTML;
+    const metadata = model.document.querySelector('meta[name="bookmarks"]').outerHTML;
+    model.setHeaderVariant(1, 'First', true);
+    model.setHeaderVariant(1, 'Right', true);
+    const expected = native('both-left');
+    expect(model.headerAreas().areas.map(area => [area.name, area.element.innerHTML]).sort())
+      .toEqual(expected.headerAreas().areas.map(area => [area.name, area.element.innerHTML]).sort());
+    model.setHeaderVariant(2, 'Left', true);
+    expect(model.headerAreas().areas.some(area => area.section === 2)).toBe(false);
+    expect(model.headerAreas().variants).toContain('section2Right');
+    expect(model.document.querySelector('body > p').outerHTML).toBe(body);
+    expect(model.document.querySelector('meta[name="bookmarks"]').outerHTML).toBe(metadata);
+  });
+
+  it('deletes both sides and both kinds, keeps defaults, and recovers paired contents through undo/redo', () => {
+    const model = native('both-left');
+    model.setScope('section1LeftHeader');
+    render(model);
+    model.editRun(0, 'NONEMPTY LEFT');
+    const before = model.serialize();
+    model.setHeaderVariant(1, 'Right', false);
+    expect(model.scope).toBe('body');
+    expect(model.headerAreas().areas.map(area => area.variant)).toEqual(['', 'First', '', 'First']);
+    const recovered = WriteProDocument.unpack(model.pack());
+    recovered.undo();
+    expect(recovered.serialize()).toBe(before);
+    recovered.undo(true);
+    expect(recovered.headerAreas().areas.some(area => area.variant === 'Left')).toBe(false);
+    recovered.setHeaderVariant(1, 'Left', true);
+    expect(recovered.document.querySelector('.section1LeftHeader').textContent).toBe('HEADER 😀 日é');
+    expect(recovered.document.querySelector('.section1RightFooter').textContent).toBe('FOOTER');
+  });
+
+  it('copies immutable formulas exactly but protects their destructive removal', () => {
+    const model = native('formula-original');
+    const formula = model.formulaElements()[0].outerHTML;
+    model.setHeaderVariant(1, 'Left', true);
+    expect(model.formulaElements().map(element => element.outerHTML)).toEqual([formula, formula, formula]);
+    const before = model.serialize();
+    expect(() => model.setHeaderVariant(1, 'Right', false)).toThrow(expect.objectContaining({ code: 'headerVariantProtected' }));
+    expect(model.serialize()).toBe(before);
+    model.setHeaderPosition({ top: '11.125pt' }, 'section1LeftHeader');
+    expect(model.formulaElements().map(element => element.outerHTML)).toEqual([formula, formula, formula]);
+  });
+
+  it('changes only the chosen native margin rule and preserves fractional values, XML and recovery scope', () => {
+    const model = native('geometry-original');
+    model.setScope('section1Header');
+    const before = model.serialize();
+    const body = model.document.querySelector('body').outerHTML;
+    model.setHeaderPosition({});
+    expect(model.undoStack).toHaveLength(0);
+    model.setHeaderPosition({ right: '11.25pt' });
+    expect(model.headerPosition().values).toEqual({ top: '12.345mm', right: '11.25pt', bottom: '14pt', left: '50pt' });
+    expect(model.document.querySelector('body').outerHTML).toBe(body);
+    model.setScope('section1Footer');
+    model.undo();
+    expect(model.scope).toBe('section1Header');
+    expect(model.serialize()).toBe(before);
+    const recovered = WriteProDocument.unpack(model.pack());
+    recovered.undo(true);
+    expect(recovered.scope).toBe('section1Header');
+    expect(recovered.headerPosition().values.right).toBe('11.25pt');
+  });
+
+  it('rejects invalid positioning without clamping, mutation or history', () => {
+    const model = native('both-original');
+    model.setScope('section1Header');
+    const before = model.serialize();
+    for (const changes of [{ top: '-1pt' }, { top: 'Infinitypt' }, { left: '600pt', right: '0pt' }, { top: '10001pt' }, { height: '12pt' }]) {
+      expect(() => model.setHeaderPosition(changes)).toThrow(expect.objectContaining({ code: 'headerPositionInvalid' }));
+      expect(model.serialize()).toBe(before);
+    }
+    expect(model.undoStack).toHaveLength(0);
+  });
+
+  it('retains and protects unknown subsection declarations instead of deleting them', () => {
+    const model = new WriteProDocument(source('DEFAULT', '<div class="section1FirstHeader"><p>FIRST</p></div>',
+      'div.section1First{white-space:normal;-d4-unknown:keep}'));
+    const before = model.serialize();
+    expect(() => model.setHeaderVariant(1, 'First', false)).toThrow(expect.objectContaining({ code: 'headerVariantProtected' }));
+    expect(model.serialize()).toBe(before);
+    for (const css of ['div{margin:10pt}', 'div.section1Header{margin-left:10pt}', '@media print{div.section1Header{margin:10pt}}']) {
+      const protectedModel = new WriteProDocument(source('DEFAULT', '', css));
+      expect(protectedModel.headerPosition('section1Header').reason).toBe('headerPositionProtected');
+    }
+  });
+
+  it('protects incomplete facing associations even when the missing side has no stored content', () => {
+    const model = new WriteProDocument(source('DEFAULT', '', 'div.section1Left{white-space:normal}'));
+    expect(model.headerAreas().reason).toBe('headerAssociation');
+    expect(() => model.setHeaderVariant(1, 'Left', false)).toThrow();
+    const orphan = new WriteProDocument(source('DEFAULT', '',
+      'div.section1First{white-space:normal}div.section1FirstFooter{margin:1cm}'));
+    const before = orphan.serialize();
+    expect(() => orphan.setHeaderVariant(1, 'First', false)).toThrow(expect.objectContaining({ code: 'headerAssociation' }));
+    expect(orphan.serialize()).toBe(before);
+  });
+});
 
 describe('isolated native header/footer scopes', () => {
   it('edits and formats only the selected area with body bookmarks protected, then restores history and recovery scope', () => {
