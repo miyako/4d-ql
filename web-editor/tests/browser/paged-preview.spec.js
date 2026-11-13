@@ -5,6 +5,7 @@ import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { messages } from '../../src/i18n.js';
 
 const geometry = 'div.section0{-d4-page-width:300pt;-d4-page-height:360pt;-d4-page-margin:60pt 30pt}';
+const localPNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAASklEQVR4nO3OMQ0AIBBD0VPCjCtM4gBhYOA6kg79Scef9NU9s91Yu93vvgABAhQHch2rHhAgQHkg17HqAQEClAdyHaseECBAcaAH191RiEIeQFYAAAAASUVORK5CYII=';
 const xml = (style, body) => `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Paged evidence</title><style>p{font:12pt Arial;line-height:18pt;margin:0;white-space:pre-wrap}${geometry}${style}</style></head><body>${body}</body></html>`;
 async function open(page, style = '', body = '<p>BODY</p>') {
   await page.goto('/');
@@ -44,6 +45,127 @@ function areas(section = 1) {
   return ['', 'First', 'Left', 'Right'].flatMap(variant => ['Header', 'Footer'].map(kind =>
     `<div class="section${section}${variant}${kind}" style="visibility:hidden;height:0"><p>S${section}${variant || 'Default'}${kind}</p></div>`)).join('');
 }
+
+test('compatible continuous seams share measured physical pages and retain source identities and print membership', async ({ page }, testInfo) => {
+  const first = Array.from({ length: 10 }, (_, i) => `<p${i === 9 ? ' style="-d4-section-break-after:continuous"' : ''}>SEAM1TOKEN${i}</p>`).join('');
+  const second = Array.from({ length: 6 }, (_, i) => `<p${i === 5 ? ' style="-d4-section-break-after:continuous"' : ''}>SEAM2TOKEN${i}</p>`).join('');
+  await open(page, "div.section1{-d4-section-name:'First'}div.section2{-d4-section-name:'Second';-d4-page-margin:60pt 30pt}div.section3{-d4-section-name:'Third'}",
+    first + second + '<p>LAST</p>');
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets).toHaveCount(2);
+  const membership = await sheets.evaluateAll(sheets => sheets.map(sheet => ({
+    owner: sheet.dataset.section, sections: sheet.dataset.sections,
+    text: [...sheet.querySelectorAll('.page-body p')].map(paragraph => paragraph.textContent),
+    identities: [...sheet.querySelectorAll('.page-body p')].map(paragraph => paragraph.dataset.section),
+  })));
+  expect(membership.map(sheet => [sheet.owner, sheet.sections])).toEqual([['1', '1 2'], ['2', '2 3']]);
+  expect(membership[0].identities).toEqual([...Array(10).fill('1'), ...Array(3).fill('2')]);
+  expect(membership[1].identities).toEqual(['2', '2', '2', '3']);
+  expect(membership.flatMap(sheet => sheet.text)).toEqual([
+    ...Array.from({ length: 10 }, (_, i) => `SEAM1TOKEN${i}`), ...Array.from({ length: 6 }, (_, i) => `SEAM2TOKEN${i}`), 'LAST',
+  ]);
+  expect((await pdf(page, testInfo, 'continuous-seams')).map(sheet => sheet.words)).toEqual(membership.map(sheet => sheet.text));
+  await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
+  await page.locator('#settings-toggle').click();
+  await page.locator('#zoom').selectOption('2');
+  await page.locator('#theme').selectOption('dark');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect((await pdf(page, testInfo, 'continuous-seams-mobile')).map(sheet => sheet.words)).toEqual(membership.map(sheet => sheet.text));
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('new-page sections after compatible seams keep section-first areas and physical parity', async ({ page }, testInfo) => {
+  await open(page, variants(3),
+    '<p style="-d4-section-break-after:continuous">FIRST</p><p style="page-break-after:always">SECOND</p><p style="page-break-after:always;-d4-section-break-after:always">NEXT</p><p style="page-break-after:always">THIRD</p><p>FOURTH</p>' + areas(3));
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets).toHaveCount(4);
+  expect(await sheets.evaluateAll(sheets => sheets.map(sheet => [sheet.dataset.page, sheet.dataset.section, sheet.dataset.sections,
+    [...sheet.querySelectorAll('.page-area')].map(area => area.dataset.area)])))
+    .toEqual([['1', '1', '1 2', []], ['2', '2', '2', []],
+      ['3', '3', '3', ['section3FirstHeader', 'section3FirstFooter']],
+      ['4', '3', '3', ['section3LeftHeader', 'section3LeftFooter']]]);
+  const output = await pdf(page, testInfo, 'continuous-newpage');
+  expect(output.slice(0, 4).map(sheet => sheet.words.filter(word => /^(FIRST|SECOND|NEXT|THIRD|FOURTH)$/.test(word))))
+    .toEqual([['FIRST', 'SECOND'], ['NEXT'], ['THIRD'], ['FOURTH']]);
+});
+
+test('admitted lists, image, inert formula and rectangular table use residual capacity across a compatible seam', async ({ page }, testInfo) => {
+  const rows = Array.from({ length: 20 }, (_, i) => `<tr><td class="narrow"><p>ROW${i}</p></td><td class="wide"><p>VALUE${i}</p></td></tr>`).join('');
+  await open(page, 'table{border-collapse:collapse;width:180pt}td{padding:2pt;border:1pt solid #234567}td.narrow{width:60pt}td.wide{width:120pt}tr.header{-d4-header:true}',
+    `<p>START</p><ol><li style="margin-left:18pt">LISTONE</li><li style="margin-left:18pt">LISTTWO</li></ol><p>LEFT<img src="${localPNG}" style="width:36pt;height:30pt"/>RIGHT</p><p style="-d4-section-break-after:continuous"><span style="-d4-ref:'1+1'">SAVED</span></p><p>BEFORE</p><table><tr class="header"><td class="narrow"><p>HEADA</p></td><td class="wide"><p>HEADB</p></td></tr>${rows}</table><p>AFTER</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  const bodies = sheets.locator('.page-body');
+  await expect(sheets.first()).toHaveAttribute('data-sections', '1 2');
+  await expect(sheets.first().locator('table')).toHaveCount(1);
+  expect(await sheets.count()).toBeGreaterThan(1);
+  const texts = await bodies.allTextContents();
+  const rowMembership = texts.map(text => text.match(/ROW\d+/g) || []);
+  expect(rowMembership[0].length).toBeGreaterThan(0);
+  expect(rowMembership[0].length).toBeLessThan(20);
+  expect(rowMembership.flat()).toEqual(Array.from({ length: 20 }, (_, i) => `ROW${i}`));
+  expect(texts.join('').match(/VALUE\d+/g)).toEqual(Array.from({ length: 20 }, (_, i) => `VALUE${i}`));
+  expect(texts.join('').match(/START|LISTONE|LISTTWO|LEFT|RIGHT|SAVED|BEFORE|AFTER/g))
+    .toEqual(['START', 'LISTONE', 'LISTTWO', 'LEFT', 'RIGHT', 'SAVED', 'BEFORE', 'AFTER']);
+  await expect(bodies.locator('.paged-list-marker')).toHaveCount(2);
+  await expect(bodies.locator('img')).toHaveCount(1);
+  await expect(bodies.locator('.formula-source')).toContainText('1+1');
+  await expect(bodies.locator('.formula-value')).toContainText('SAVED');
+  const widths = await bodies.locator('table').evaluateAll(tables => tables.map(table => [...table.rows[0].cells].map(cell =>
+    cell.getBoundingClientRect().width)));
+  expect(widths.length).toBeGreaterThan(1);
+  for (const width of widths) expect(width).toEqual(widths[0]);
+  await expect(bodies.locator('tr').filter({ hasText: 'HEADA' })).toHaveCount(widths.length);
+  expect(await bodies.evaluateAll(bodies => bodies.every(body => {
+    const bounds = body.getBoundingClientRect();
+    return [...body.querySelectorAll('p,li,.text-run,img,.preserved-object,td,th')].every(run =>
+      [...run.getClientRects()].every(rect => rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25 &&
+        rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25)) &&
+      [...body.querySelectorAll('table')].every(table => table.rows.length > 1);
+  }))).toBe(true);
+  const output = await pdf(page, testInfo, 'continuous-rich-table');
+  expect(output.map(sheet => sheet.words.filter(word => /^ROW\d+$/.test(word)))).toEqual(rowMembership);
+  const normalize = text => text.replace(/\s/g, '');
+  const ordered = words => words.map((word, i) => /^ROW\d+$/.test(word) ? [word, words[i + 1]] : null).filter(Boolean).flat();
+  expect(output.flatMap(sheet => ordered(sheet.words))).toEqual(Array.from({ length: 20 }, (_, i) => [`ROW${i}`, `VALUE${i}`]).flat());
+  expect(output.map(sheet => normalize(sheet.words.join('')))).toEqual(texts.map(normalize));
+  expect(execFileSync('pdfimages', ['-list', testInfo.outputPath('continuous-rich-table.pdf')], { encoding: 'utf8' })).toMatch(/\d+\s+\d+\s+image/);
+  await page.locator('#settings-toggle').click();
+  await page.locator('#zoom').selectOption('2');
+  await page.locator('#theme').selectOption('dark');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await pdf(page, testInfo, 'continuous-rich-mobile')).toEqual(output);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('unsupported continuous seams use localized atomic fallback without partial pages or source changes', async ({ page }, testInfo) => {
+  for (const [style, body] of [
+    ['div.section2{-d4-page-margin:40pt}', '<p>TAIL</p>'],
+    ['div.section0{column-count:2}', '<p>TAIL</p>'],
+    ['div.section2{-d4-page-orientation:landscape}', '<p>TAIL</p>'],
+    ['div.section2Header{margin:10pt}', '<p>TAIL</p><div class="section2Header" style="visibility:hidden;height:0"><p>STORED</p></div>'],
+    ['div.section2First{white-space:normal}', '<p>TAIL</p>'],
+  ]) {
+    await open(page, style, '<p style="-d4-section-break-after:continuous">RETAINED</p>' + body);
+    const before = await bytes(page);
+    await preview(page);
+    await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedContinuous);
+    await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+    await expect(page.locator('#paper')).toContainText('RETAINED');
+    expect((await pdf(page, testInfo, 'continuous-fallback')).flatMap(sheet => sheet.words).join('')).toContain('RETAINED');
+    expect(await bytes(page)).toEqual(before);
+    await page.locator('#settings-toggle').click();
+    for (const language of ['ja', 'fr', 'de', 'es', 'it']) {
+      await page.locator('#language').selectOption(language);
+      await expect(page.locator('#paged-status')).toHaveText(messages[language].pagedContinuous);
+    }
+    await page.locator('#language').selectOption('en');
+  }
+});
 
 test('equal columns exhaust vertical capacity sequentially with exact preview/print geometry and no balancing', async ({ page }, testInfo) => {
   await open(page, 'div.section0{column-count:2;column-gap:18pt}',
@@ -435,7 +557,7 @@ test('flat lists keep native indentation, mixed markers, starts and one marker p
 });
 
 test('inline images decode before measuring, move atomically and retain authored dimensions in print', async ({ page }, testInfo) => {
-  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAASklEQVR4nO3OMQ0AIBBD0VPCjCtM4gBhYOA6kg79Scef9NU9s91Yu93vvgABAhQHch2rHhAgQHkg17HqAQEClAdyHaseECBAcaAH191RiEIeQFYAAAAASUVORK5CYII=';
+  const png = localPNG;
   const image = `<img src="${png}" alt="LOCAL" style="width:90pt;height:72pt;-d4-img-display-mode:proportionalCentered"/>`;
   await open(page, '', `<p>${Array.from({ length: 15 }, (_, i) => `BEFORE${i}<br/>`).join('')}LEFT${image}RIGHT<br/>END</p>`);
   const before = await bytes(page);

@@ -9,9 +9,10 @@ const paged = process.argv[3] === '--paged';
 const expanded = process.argv[3] === '--expanded';
 const tables = process.argv[3] === '--tables';
 const columns = process.argv[3] === '--columns';
-const paginated = paged || expanded || tables || columns;
-assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded|--tables|--columns]');
-const prefix = columns ? 'columns-cancel' : tables ? 'tables-cancel' : expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
+const seams = process.argv[3] === '--seams';
+const paginated = paged || expanded || tables || columns || seams;
+assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded|--tables|--columns|--seams]');
+const prefix = seams ? 'seams-cancel' : columns ? 'columns-cancel' : tables ? 'tables-cancel' : expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
 const manifest = paginated ? JSON.parse(await readFile(resolve(directory, 'Input/cases.json'), 'utf8')) : null;
 if (paginated) {
   const files = new Set(await readdir(resolve(directory, 'Input')));
@@ -27,15 +28,15 @@ try {
   const page = await browser.newPage({ acceptDownloads: true, locale: 'en-US' });
   const cdp = await browser.newBrowserCDPSession();
   await page.goto(server.resolvedUrls.local[0]);
-  await page.locator('#file').setInputFiles(resolve(directory, columns ? 'Input/paged-column-source-mixed.4wp' : tables ? 'Input/paged-table-source-mixed.4wp' : expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
-  await expect(page.locator('#paper')).toContainText(columns ? 'COLUMNSTART' : tables ? 'TABLESTART' : expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
+  await page.locator('#file').setInputFiles(resolve(directory, seams ? 'Input/continuous-paged-source-overflow.4wp' : columns ? 'Input/paged-column-source-mixed.4wp' : tables ? 'Input/paged-table-source-mixed.4wp' : expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
+  await expect(page.locator('#paper')).toContainText(seams ? 'SEAMSTART' : columns ? 'COLUMNSTART' : tables ? 'TABLESTART' : expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
   if (paged) await page.locator('#editing-scope').selectOption('section1FirstFooter');
   if (tables || columns) await page.locator('#editing-scope').selectOption('section1FirstHeader');
   await page.locator('#paper [contenteditable]').first().evaluate(element => {
     element.focus();
     getSelection().collapse(element.firstChild, 0);
   });
-  if (paginated) await page.locator('#paper [contenteditable]').first().fill(columns ? 'WEBCOLUMN' : tables ? 'WEBTABLE' : expanded ? 'WEBEXPANDED' : 'WEBPAGED');
+  if (paginated) await page.locator('#paper [contenteditable]').first().fill(seams ? 'WEBSEAM' : columns ? 'WEBCOLUMN' : tables ? 'WEBTABLE' : expanded ? 'WEBEXPANDED' : 'WEBPAGED');
   else await page.keyboard.insertText('EDIT');
   await page.locator('#undo').click();
   await page.locator('#zoom').selectOption('1.5');
@@ -44,7 +45,7 @@ try {
   let pages;
   if (paginated) {
     await page.locator('#paged-panel > summary').click();
-    if (expanded || tables || columns) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
+    if (expanded || tables || columns || seams) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
     else await expect(page.locator('#paged-view .browser-page')).toHaveCount(6);
     pages = await page.locator('#paged-view .browser-page').count();
   }
@@ -62,11 +63,22 @@ try {
       };
     });
     const selected = getSelection();
+    const path = node => {
+      if (!node) return null;
+      const indices = [];
+      while (node !== document) {
+        indices.unshift([...node.parentNode.childNodes].indexOf(node));
+        node = node.parentNode;
+      }
+      return indices;
+    };
     return {
+      dom: document.documentElement.outerHTML,
       paper: document.querySelector('#paper').outerHTML,
       paged: document.querySelector('#paged-view').outerHTML,
       selection: { text: selected.toString(), anchor: selected.anchorNode?.parentElement?.dataset.run, offset: selected.anchorOffset,
-        focus: selected.focusNode?.parentElement?.dataset.run, focusOffset: selected.focusOffset, ranges: selected.rangeCount },
+        focus: selected.focusNode?.parentElement?.dataset.run, focusOffset: selected.focusOffset, ranges: selected.rangeCount,
+        anchorPath: path(selected.anchorNode), focusPath: path(selected.focusNode) },
       zoom: document.querySelector('#zoom').value, scope: document.querySelector('#editing-scope').value,
       state: document.querySelector('#save-state').textContent,
       undo: document.querySelector('#undo').disabled, redo: document.querySelector('#redo').disabled,
@@ -88,13 +100,24 @@ try {
     cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id, method, params }) }).catch(reject);
   });
   const results = [];
+  const exportBytes = async path => {
+    const pending = page.waitForEvent('download');
+    await page.locator('#download').click();
+    await (await pending).saveAs(path);
+    return readFile(path);
+  };
   for (const phase of ['clean-with-redo', 'dirty-with-undo']) {
     if (phase === 'dirty-with-undo') await page.locator('#redo').click();
     await expect(page.locator('#draft-state')).toHaveText('Local draft saved');
     if (paginated) await expect(page.locator('#paged-view .browser-page')).toHaveCount(pages);
+    // Dirty downloads stamp modification time; keep it identical without freezing timers.
+    await page.clock.setFixedTime(new Date());
+    const sourceBefore = await exportBytes(resolve(directory, `Output/${prefix}-${phase}-before.4wp`));
+    await expect(page.locator('#draft-state')).toHaveText('Local draft saved');
     await page.locator('#paper [contenteditable]').first().evaluate(element => {
       element.focus();
       getSelection().setBaseAndExtent(element.firstChild, 1, element.firstChild, 3);
+      document.dispatchEvent(new Event('selectionchange'));
     });
     const before = await snapshot();
     await page.evaluate(() => setTimeout(() => document.querySelector('#print-open').click(), 0));
@@ -124,18 +147,25 @@ try {
     await expect(page.locator('#print-document')).toHaveCount(0);
     await expect.poll(async () => (await cdp.send('Target.getTargets')).targetInfos.some(item => item.url === 'chrome://print/')).toBe(false);
     if (paginated) await expect(page.locator('#paged-view .browser-page')).toHaveCount(pages);
-    assert.deepEqual(await snapshot(), before, 'Real browser cancellation changed editing/history/recovery state');
+    const after = await snapshot();
+    await writeFile(resolve(directory, `Output/${prefix}-${phase}-snapshots.json`), JSON.stringify({ before, after }, null, 2));
+    assert.deepEqual(after, before, 'Real browser cancellation changed editing/history/recovery state');
     await page.screenshot({ path: resolve(directory, `Output/${prefix}-${phase}.png`) });
     if (paginated) {
-      const pending = page.waitForEvent('download');
-      await page.locator('#download').click();
-      await (await pending).saveAs(resolve(directory, `Input/${prefix}-${phase}.4wp`));
+      const sourceAfter = await exportBytes(resolve(directory, `Input/${prefix}-${phase}.4wp`));
+      assert.deepEqual(sourceAfter, sourceBefore, 'Actual print Cancel must preserve clean and dirty export bytes');
       if (columns && phase === 'clean-with-redo') assert.deepEqual(
         await readFile(resolve(directory, `Input/${prefix}-${phase}.4wp`)),
         await readFile(resolve(directory, 'Input/paged-column-source-mixed.4wp')),
         'Actual print Cancel must leave clean multi-column source bytes unchanged');
+      if (seams && phase === 'clean-with-redo') assert.deepEqual(sourceAfter,
+        await readFile(resolve(directory, 'Input/continuous-paged-source-overflow.4wp')),
+        'Actual print Cancel must leave clean continuous-seam source bytes unchanged');
+    } else {
+      assert.deepEqual(await exportBytes(resolve(directory, `Output/${prefix}-${phase}-after.4wp`)), sourceBefore);
     }
-    results.push({ phase, actualBrowserPrintPreview: true, cancelButtonClicked: true, unchangedEditorSelectionHistoryRecovery: true });
+    results.push({ phase, actualBrowserPrintPreview: true, cancelButtonClicked: true,
+      unchangedFullDOMSelectionEndpointsScopeZoomHistoryRecovery: true, identicalSourceExportBytes: true });
   }
   const pending = page.waitForEvent('download');
   await page.locator('#download').click();
@@ -144,7 +174,9 @@ try {
   if (paginated) {
     for (const [phase, stage] of [['clean-with-redo', 'original'], ['dirty-with-undo', 'edited']]) {
       const name = `${prefix}-${phase}`;
-      manifest.cases.push(columns ? { name, file: `${name}.4wp`,
+      manifest.cases.push(seams ? { name, file: `${name}.4wp`,
+        flow: { source: stage === 'original' ? 'continuous-paged-source-overflow.4wp' : 'continuous-paged-target-overflow.4wp', action: 'identity' },
+        resources: 'continuous-paged-source-overflow.4wp' } : columns ? { name, file: `${name}.4wp`,
         flow: { source: stage === 'original' ? 'paged-column-source-mixed.4wp' : 'paged-column-target-mixed.4wp', action: 'identity' },
         resources: 'paged-column-source-mixed.4wp' } : tables ? { name, file: `${name}.4wp`,
         flow: { source: stage === 'original' ? 'paged-table-source-mixed.4wp' : 'paged-table-target-mixed.4wp', action: 'identity' },

@@ -181,7 +181,7 @@ function makeInert(root) {
     if (['p', 'li'].includes(element.localName) || element.classList.contains('text-run')) element.style.whiteSpace = 'break-spaces';
     for (const attribute of [...element.attributes]) {
       if (['contenteditable', 'tabindex', 'role', 'spellcheck'].includes(attribute.name) ||
-        attribute.name.startsWith('data-') && !['data-page', 'data-section', 'data-area', 'data-column'].includes(attribute.name)) element.removeAttribute(attribute.name);
+        attribute.name.startsWith('data-') && !['data-page', 'data-section', 'data-sections', 'data-area', 'data-column'].includes(attribute.name)) element.removeAttribute(attribute.name);
     }
   }
 }
@@ -214,13 +214,13 @@ export function selectedPageArea(state, section, first, page, rightFirst, kind) 
   return state.areas.find(area => area.section === section && area.variant === variant && area.kind === kind);
 }
 
-export function pagedColumnGeometry(model, index, paper) {
+export function pagedColumnGeometry(model, index, paper, strict = false) {
   const setup = model.columnSetup(index);
   if (setup.reason) throw new DocumentError('pagedColumns');
   const { count } = setup.settings;
   const gap = pagePoints(setup.settings.gap);
   const width = (paper.width - paper.margins[1] - paper.margins[3] - gap * (count - 1)) / count;
-  if (count === 1) return { count, gap, width };
+  if (count === 1 && !strict) return { count, gap, width };
   if (count > 4 || gap > 72 || width < 72) throw new DocumentError('pagedColumns');
   const rules = new Map();
   for (const style of model.document.querySelectorAll('head style')) {
@@ -269,12 +269,37 @@ function pagedBreak(values) {
   return column === 'column' ? 'column' : kind;
 }
 
+function continuousSections(model, layout, setup, areas) {
+  for (let index = 1; index < layout.sections.length; index++) {
+    const previous = layout.sections[index - 1];
+    if (paragraphBreak(model.values(previous.elements.at(-1))) !== 'continuous') continue;
+    const section = layout.sections[index];
+    const geometries = [previous, section].map(item => ({ ...setup.geometry, ...setup.sections.get(item.index) }));
+    const papers = geometries.map(paperGeometry);
+    const columns = [previous, section].map((item, i) => pagedColumnGeometry(model, item.index, papers[i], true));
+    if (columns.some(column => column.count !== 1) || columns[0].gap !== columns[1].gap ||
+      geometries[0].orientation !== geometries[1].orientation || JSON.stringify(papers[0]) !== JSON.stringify(papers[1]) ||
+      [previous, section].some(item => areas.areas.some(area => area.section === item.index) ||
+        areas.variants.some(name => name.startsWith(`section${item.index}First`) ||
+          name.startsWith(`section${item.index}Left`) || name.startsWith(`section${item.index}Right`)) ||
+        item.elements.some(element => model.values(element)['break-after'] === 'column'))) {
+      throw new DocumentError('pagedContinuous');
+    }
+  }
+}
+
 export function pagedCapability(model) {
   const setup = model.pageSetup();
   const layout = model.sectionLayout();
   const areas = model.headerAreas();
   if (setup.reason || layout.reason || areas.reason) return 'pagedSettings';
   if (model.storedObjects().length) return 'pagedShape';
+  try {
+    continuousSections(model, layout, setup, areas);
+  } catch (error) {
+    if (!(error instanceof DocumentError) && error.name !== 'SyntaxError') throw error;
+    return 'pagedContinuous';
+  }
   try {
     firstRight(model);
     const body = model.document.querySelector('body');
@@ -292,8 +317,9 @@ export function pagedCapability(model) {
           pagedTable(model, element).rows.flatMap(row => [...row.children].flatMap(cell => [...cell.children])) : [element];
         for (const block of blocks) for (const [index, paragraph] of bodyParagraphs(block).entries()) {
           const values = model.values(paragraph);
+          const kind = pagedBreak(values);
           if (paragraph.querySelector('table,ul,ol') || ['width', 'height', 'min-height'].some(key => values[key]) ||
-            pagedBreak(values) === 'continuous' || paragraph.localName === 'li' && pagedBreak(values)) return 'pagedShape';
+            paragraph.localName === 'li' && kind) return 'pagedShape';
           if (paragraph.localName === 'li') pageListMarker({ ...model.values(block), ...values },
             Number(block.getAttribute('start') || 1) + index, block.localName);
           for (const child of paragraph.querySelectorAll('*')) {
@@ -371,6 +397,11 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
       areaContent.set(area.name, content);
     }
     let firstPaper;
+    let sheet;
+    let flow;
+    let columnIndex;
+    let flows;
+    let previous;
     for (const section of state.sections) {
       const setup = copy.sectionSetup(section.index);
       const paper = paperGeometry(setup.geometry);
@@ -379,10 +410,6 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
       const columns = pagedColumnGeometry(copy, section.index, paper);
       const pageName = `wppaged${section.index}`;
       rules.push(`@page ${pageName} { size: ${paper.width}pt ${paper.height}pt; margin: 0; }`);
-      let sheet;
-      let flow;
-      let columnIndex;
-      let flows;
       let localPage = 0;
       const newPage = () => {
         if (++pageNumber > 500) throw new DocumentError('pagedOverflow');
@@ -440,7 +467,9 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
         if (++columnIndex === columns.count) newPage();
         else flow = flows[columnIndex];
       };
-      newPage();
+      // A shared page already counts for the new section, without resetting physical numbering.
+      if (previous && paragraphBreak(copy.values(previous.elements.at(-1))) === 'continuous') localPage = 1;
+      else newPage();
       const fits = candidate => {
         const bounds = flow.getBoundingClientRect();
         const last = candidate.getBoundingClientRect();
@@ -456,6 +485,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
           const table = mappings.get(element);
           if (!table || table.localName !== 'table' ||
             table.querySelector('.preserved-object:not(.formula-object):not(.paged-image)')) throw new DocumentError('pagedTables');
+          table.dataset.section = String(section.index);
           for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(table.textContent)) {
             if (segment && ++budget.count > 100000) throw new DocumentError('pagedOverflow');
           }
@@ -533,6 +563,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
           const paragraph = mappings.get(item);
           if (!paragraph || !['p', 'li'].includes(paragraph.localName) ||
             paragraph.querySelector('.preserved-object:not(.formula-object):not(.paged-image)')) throw new DocumentError('pagedShape');
+          paragraph.dataset.section = String(section.index);
           const wrap = (content, first = true, last = true) => {
             if (item.localName === 'p') return content;
             const list = mappings.get(element).cloneNode(false);
@@ -598,6 +629,10 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
           if (kind === 'column') nextColumn();
         }
       }
+      previous = section;
+    }
+    for (const page of root.querySelectorAll('.browser-page')) {
+      page.dataset.sections = [...new Set([...page.querySelectorAll('.page-body [data-section]')].map(block => block.dataset.section))].join(' ');
     }
     const unused = state.areas.filter(area => !used.has(area.name));
     if (pageNumber + unused.length > 500) throw new DocumentError('pagedOverflow');

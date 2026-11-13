@@ -7,6 +7,7 @@ If ($compilation.success)
 	wp_expanded_paged_probe
 	wp_paged_table_probe
 	wp_paged_column_probe
+	wp_continuous_paged_probe
 Else
 	wpWebErrors.push(New object("message"; "Probe compilation failed"; "details"; $compilation.errors))
 End if

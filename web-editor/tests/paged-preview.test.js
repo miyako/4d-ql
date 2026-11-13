@@ -6,6 +6,45 @@ import { messages } from '../src/i18n.js';
 const source = (style, body) => `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Pages</title><style>${style}</style></head><body>${body}</body></html>`;
 
 describe('derived paged projection safety and area selection', () => {
+  it('admits area-free compatible single-column seams without flattening overrides, names or inheritance', () => {
+    const body = '<p style="-d4-section-break-after:continuous">A</p><p>B</p>';
+    for (const style of ['', "div.section1{-d4-section-name:'First'}div.section2{-d4-section-name:'Second'}",
+      'div.section0{-d4-page-margin:36pt}div.section2{-d4-page-margin:0.5in;column-count:1}']) {
+      const model = new WriteProDocument(source(style, body));
+      const before = model.pack();
+      const mappings = model.projection;
+      expect(pagedCapability(model)).toBeNull();
+      expect(model.sectionLayout().sections.map(section => section.index)).toEqual([1, 2]);
+      expect(model.pack()).toEqual(before);
+      expect(model.projection).toBe(mappings);
+    }
+  });
+
+  it('rejects unsupported continuous seams atomically, including empty areas and enabled but absent variants', () => {
+    const seam = '<p style="-d4-section-break-after:continuous">A</p><p>B</p>';
+    for (const [style, body] of [
+      ['div.section2{-d4-page-margin:40pt}', seam],
+      ['div.section2{-d4-page-orientation:landscape}', seam],
+      ['div.section0{-d4-page-width:480pt;-d4-page-height:480pt}div.section2{-d4-page-orientation:landscape}', seam],
+      ['div.section0{column-count:2}', seam],
+      ['div.section2{column-count:2}', seam],
+      ['div.section2{column-gap:20pt}', seam],
+      ['div.section1Header{margin:10pt}', seam + '<div class="section1Header" style="visibility:hidden;height:0"><p></p></div>'],
+      ['div.section2First{white-space:normal}', seam],
+      ['div.section1Left{white-space:normal}div.section1Right{white-space:normal}', seam],
+      ['div.section0{column-rule-style:solid}', seam],
+      ['p{direction:rtl}', seam],
+      ['p{column-span:all}', seam],
+      ['', '<p style="break-after:column">START</p>' + seam],
+    ]) {
+      const model = new WriteProDocument(source(style, body));
+      const before = model.pack();
+      expect(pagedCapability(model)).toBe('pagedContinuous');
+      expect(() => createPagedProjection(model, messages.en)).toThrow(expect.objectContaining({ code: 'pagedContinuous' }));
+      expect(model.pack()).toEqual(before);
+      expect(document.querySelector('.paged-measure')).toBeNull();
+    }
+  });
   it('admits bounded equal native columns and exact inherited gap geometry without source changes', () => {
     const paper = { width: 480, margins: [60, 36, 60, 36] };
     for (const [count, gap, width] of [[2, 18, 195], [3, 0, 136], [4, 18, 88.5], [4, 40, 72]]) {
@@ -103,7 +142,6 @@ describe('derived paged projection safety and area selection', () => {
 
   it('rejects unsupported shapes/settings without substituting partial pages', () => {
     for (const [style, body, reason] of [
-      ['', '<p style="-d4-section-break-after:continuous">A</p><p>B</p>', 'pagedShape'],
       ['', '<table><tr><td><p>CELL</p></td></tr></table>', 'pagedShape'],
       ['', '<ul><li>ITEM<ul><li>NESTED</li></ul></li></ul>', 'pagedShape'],
       ['', '<p><img src="https://invalid.example"/></p>', 'pagedShape'],

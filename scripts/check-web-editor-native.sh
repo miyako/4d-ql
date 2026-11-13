@@ -3,9 +3,15 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FOURD=${FOURD:-"/Applications/4D 21.2/4D.app/Contents/MacOS/4D"}
-DEST=${1:?Usage: bash scripts/check-web-editor-native.sh NEW_OUTPUT_DIRECTORY}
+DEST=${1:?Usage: bash scripts/check-web-editor-native.sh OUTPUT_DIRECTORY [--continuous-probe|--recheck]}
+[ "${2:-}" = "" ] || [ "$2" = "--continuous-probe" ] || [ "$2" = "--recheck" ] || { echo "Unknown native gate mode." >&2; exit 1; }
 [ -x "$FOURD" ] || { echo "Full 4D application not found; set FOURD. tool4d cannot validate Write Pro." >&2; exit 1; }
-[ ! -e "$DEST" ] || { echo "Choose a new output directory; existing evidence will not be overwritten." >&2; exit 1; }
+if [ "${2:-}" = "--recheck" ]; then
+  [ -s "$DEST/Input/cases.json" ] && [ -s "$DEST/Project/wpfixture.4DProject" ] || { echo "Recheck requires existing generated evidence." >&2; exit 1; }
+  [ ! -e "$DEST/final-native.log" ] || { echo "Final native recheck evidence already exists; it will not be overwritten." >&2; exit 1; }
+else
+  [ ! -e "$DEST" ] || { echo "Choose a new output directory; existing evidence will not be overwritten." >&2; exit 1; }
+fi
 LOCK="$HOME/.copilot/4d-ql-native-gate.lock"
 mkdir -p "$HOME/.copilot"
 mkdir "$LOCK" 2>/dev/null || { echo "Another native gate owns $LOCK. Coordinate ownership; never remove a live lock." >&2; exit 1; }
@@ -14,10 +20,12 @@ if ps -axo comm= | grep -F '/4D.app/Contents/MacOS/4D' >/dev/null; then
   echo "Full native 4D is already running. Coordinate ownership; never interrupt another process." >&2
   exit 1
 fi
-mkdir -p "$DEST/Input" "$DEST/Output"
+if [ "${2:-}" != "--recheck" ]; then
+  mkdir -p "$DEST/Input" "$DEST/Output"
+  cp -R "$ROOT/Tests/Fixtures/wpfixture/Project" "$DEST/Project"
+  cp -R "$ROOT/Tests/Fixtures/wpfixture/Resources" "$DEST/Resources"
+fi
 DEST=$(cd "$DEST" && pwd)
-cp -R "$ROOT/Tests/Fixtures/wpfixture/Project" "$DEST/Project"
-cp -R "$ROOT/Tests/Fixtures/wpfixture/Resources" "$DEST/Resources"
 run_4d() {
 python3 - "$FOURD" "$DEST" "$1" "$2" <<'PY'
 import pathlib
@@ -46,6 +54,27 @@ with (root / logfile).open("w") as log:
         raise SystemExit(f"Full 4D exited with {code}; inspect native.log. No native pass is claimed.")
 PY
 }
+if [ "${2:-}" = "--recheck" ]; then
+  run_4d wp_web_check final-native.log
+  (cd "$ROOT/web-editor" && node scripts/native-roundtrip.mjs verify "$DEST") > "$DEST/final-verify.log" 2>&1
+  cat "$DEST/final-verify.log"
+  exit 0
+fi
+if [ "${2:-}" = "--continuous-probe" ]; then
+  run_4d wp_continuous_paged_check continuous-native.log
+  python3 - "$DEST" <<'PY'
+import json
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1]) / "Output"
+errors = json.loads((root / "continuous-paged-errors.json").read_text())
+report = json.loads((root / "continuous-paged-report.json").read_text())
+if errors or report.get("version") != "F0012102" or len(report.get("cases", [])) != 14:
+    raise SystemExit("Native continuous seam probe failed: " + json.dumps(errors, ensure_ascii=False))
+PY
+  echo "Independent native continuous seam evidence retained in $DEST"
+  exit 0
+fi
 run_4d wp_media_check media-native.log
 python3 - "$DEST" <<'PY'
 import json
@@ -152,6 +181,9 @@ if tables.get("version") != "F0012102" or len(tables.get("cases", [])) != 3:
 columns = json.loads((root / "paged-column-report.json").read_text())
 if columns.get("version") != "F0012102" or len(columns.get("cases", [])) != 7:
     raise SystemExit("Missing independent paged column originals, getters and PDF references.")
+continuous = json.loads((root / "continuous-paged-report.json").read_text())
+if continuous.get("version") != "F0012102" or len(continuous.get("cases", [])) != 14:
+    raise SystemExit("Missing independent continuous section originals, getters and PDF references.")
 PY
 run_4d wp_range_check range-native.log
 [ -s "$DEST/Output/range-report.json" ] || { echo "Full 4D produced no range report; inspect $DEST/range-native.log." >&2; exit 1; }
