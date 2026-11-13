@@ -137,7 +137,14 @@ test('admitted lists, image, inert formula and rectangular table use residual ca
   await page.locator('#settings-toggle').click();
   await page.locator('#zoom').selectOption('2');
   await page.locator('#theme').selectOption('dark');
+  await page.evaluate(() => {
+    // Readiness must belong to the resize generation, not the still-visible previous projection.
+    window.richSeamResize = new Promise(resolve => window.addEventListener('resize', () => resolve(), { once: true }));
+  });
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.richSeamResize);
+  await expect(sheets).toHaveCount(output.length);
+  await expect(page.locator('#paged-status')).toHaveText(`${output.length} · ${messages.en.pagedSheet}`);
   expect(await pdf(page, testInfo, 'continuous-rich-mobile')).toEqual(output);
   expect(await bytes(page)).toEqual(before);
 });
