@@ -66,45 +66,23 @@ section name, which are computed. Pages split only at hard page and section
 breaks, so text is not reflowed onto further pages, and text wrapping around
 anchored objects is not simulated. See [format notes](docs/WRITEPRO-FORMAT.md).
 
-The separate [4WP Editor web app](web-editor/README.md) provides experimental
-browser-based `.4wp` text and formatting editing, with preservation-aware
-import/export, six UI languages and light/dark appearance. It runs independently
-of the Swift Quick Look runtime; native layout and formula evaluation are not
-provided. Selection-aware formatting, links, images, simple tables/lists,
-find/replace, undo/redo, local versions and reload recovery are included.
-Native bookmarks track supported edits; unsupported ranges and structures stay
-protected. Bookmark management and formula-aware display are available on main
-via [#40](https://github.com/miyako/4d-ql/pull/40) and
-[#41](https://github.com/miyako/4d-ql/pull/41). Scoped column insertion,
-interior cross-cell bookmark handling, merged-cell text editing and localized
-capability reasons are available on main via [#42](https://github.com/miyako/4d-ql/pull/42);
-destructive or unverified cases remain protected. Document-level page setup
-is available on main via [#43](https://github.com/miyako/4d-ql/pull/43).
-Scoped page/section breaks and section-specific names, orientation, margins
-and inheritance are available on main via [#44](https://github.com/miyako/4d-ql/pull/44).
-Section/default column count and gap, paragraph tab stops and real tab entry
-are available on main via [#47](https://github.com/miyako/4d-ql/pull/47).
-Section-sized continuous preview and local browser Print/Save-as-PDF are
-available on main via [#48](https://github.com/miyako/4d-ql/pull/48), without
-claiming exact 4D pagination. Header/footer text editing, guarded default-area
-creation/removal and a labeled print content appendix are available on main via
-[#49](https://github.com/miyako/4d-ql/pull/49). Native section-local first/left/right
-variant controls and area positioning are available on main via
-[#50](https://github.com/miyako/4d-ql/pull/50). The selected advanced images/text-box
-increment is **in progress**, not merged or deployed: bounded native codec
-projection, isolated object views and scoped box text/object geometry editing.
-Repeating browser headers, arbitrary wrapping and native pagination remain
-unscheduled proposals.
-See the editor README for the exact feature boundaries, local data
-limits and full-4D compatibility gate. The Pages demo follows `main`, not
-unmerged feature branches.
-Bookmark management is available on main via [#40](https://github.com/miyako/4d-ql/pull/40).
-Formula-aware display shows native source and
-distinguishable saved values, keeps formulas read-only and allows only
-native-verified surrounding edits; it never evaluates formulas.
-The [roadmap/status table](web-editor/README.md#roadmap-and-status) separates
-available features, this in-progress increment, approved next steps and
-unscheduled proposals.
+The separate [4WP Editor web app](web-editor/README.md)
+([live demo](https://miyako.github.io/4d-ql/)) provides experimental
+browser-based `.4wp` editing with preservation-aware import/export, six UI
+languages and light/dark appearance. It runs independently of the Swift Quick
+Look runtime. Available on `main` and deployed: selection-aware formatting,
+links, images, tables/lists, find/replace, undo/redo, local versions and reload
+recovery; native bookmark tracking and management; read-only formula-aware
+display; page setup, sections/breaks, columns and tab stops; header/footer
+editing and variants; advanced images and text boxes, including guarded object
+creation/deletion and stored placement; and a best-effort, read-only paged
+browser preview with matching browser printing (repeating headers/footers,
+paragraph fragments, flat lists, inline images, tables with table-cell lists
+and horizontal spans, columns and continuous-section pages). Unsupported
+ranges and structures stay protected. Formulas are never evaluated and exact
+4D pagination is not claimed. No increment is currently in progress; see the
+[roadmap/status table](web-editor/README.md#roadmap-and-status) for exact
+feature boundaries, local data limits and the full-4D compatibility gate.
 
 4D View Pro previews are static spreadsheet grids and require neither 4D nor
 SpreadJS at preview time. Saved formula results are displayed without executing
