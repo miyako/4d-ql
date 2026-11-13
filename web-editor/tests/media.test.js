@@ -9,6 +9,133 @@ import { messages } from '../src/i18n.js';
 const fixture = kind => WriteProDocument.open(new Uint8Array(readFileSync(`tests/fixtures/media/media-${kind}-original.4wp`)));
 const render = model => { const host = document.createElement('article'); model.render(host, messages.en); return host; };
 const selection = (start, end = start) => ({ startRun: 0, start, endRun: 0, end });
+const lifecycleFixture = stage => WriteProDocument.open(new Uint8Array(readFileSync(`tests/fixtures/media/object-paper-${stage}.4wp`)));
+
+describe('native object lifecycle and placement', () => {
+  it('creates isolated native objects without changing body, formulas, associations or nonactive XML', () => {
+    let model = lifecycleFixture('original');
+    const before = model.serialize();
+    const source = model.document.querySelector('img').getAttribute('src');
+    model.createObject('anchoredPicture', source);
+    expect(model.scope).toBe('object:img2');
+    expect(model.objectState().geometry).toEqual({ width: '48pt', height: '32pt', x: '0pt', y: '0pt' });
+    expect(model.scopeRoot.getAttribute('src')).toBe(source);
+    model.createObject('textBox', 'NEW BOX 😀 日é');
+    expect(model.scope).toBe('object:textBox2');
+    expect(model.headerReason()).toBeNull();
+    expect(model.scopeRoot.textContent).toBe('NEW BOX 😀 日é');
+    const created = model.serialize();
+    model = WriteProDocument.unpack(model.pack());
+    model.undo();
+    expect(model.scope).toBe('body');
+    model.undo();
+    expect(model.serialize()).toBe(before);
+    model.undo(true); model.undo(true);
+    expect(model.serialize()).toBe(created);
+    model.setScope('object:img2');
+    model.deleteObject();
+    expect(model.scope).toBe('body');
+    model.setScope('object:textBox2');
+    model.deleteObject();
+    const remaining = model.document.cloneNode(true);
+    const original = new DOMParser().parseFromString(before, 'application/xhtml+xml');
+    expect(remaining.querySelector('body').outerHTML).toBe(original.querySelector('body').outerHTML);
+    expect([...remaining.querySelectorAll('head style')].slice(0, -2).map(node => node.outerHTML))
+      .toEqual([...original.querySelectorAll('head style')].map(node => node.outerHTML));
+    model = WriteProDocument.unpack(model.pack());
+    model.undo();
+    expect(model.scope).toBe('object:textBox2');
+    model.undo(true);
+    expect(model.scope).toBe('body');
+    model.createObject('textBox');
+    expect(model.scope).toBe('object:textBox3');
+    expect(model.scopeRoot.querySelector('p')).not.toBeNull();
+  });
+
+  it('changes only the selected object placement, clearing class and inline alignment together', () => {
+    const model = lifecycleFixture('align');
+    model.setScope('object:img2');
+    model.scopeRoot.setAttribute('style', '/* retained native metadata */width: 48pt;-d4-anchor-h-align:right;');
+    model.refresh();
+    const before = model.serialize();
+    const outside = outsideObject(model.document, 'img2', [
+      '-d4-anchor-page', '-d4-anchor-section', '-d4-anchor-h-align', '-d4-anchor-v-align', '-d4-anchor-layout', 'z-index',
+    ]);
+    model.setObjectPlacement({ section: '2', page: 'all', hAlign: 'offset', vAlign: 'offset', layout: 'wrap-square' });
+    expect(model.scopeRoot.getAttribute('style')).toBe('/* retained native metadata */width: 48pt;');
+    expect(model.objectState().geometryReason).toBeNull();
+    expect(model.objectPlacement().values).toEqual({ section: '2', page: 'all', hAlign: 'offset', vAlign: 'offset', layout: 'wrap-square' });
+    expect(outsideObject(model.document, 'img2', [
+      '-d4-anchor-page', '-d4-anchor-section', '-d4-anchor-h-align', '-d4-anchor-v-align', '-d4-anchor-layout', 'z-index',
+    ])).toBe(outside);
+    model.setObjectGeometry({ x: '12pt', y: '24pt' });
+    model.undo(); model.undo();
+    expect(model.serialize()).toBe(before);
+    model.setScope('object:textBox2');
+    model.setObjectPlacement({ hAlign: 'offset', vAlign: 'offset', layout: 'behind' });
+    expect(model.objectState().values['z-index']).toBe('-1');
+    expect(model.scopeRoot.hasAttribute('style')).toBe(false);
+    model.setObjectPlacement({ layout: 'front' });
+    expect(model.objectState().values['z-index']).toBeUndefined();
+  });
+
+  it('rejects invalid targets and preserves unsupported, formula-bearing and referenced objects', () => {
+    const model = lifecycleFixture('box');
+    model.setScope('object:textBox2');
+    const before = model.serialize();
+    for (const changes of [{ page: '0' }, { page: 'NaN' }, { page: '10001' }, { page: '2', section: '2' },
+      { section: '3', page: 'all' }, { hAlign: 'left' }, { layout: 'wrap-tight' }, { extra: '1' }]) {
+      expect(() => model.setObjectPlacement(changes)).toThrow('objectPlacementInvalid');
+      expect(model.serialize()).toBe(before);
+    }
+    for (const text of ['a\nb', '\u0000', '\uD800', 'a'.repeat(10001)]) {
+      expect(() => model.createObject('textBox', text)).toThrow('objectTextInvalid');
+      expect(model.serialize()).toBe(before);
+    }
+    for (const source of ['https://example.test/x.png', 'data:image/png;base64,AAAA']) {
+      expect(() => model.createObject('anchoredPicture', source)).toThrow();
+      expect(model.serialize()).toBe(before);
+    }
+    model.setScope('object:textBox1');
+    expect(() => model.deleteObject()).toThrow('objectDeleteProtected');
+    model.setScope('object:textBox2');
+    model.document.querySelector('body > p').setAttribute('data-native-ref', 'textBox2');
+    expect(() => model.deleteObject()).toThrow('objectDeleteProtected');
+    expect(model.scopeRoot.isConnected).toBe(true);
+    model.scopeRoot.setAttribute('data-unknown', 'retain');
+    expect(() => model.deleteObject()).toThrow('objectProtected');
+  });
+
+  it('rejects unsafe cascades and never reuses IDs mentioned in opaque metadata', () => {
+    const model = lifecycleFixture('original');
+    model.document.querySelector('head').append(model.document.createComment('native reference textBox9'));
+    model.createObject('textBox');
+    expect(model.scope).toBe('object:textBox10');
+    model.document.querySelector('head style').textContent += 'div{width:7pt}';
+    model.refresh();
+    const before = model.serialize();
+    expect(() => model.createObject('textBox')).toThrow('objectProtected');
+    expect(model.serialize()).toBe(before);
+    expect(() => model.deleteObject()).toThrow('objectProtected');
+  });
+
+  it('uses the actual unique owned class after native layering renumbers CSS without renaming IDs', () => {
+    const model = WriteProDocument.open(new Uint8Array(readFileSync('tests/fixtures/media/object-section-layoutSwap.4wp')));
+    model.setScope('object:textBox2');
+    expect(model.scopeRoot.getAttribute('class')).toBe('_div1');
+    expect(model.objectPlacement().reason).toBeNull();
+    const retained = outsideObject(model.document, 'textBox2', [
+      '-d4-anchor-page', '-d4-anchor-section', '-d4-anchor-h-align', '-d4-anchor-v-align', '-d4-anchor-layout', 'z-index',
+    ]);
+    model.setObjectPlacement({ layout: 'front' });
+    expect(outsideObject(model.document, 'textBox2', [
+      '-d4-anchor-page', '-d4-anchor-section', '-d4-anchor-h-align', '-d4-anchor-v-align', '-d4-anchor-layout', 'z-index',
+    ])).toBe(retained);
+    model.setObjectGeometry({ width: '210pt' });
+    expect(model.objectState().geometry.width).toBe('210pt');
+    expect(model.objectState('object:textBox1').values.width).toBe('8cm');
+  });
+});
 
 describe('native media preservation', () => {
   it('extracts only the bounded single-codec native wrapper and retains its exact source', () => {
@@ -88,7 +215,7 @@ describe('native media preservation', () => {
     expect(render(nested).querySelector('[contenteditable]')).toBeNull();
     for (const style of ['-d4-anchor-unknown:1', '-d4-anchor-section:99', '-d4-anchor-origin:content-box', 'width:999pt!important',
       'width:calc(10pt + 2%)', '-d4-anchor-h-offset:-1pt', '-d4-img-display-mode:unknown', 'height:5000pt', 'width:10pt',
-      '-d4-anchor-h-align:unknown', '-d4-anchor-v-align:unknown']) {
+      '-d4-anchor-h-align:unknown', '-d4-anchor-v-align:unknown', '-d4-anchor-h-align:right', '-d4-anchor-page:2', 'z-index:99']) {
       const model = fixture('paper');
       model.setScope('object:textBox1');
       model.scopeRoot.setAttribute('style', style);

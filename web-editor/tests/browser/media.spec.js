@@ -17,6 +17,65 @@ async function download(page) {
   return { bytes, archive, xml: strFromU8(Object.entries(archive).find(([name]) => /\.html$/i.test(name))[1])
     .replace(/<meta name="datetimeModified"[^>]*\/>/g, '') };
 }
+test('object creation, native placement, deletion, versions and recovered history are document-wide', async ({ page }) => {
+  await page.goto('/');
+  page.on('dialog', dialog => dialog.accept());
+  await page.locator('#file').setInputFiles('tests/fixtures/media/object-paper-original.4wp');
+  const original = await download(page);
+  await page.locator('#object-picture-file').setInputFiles('../Tests/Fixtures/wpfixture/Resources/checker.png');
+  await expect(page.locator('#editing-scope')).toHaveValue('object:img2');
+  await expect(page.locator('#paper img')).toHaveJSProperty('naturalWidth', 48);
+  await page.getByLabel(messages.en.objectInitialText, { exact: true }).fill('NEW BOX 😀 日é');
+  await page.getByRole('button', { name: messages.en.objectCreateBox, exact: true }).click();
+  await expect(page.locator('#editing-scope')).toHaveValue('object:textBox2');
+  await expect(page.locator('#paper')).toHaveText('NEW BOX 😀 日é');
+  await page.locator('#object-section').selectOption('2');
+  await expect(page.locator('#object-page')).toHaveValue('all');
+  await page.locator('#object-hAlign').selectOption('center');
+  await page.locator('#object-vAlign').selectOption('bottom');
+  await page.locator('#object-layout').selectOption('behind');
+  await page.locator('#object-placement-form button').click();
+  await expect(page.locator('#object-form button')).toBeDisabled();
+  const placed = await download(page);
+  await page.locator('#history-toggle').click();
+  await page.locator('#version-name').fill('Placed objects');
+  await page.locator('#save-version').click();
+  await page.locator('#history-toggle').click();
+  await page.locator('#object-page').fill('2');
+  await page.locator('#object-placement-form button').click();
+  await expect(page.getByRole('alert')).toContainText(messages.en.objectPlacementInvalid);
+  expect((await download(page)).xml).toBe(placed.xml);
+  await page.locator('#object-page').fill('all');
+  await page.locator('#object-hAlign').selectOption('offset');
+  await page.locator('#object-vAlign').selectOption('offset');
+  await page.locator('#object-layout').selectOption('wrap-square');
+  await page.locator('#object-placement-form button').click();
+  await expect(page.locator('#object-form button')).toBeEnabled();
+  await page.locator('#object-delete').click();
+  await expect(page.locator('#editing-scope')).toHaveValue('body');
+  await expect(page.locator('#editing-scope option[value="object:textBox2"]')).toHaveCount(0);
+  await expect(page.locator('#draft-state')).toHaveText(messages.en.draftSaved);
+  await page.reload();
+  await expect(page.locator('#recovery-notice')).toBeVisible();
+  await page.locator('#undo').click();
+  await expect(page.locator('#editing-scope')).toHaveValue('object:textBox2');
+  await page.locator('#redo').click();
+  await expect(page.locator('#editing-scope')).toHaveValue('body');
+  await page.locator('#history-toggle').click();
+  await page.locator('#version-list li').filter({ hasText: 'Placed objects' }).getByRole('button', { name: 'Restore', exact: true }).click();
+  expect((await download(page)).xml).toBe(placed.xml);
+  await page.locator('#undo').click();
+  await expect(page.locator('#editing-scope option[value="object:textBox2"]')).toHaveCount(0);
+  await page.locator('#editing-scope').selectOption('object:textBox1');
+  await expect(page.locator('#object-delete')).toBeDisabled();
+  await expect(page.locator('#object-delete-state')).toHaveText(messages.en.objectDeleteProtected);
+  const retained = xml => page.evaluate(xml => {
+    const doc = new DOMParser().parseFromString(xml, 'application/xhtml+xml');
+    return [...doc.querySelectorAll('body > p,body > div#textBox1,body > img#img1,body > div.section1Header,meta[name="bookmarks"]')].map(node => node.outerHTML);
+  }, xml);
+  expect(await retained((await download(page)).xml)).toEqual(await retained(original.xml));
+});
+
 test('native box text, geometry, formatting and recovery stay separate from body and picture resources', async ({ page }) => {
   await open(page);
   const original = await download(page);
@@ -150,15 +209,21 @@ for (const locale of Object.keys(messages)) test(`object controls remain accessi
   const original = await download(page);
   for (const unit of ['cm', 'in', 'mm', 'pt']) await page.locator('#object-units').selectOption(unit);
   await page.locator('#object-form button').click();
+  await page.locator('#object-placement-form button').click();
   expect((await download(page)).xml).toBe(original.xml);
   await page.locator('#settings-toggle').click();
   for (const theme of ['system', 'dark', 'light']) {
     await page.locator('#theme').selectOption(theme);
     expect(await page.locator('#object-panel').evaluate(panel => panel.scrollWidth <= panel.clientWidth)).toBe(true);
     await expect(page.getByLabel(messages[locale].objectX, { exact: true })).toBeVisible();
+    await expect(page.getByLabel(messages[locale].objectPage, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: messages[locale].objectCreateBox, exact: true })).toBeVisible();
   }
   await page.getByLabel(messages[locale].objectWidth, { exact: true }).fill('0');
   await page.locator('#object-form button').click();
   await expect(page.getByRole('alert')).toContainText(messages[locale].objectInvalid);
   expect((await download(page)).xml).toBe(original.xml);
+  await page.getByRole('button', { name: messages[locale].objectCreateBox, exact: true }).click();
+  await expect(page.locator('#editing-scope')).toHaveValue('object:textBox2');
+  await expect(page.locator('#undo')).toHaveAttribute('title', `${messages[locale].undo} · ${messages[locale].objectCreate}`);
 });

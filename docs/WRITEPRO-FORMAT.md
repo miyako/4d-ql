@@ -599,13 +599,72 @@ This is a deliberately narrow observed representation, not a general TCP4 spec.
 Native affine/display metadata stays opaque and authoritative; extracting its
 payload is a labeled display-only projection, not a source conversion.
 
-The web increment retains object IDs, all association/layout/display attributes,
+The merged #51 media baseline retains object IDs, all association/layout/display attributes,
 nonactive XML/formulas/resources and body bookmark pairs. Ordinary box
 text/formatting and validated paper-origin size/offset edits use isolated
 transactions; creation/removal, association/alignment/layout/display-mode
 changes, nested identity-bearing content, unknown metadata and formula pictures
 remain protected. Supported stored objects print once in an isolated appendix,
-not at native page coordinates. See the [editor support contract](../web-editor/README.md#advanced-images-and-text-boxes-in-progress).
+not at native page coordinates. See the [editor support contract](../web-editor/README.md#advanced-images-and-text-boxes-available-on-main).
+
+### Object lifecycle and placement (in progress; full 4D F0012102)
+
+`wp_object_probe` independently constructs three native documents with two body
+sections, Unicode text, a body formula/bookmark, a nonactive picture, a formula
+text box and a section-1 header. Its fourteen stages add a second picture and
+box, change document-page or section association, align, clear alignment/edit
+offsets, change front/behind/square-wrap relationships, repeat on all pages,
+delete each added object and recreate objects. Native getters and exports, not
+browser-generated documents, are the oracle. The third document uses an
+independently native-encoded JPEG, including exact-byte browser creation and
+native reopening, rather than assuming PNG evidence covers both authoring
+codecs. All stages retain the body text
+tape, body native ranges and raw bookmark coordinates.
+
+- New native pictures and boxes obtain independent IDs (`img2`, `textBox2`);
+  the box uses its identity-owned `div._div2`. Explicit dimensions/page/layout
+  survive independently of the preexisting objects. Browser creation emits
+  explicit paper-origin defaults (page 1/front) rather than assuming ordinary
+  HTML positioning. Native box content is an independent paragraph scope.
+- Document page 2 exports `-d4-anchor-page:2` with no section restriction.
+  Section 2/all pages exports `-d4-anchor-section:2` and omits the page
+  declaration. All pages/all sections omit both. The browser only authors these
+  evidenced combinations; specific-section/specific-page combinations stay
+  protected. Unchanged imported associations are retained.
+- Right/bottom getters are `1`, center is `2`, and left/top/no alignment is `0`.
+  Setting alignments to zero removes the serialized alignment declarations.
+  It does not erase stored offsets. Offset setters alone do **not** clear an
+  existing nonzero alignment. The browser removes declarations from the unique
+  owned rule and any picture inline override when explicitly clearing alignment; it
+  never substitutes a CSS `none` or invents a second left/top mode.
+- Layout getters are behind `0`, front `1`, square wrap `3`, serialized as
+  `behind`, `front`, `wrap-square`. Both pictures and boxes export `z-index:-1`
+  behind text and remove it for front/square wrap. Native export can reorder
+  the trailing object elements while keeping their IDs and body tape intact;
+  source DOM order is not a native layer model. The section-2 behind-box
+  counterexample exports `textBox2` with class `_div1`, and the nonactive
+  `textBox1` with `_div2`. Class numbering is **not** the native object ID.
+  Editing must follow the actual, unique owned class and rule, never derive
+  `_divN`/`_imgN` from an object's ID suffix.
+  Arbitrary imported z-index values and unverified inline box placement remain
+  protected, not interpreted as evidence-backed native geometry.
+  Returning a section-scoped box from behind to front can also retain a
+  different getter-enumeration order after import/reopen. The new gate matches
+  object getters by native ID, not array index, while independently requiring
+  unchanged nonactive source XML and element order.
+- Native deletion removes the targeted object without moving body bookmark
+  endpoints or deleting the nonactive formula box/header/picture. Recreation
+  can reuse the deleted native IDs; browser creation deliberately does not
+  reuse IDs/classes still referenced by retained CSS or opaque metadata.
+  Browser deletion preserves orphaned CSS and archive resources and refuses
+  formula-bearing, referenced, nested, unknown or ambiguous objects.
+
+All browser actions retain nonactive source XML, complete formula subtrees,
+original media URIs/bytes and raw bookmark pairs, and use document-wide
+history/version/recovery transactions. The guide/print appendix does not
+simulate these native placement, wrapping, layer, repetition or pagination
+semantics. Other origins, arbitrary layers/wrap modes and picture display-mode
+changes remain native-only. See the [in-progress support contract](../web-editor/README.md#object-lifecycle-and-stored-native-placement-in-progress).
 
 ## Preview limits
 

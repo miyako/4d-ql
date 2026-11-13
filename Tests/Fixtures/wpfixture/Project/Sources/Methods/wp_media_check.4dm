@@ -3,6 +3,7 @@ ON ERR CALL("wp_web_error")
 var $compilation : Object:=Compile project()
 If ($compilation.success)
 	wp_media_probe
+	wp_object_probe
 Else
 	wpWebErrors.push(New object("message"; "Probe compilation failed"; "details"; $compilation.errors))
 End if
