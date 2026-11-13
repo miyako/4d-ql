@@ -10,7 +10,7 @@ export const sectionMessages = {
     sectionProtected: 'This section change is protected: only the last section can be split, without hidden associations or unsupported settings. Merging sections with declarations, names, headers, footers or anchored objects is not supported.',
     sectionUnsupported: 'Unsupported or ambiguous native section structure or declarations. They are preserved unchanged.',
     sectionNameInvalid: 'Use a section name up to 1,024 UTF-16 units without quotes, backslashes, control characters or leading/trailing whitespace; native 4D does not preserve those names reliably.',
-    sectionPreview: 'Break markers are explicit authoring guides on a continuous preview. Section geometry is shown in these controls, not as native pagination; headers, footers and automatic page boundaries are not rendered.',
+    sectionPreview: 'Section-sized white surfaces reflect supported paper dimensions and margins. Break markers are explicit authoring guides, not automatic pages or native pagination. Headers and footers remain placeholders.',
   },
   ja: {
     sectionScope: '書類の既定値または番号付きのネイティブセクションを選択します。用紙寸法は書類全体に適用され、セクションの向きと余白は既定値を継承するか個別に指定できます。',
@@ -23,7 +23,7 @@ export const sectionMessages = {
     sectionProtected: 'セクション変更は保護されています。非表示の関連要素や未対応設定がない最後のセクションのみ分割できます。宣言・名前・ヘッダー・フッター・アンカー付きオブジェクトがあるセクションの結合は未対応です。',
     sectionUnsupported: '未対応または曖昧なネイティブセクション構造・宣言を変更せず保持します。',
     sectionNameInvalid: 'セクション名はUTF-16で1,024単位以内とし、引用符・バックスラッシュ・制御文字・前後の空白は使用できません。4Dが正確に保持できないためです。',
-    sectionPreview: '区切り記号は連続プレビュー上の編集ガイドです。セクション設定はコントロールに表示し、ネイティブのページ分割・ヘッダー・フッター・自動改ページは描画しません。',
+    sectionPreview: 'セクション単位の白い面に対応する用紙寸法と余白を反映します。区切り記号は編集ガイドであり、自動改ページや4Dのページ分割ではありません。ヘッダーとフッターは代替表示です。',
   },
   fr: {
     sectionScope: 'Choisissez les valeurs du document ou une section native numérotée. Le format du papier est global ; orientation et marges peuvent être héritées ou définies par section.',
@@ -36,7 +36,7 @@ export const sectionMessages = {
     sectionProtected: 'Modification protégée : seule la dernière section sans associations masquées ni réglages non pris en charge peut être divisée. La fusion avec déclarations, noms, en-têtes, pieds de page ou objets ancrés n’est pas prise en charge.',
     sectionUnsupported: 'Structure ou déclarations de section natives ambiguës ou non prises en charge. Elles restent intactes.',
     sectionNameInvalid: 'Nom de 1 024 unités UTF-16 maximum, sans guillemets, barres obliques inverses, caractères de contrôle ni espaces aux extrémités : 4D ne les conserve pas fidèlement.',
-    sectionPreview: 'Les repères de saut guident la rédaction sur une surface continue. La géométrie des sections apparaît dans les contrôles, pas en pagination native ; en-têtes, pieds et sauts automatiques ne sont pas affichés.',
+    sectionPreview: 'Les surfaces blanches des sections reflètent les dimensions et marges prises en charge. Les repères sont des guides explicites, pas des pages automatiques ni la pagination native. En-têtes et pieds restent des espaces réservés.',
   },
   de: {
     sectionScope: 'Dokumentvorgaben oder einen nummerierten nativen Abschnitt wählen. Das Papierformat gilt dokumentweit; Ausrichtung und Ränder können geerbt oder je Abschnitt festgelegt werden.',
@@ -49,7 +49,7 @@ export const sectionMessages = {
     sectionProtected: 'Geschützt: Nur der letzte Abschnitt ohne verborgene Zuordnungen oder nicht unterstützte Einstellungen kann geteilt werden. Zusammenführen mit Deklarationen, Namen, Kopf-/Fußzeilen oder verankerten Objekten wird nicht unterstützt.',
     sectionUnsupported: 'Nicht unterstützte oder mehrdeutige native Abschnittsstruktur oder Deklarationen bleiben unverändert.',
     sectionNameInvalid: 'Höchstens 1.024 UTF-16-Einheiten, ohne Anführungszeichen, Rückstriche, Steuerzeichen oder äußere Leerzeichen; 4D bewahrt solche Namen nicht zuverlässig.',
-    sectionPreview: 'Umbruchmarken dienen als Bearbeitungshilfe in einer fortlaufenden Vorschau. Abschnittsgeometrie steht in den Feldern, nicht als native Paginierung; Kopf-/Fußzeilen und automatische Umbrüche werden nicht dargestellt.',
+    sectionPreview: 'Weiße Abschnittsflächen zeigen unterstützte Papiermaße und Ränder. Umbruchmarken sind explizite Hilfen, keine automatischen Seiten oder native Paginierung. Kopf-/Fußzeilen bleiben Platzhalter.',
   },
   es: {
     sectionScope: 'Elija los valores del documento o una sección nativa numerada. Las dimensiones del papel son globales; orientación y márgenes pueden heredarse o definirse por sección.',
@@ -62,7 +62,7 @@ export const sectionMessages = {
     sectionProtected: 'Cambio protegido: solo se puede dividir la última sección sin asociaciones ocultas ni ajustes incompatibles. No se admite combinar secciones con declaraciones, nombres, encabezados, pies u objetos anclados.',
     sectionUnsupported: 'Estructura o declaraciones de sección nativas ambiguas o incompatibles. Se conservan sin cambios.',
     sectionNameInvalid: 'Nombre de hasta 1.024 unidades UTF-16 sin comillas, barras inversas, caracteres de control ni espacios en los extremos; 4D no los conserva fielmente.',
-    sectionPreview: 'Los marcadores de salto son guías de edición en una vista continua. La geometría aparece en los controles, no como paginación nativa; no se muestran encabezados, pies ni saltos automáticos.',
+    sectionPreview: 'Las superficies blancas de sección reflejan dimensiones y márgenes compatibles. Los marcadores son guías explícitas, no páginas automáticas ni paginación nativa. Cabeceras y pies siguen como marcadores.',
   },
   it: {
     sectionScope: 'Scegliere i valori del documento o una sezione nativa numerata. Le dimensioni della carta sono globali; orientamento e margini possono essere ereditati o definiti per sezione.',
@@ -75,6 +75,6 @@ export const sectionMessages = {
     sectionProtected: 'Modifica protetta: si può dividere solo l’ultima sezione senza associazioni nascoste o impostazioni non supportate. Unire sezioni con dichiarazioni, nomi, intestazioni, piè di pagina o oggetti ancorati non è supportato.',
     sectionUnsupported: 'Struttura o dichiarazioni di sezione native ambigue o non supportate. Restano invariate.',
     sectionNameInvalid: 'Nome fino a 1.024 unità UTF-16 senza virgolette, barre inverse, caratteri di controllo o spazi esterni: 4D non li conserva fedelmente.',
-    sectionPreview: 'I marcatori sono guide di modifica su un’anteprima continua. La geometria appare nei controlli, non come paginazione nativa; intestazioni, piè di pagina e interruzioni automatiche non vengono visualizzati.',
+    sectionPreview: 'Le superfici bianche delle sezioni riflettono dimensioni e margini supportati. I marcatori sono guide esplicite, non pagine automatiche o paginazione nativa. Intestazioni e piè di pagina restano segnaposto.',
   },
 };

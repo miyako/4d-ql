@@ -7,12 +7,12 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`6f4f37f` / #44](https://github.com/miyako/4d-ql/pull/44).
+[`fa0d28d` / #47](https://github.com/miyako/4d-ql/pull/47).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
-Page setup and sections/breaks (steps 1–2 of the approved phase) are available on main;
+Page setup, sections/breaks and columns/tabs (steps 1–3 of the approved phase) are available on main;
 deployment status is separate. The table is not a
 promise of dates or full Write Pro parity.
 
@@ -27,14 +27,14 @@ promise of dates or full Write Pro parity.
 | 7. Broader table/range safety | Cell-anchored column insertion; interior cross-cell bookmark management, formatting and guarded additions; grid-validated merged-cell text editing; localized capability reasons | Available on main via #42; destructive cross-cell operations, merged structural edits, nested tables and generic ranges remain protected |
 | 8.1. Page setup | Document-level paper presets/custom dimensions, orientation, margins and preference-only units; inherited section values retained | Available on main via #43; deployment status is separate |
 | 8.2. Sections and breaks | Insert/remove page and section breaks; defaults and section-specific settings without flattening inheritance | Available on main via #44; deployment status is separate |
-| 8.3. Columns and tabs | Column count/gap and paragraph tab stops, with explicit preview limits | In progress; this independent increment is not merged or deployed |
-| 8.4. Preview/output | Better settings projection and browser printing without claiming exact 4D pagination | Planned; separate subsequent PR, not implemented or deployed |
+| 8.3. Columns and tabs | Column count/gap and paragraph tab stops, with explicit preview limits | Available on main via #47; deployment status is separate |
+| 8.4. Preview/output | Section-sized continuous preview and local browser printing without claiming exact 4D pagination | In progress; this independent increment is not merged or deployed |
 | 9. Richer media and objects | More native picture formats, anchored objects and text boxes with preservation-aware controls | Proposed; floating objects remain unimplemented |
-| 10. Headers/footers and advanced layout | Header/footer editing, object wrapping and automatic pagination | Later work; unimplemented, not part of the approved four-step increment |
+| 10. Headers/footers and advanced layout | Header/footer editing, object wrapping and automatic native-equivalent pagination | Proposed; unscheduled, unimplemented, outside the approved four-step increment |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
-Steps 8.1–8.2 are available on main. Step 8.3 is in progress on this branch;
-printing is next, in its own subsequent PR, and is not implemented or deployed. Headers/footers,
+Steps 8.1–8.3 are available on main. Step 8.4 is in progress on this branch;
+its preview/printing changes are not merged or deployed. Headers/footers,
 floating objects and automatic pagination are explicitly outside this increment.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
@@ -91,10 +91,9 @@ Unsupported/invalid geometry, nonnative selectors, nested conditional geometry,
 longhands protect **all paper, orientation and margin controls**, with a
 specific notice; the preference-only unit selector stays usable.
 
-The existing preview surface reflects document-default physical paper width,
-minimum height and margins. It remains a **single continuous surface** and does
-not render section overrides, headers/footers or automatic page boundaries.
-No new printing functionality is included.
+The preview reflects physical paper width, minimum height and margins. This
+increment adds section-specific white surfaces and browser printing as described
+below; neither is an automatic native pagination engine.
 
 ## Sections and breaks (available on main)
 
@@ -137,12 +136,12 @@ body-preserving transactions in otherwise text-protected native documents.
 Every change uses one document-wide undo/redo, version and recovery transaction.
 Failed actions roll back without a history entry. All six languages, keyboard
 controls, system/light/dark appearance and small screens are supported.
-Page and section break markers are visible, localized separators on the existing
+Page and section break markers are visible, localized separators on the
 continuous preview; they are authoring guides, **not automatic or exact native
-pagination**. Section geometry is shown in the controls, not rendered as section
-pages. Headers, footers and printing are not rendered by section authoring.
+pagination**. Supported section geometry is projected on white surfaces in this
+increment. Headers and footers remain read-only placeholders.
 
-## Columns and paragraph tabs (in progress, not deployed)
+## Columns and paragraph tabs (available on main)
 
 **Page setup → Text columns** edits document defaults (`div.section0`) or the
 selected numbered section. Count (1–20) and gap (0–10,000 pt, or equivalent
@@ -198,11 +197,11 @@ or other section declarations.
 All controls, errors and capability notices are available in EN/JA/FR/DE/ES/IT,
 system/light/dark appearance and responsive layouts. Each operation is atomic
 for undo/redo, versions and IndexedDB recovery. The continuous browser preview
-balances columns **within each section**, without fixed page heights/native flow.
+balances columns **between explicit breaks within each section**, without fixed page heights/native flow.
 Tab spacing uses only the default interval; absolute alignment, decimal/bar stops
 and leaders are saved for native 4D, **not rendered**. Fonts, line wrapping and
-leader placement are not exact native equivalents. No automatic pagination,
-printing, headers/footers or floating-object editing is included.
+leader placement are not exact native equivalents. Native-equivalent automatic
+pagination, headers/footers and floating-object editing are not included.
 
 The full-4D gate adds focused column/tab originals, independent native mutations,
 real browser downloads (including Undo and recovered Redo), effective section and
@@ -212,10 +211,85 @@ named-style/direct-format inheritance, section overrides/resets and hidden
 header associations. Native-generated regression archives live in
 `tests/fixtures/flow/`; regenerate them from a successful full-4D gate's matching
 `Output/layout-*.4wp` files, not from the web model.
-The verified increment passes 388 unit tests, 76 browser tests and 1,532 full-4D
+The merged columns/tabs increment passed 388 unit tests, 76 browser tests and 1,532 full-4D
 import/export/reopen cases. Of the latter, 281 are column/tab cases: 109 model
 exports and 172 actual browser downloads. These are scoped attribute/content
 checks in full 4D 21.2 `F0012102`, not arbitrary document or visual-layout parity.
+
+## Layout preview and browser printing (in progress, not deployed)
+
+White section surfaces reflect supported oriented paper dimensions and each
+section's inherited/explicit margins. Their height is a **minimum**, not a
+clipped page or an automatic page count. Long content continues vertically.
+Columns balance between explicit page/section boundaries, with native count
+and gap; continuous section separators remain visible authoring guides.
+
+**Print / Save as PDF** opens a localized, keyboard-accessible panel. **Open
+browser print dialog** invokes the browser's local printing flow; choose a
+printer or Save as PDF there. Opening or canceling the dialog does not mean a
+file was saved. The browser's own Print command also prepares the isolated
+view. No upload, server PDF service, formula evaluation or download-status
+change occurs.
+
+The print projection is freshly rendered from a disposable copy using the
+same allowlist, not raw XHTML/CSS or the contenteditable DOM. It does not replace
+the editor, change selection/zoom, dirty state, XML/metadata, bookmark pairs,
+undo/redo, versions, recovery or resource bytes. Images are local safe rasters;
+external/unsupported images and native structures keep explicit placeholders.
+Formula cards retain source and available stored values. They are not evaluated.
+Unloaded/undecodable images fail explicitly before the button opens the dialog.
+Unsupported/ambiguous page, section or column settings disable the button;
+printing through the browser menu produces an explicit failure notice, not an
+empty page or a misleading default-layout document.
+Printing also requires at least **72 pt of text width per column and 72 pt of
+text height**. This conservative print-only limit prevents tiny native-valid
+areas from clipping browser glyphs; it never clamps or rewrites native settings.
+
+Print CSS uses named `@page` rules for physical size/orientation and four margins.
+Explicit page and new-page section breaks start browser pages; identical-geometry
+continuous sections can share a page. **Changed geometry in a continuous section
+starts a browser page**, rather than pretending to match 4D's continuous layout.
+Columns use browser flow/balancing. Selection highlights, break/debug markers,
+editor controls, dark chrome and zoom transforms are excluded; real text,
+tables, raster images and formula/unsupported placeholders remain. Print tables
+fit the available width with wrapping; images fit the content width/height.
+This intentionally differs from native table sizing and object layout.
+
+Use the document paper size, default scaling and CSS margins, and disable
+browser-added headers/footers. Browser/printer margin overrides, background
+printing, fonts, wrapping and automatic page counts can differ. Absolute tab
+stops, right/center/decimal/bar alignment and leaders are **not rendered**; only
+the repeating default interval is approximate. Native headers/footers, floating
+objects and native-equivalent automatic pagination remain unscheduled proposals.
+No arbitrary document, printer or native visual-layout parity is certified.
+
+PDF regressions inspect extracted content, image presence, page dimensions,
+word bounding boxes and rasterized theme-independent white paper, not just
+button visibility. Browser tests require Poppler (`pdftotext`, `pdfimages`,
+`pdftoppm`; e.g. `brew install poppler` or `apt install poppler-utils`).
+The full-4D gate additionally creates its own native print originals/PDFs and
+effective section/column/tab getters before opening the browser. Evidence
+includes `Output/print-report.json`, native and browser PDFs and
+`Output/print-browser-report.json`. These are scoped geometry/content and
+unchanged-archive assertions, **not** a claim of exact pagination or tab parity.
+On a desktop with an installed Playwright Chromium, run
+`node scripts/check-print-cancel.mjs /absolute/path/to/native-evidence` after the
+gate. It opens the real headed browser print preview and clicks its Cancel button
+for clean/redo and dirty/undo states, comparing the editor DOM, selection, zoom
+and complete IndexedDB recovery record. Its report/screenshots stay in the
+evidence directory. Run builds/browser suites **before**, not during, the native
+gate: replacing `dist` while its server is handling a reload invalidates asset URLs.
+
+This increment passes **394 unit tests, 90 browser tests and 1,548 full-4D
+import/export/reopen cases** in 4D 21.2 `F0012102`. The original 1,532 cases
+remain; 16 new browser downloads bracket printing of eight independently
+native-created sources (portrait, landscape, wide portrait, mixed sections,
+columns, native right/leader tabs, long rich content and hidden associations).
+Their 29 browser PDF sheets retain the checked content and paper geometry
+(within 1 pt, allowing Chromium's subpoint PDF rounding). The rich source is
+5 native pages versus 6 browser pages: this is intentionally **not pagination
+parity**. Real headed Chromium Cancel is also checked with complete recovery
+snapshots, not only simulated print events.
 
 ## GitHub Pages demo
 

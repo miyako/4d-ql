@@ -118,9 +118,9 @@ test('unbookmarked surrounding edits, paragraph split/join and formatting preser
   const original = await snapshot(page);
   await select(page, 'AB', 1);
   await page.keyboard.press('Enter');
-  await expect(page.locator('#paper > p')).toHaveCount(2);
+  await expect(page.locator('#paper .section-flow > p')).toHaveCount(2);
   await page.keyboard.press('Backspace');
-  await expect(page.locator('#paper > p')).toHaveCount(1);
+  await expect(page.locator('#paper .section-flow > p')).toHaveCount(1);
   await select(page, 'CD', 0, 2);
   await page.locator('#bold').click();
   await select(page, 'CD', 1);

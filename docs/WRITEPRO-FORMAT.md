@@ -253,9 +253,8 @@ with independent native mutations of the original documents, native document
 and section getters, native-exported PDF page boxes, and native reexported body
 XML/raw bookmark pairs. Geometry-only editor changes leave original body,
 formula/reference subtrees, bookmark metadata, nongeometry CSS and resource
-bytes unchanged, including protected documents. The preview uses document
-defaults on one continuous surface; section projection and exact pagination
-are not implemented or certified.
+bytes unchanged, including protected documents. Supported section geometry is
+projected on continuous white surfaces, not exact or automatic native pages.
 
 ### Section/break authoring evidence (full 4D F0012102)
 
@@ -300,9 +299,10 @@ reports are retained in `Output/section-report.json` and adjacent files.
   names instead of silently adopting native normalization; unchanged imported
   names are retained.
 
-The browser shows localized explicit-break markers on its continuous surface.
-It does not render automatic native pagination, section page surfaces or editable
-headers/footers. Browser-printing improvements are later work.
+The browser shows localized explicit-break markers and section-sized continuous
+surfaces. It does not render automatic native pagination or editable
+headers/footers. Browser printing uses the same safe projection on a disposable
+model copy; it does not change native XML or associations.
 
 ### Column/tab authoring evidence (full 4D F0012102)
 
@@ -353,10 +353,29 @@ effective getters and exact native reexports, not merely ZIP readability.
   not change those offsets. Independent native cases include inline images,
   table-cell tabs, Unicode, formulas and hidden headers.
 
-The browser balances columns per section on its continuous surface and uses
+The browser balances columns between explicit breaks on its continuous surface and uses
 the default tab interval as approximate CSS spacing. It does **not** implement
 absolute tab alignment, bar/decimal alignment, leaders, native font metrics,
-automatic page flow or printing.
+native automatic page flow.
+
+### Browser print projection (in progress)
+
+Named CSS pages use oriented native paper dimensions and four margins. Explicit
+page/new-page section breaks create browser pages. Continuous sections with the
+same geometry can share a page; changing geometry forces a browser page, unlike
+native continuous flow. Tables are fitted/wrapped to content width and safe
+rasters constrained to content width/height. Original sizes, declarations,
+formula subtrees, hidden associations and resources remain authoritative and
+unchanged in the `.4wp` model. Unsupported structures remain visible placeholders.
+Browser print results are not native-equivalent pagination or font/tab rendering.
+
+`wp_print_probe` supplies independent native-created originals, native PDFs and
+effective geometry/column/tab getters. The browser gate checks paper boxes,
+content tokens, word bounds, image presence and byte-identical `.4wp` downloads
+before/after printing. Native and browser PDF comparisons establish scoped
+geometry/content only, not arbitrary visual, wrapping or automatic page-count
+equivalence. Right-aligned leader tabs are retained as a deliberate unsupported
+rendering comparison, not converted to fabricated leader text.
 
 Headers and footers follow the body as
 `<div class="section1Header|section3FirstHeader|section1LeftHeader|…Footer" style="visibility: hidden; height: 0">`.
