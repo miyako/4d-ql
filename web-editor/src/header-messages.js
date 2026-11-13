@@ -1,0 +1,66 @@
+export const headerMessages = {
+  en: {
+    headerSetup: 'Headers and footers', editingScope: 'Editing scope', bodyScope: 'Document body',
+    headerSection: 'Native section', headerDefault: 'Default', headerFirst: 'First page', headerLeft: 'Left page', headerRight: 'Right page',
+    headerHeader: 'Header', headerFooter: 'Footer', headerCreate: 'Create', headerRemove: 'Remove default area',
+    headerStructure: 'Default areas can be created/removed only in sections without first/left/right variants. Removing an area deletes its content; Undo restores it. Switch to the body for page setup and bookmark tools.',
+    headerHelp: 'Choose a stored area to edit its text and formatting independently of the body. Default means this section, not document-wide content: absent areas do not inherit another section’s text. Page setup controls document/section geometry. Existing first/left/right variants can be edited; enabling/disabling variants and editing distances require 4D.',
+    headerAssociation: 'Header/footer association is ambiguous or unsupported. No area changes are allowed. Open the original in 4D to inspect section/subsection identities.',
+    headerUnsupported: 'This area contains an unsupported structure or operation. Tables, pictures, anchored/protected content, unsupported formulas, lists and variant creation/removal require 4D. Content is preserved; nothing was flattened. Areas containing formulas cannot be removed.',
+    headerPrint: 'Stored header/footer content follows below, once per area with its section/variant label. This is a content appendix, not page placement or repeating headers. Disabled or ambiguous associations may be listed too. For native first/left/right repetition, distances and evaluated fields, download and print in 4D.',
+  },
+  ja: {
+    headerSetup: 'ヘッダーとフッター', editingScope: '編集対象', bodyScope: '文書本文',
+    headerSection: 'ネイティブセクション', headerDefault: '標準', headerFirst: '先頭ページ', headerLeft: '左ページ', headerRight: '右ページ',
+    headerHeader: 'ヘッダー', headerFooter: 'フッター', headerCreate: '作成', headerRemove: '標準領域を削除',
+    headerStructure: '標準領域の作成・削除は先頭・左・右ページの設定がないセクションに限ります。領域を削除すると内容も削除されます。「元に戻す」で復元できます。用紙設定とブックマークの操作は本文に切り替えてください。',
+    headerHelp: '保存済み領域のテキストと書式を本文とは別に編集します。標準は選択セクションの意味で、文書全体の内容ではありません。領域がない場合、他セクションのテキストは継承しません。用紙設定で文書・セクションの寸法を変更できます。既存の先頭・左・右ページ領域は編集できますが、有効化・無効化と距離の変更には4Dが必要です。',
+    headerAssociation: 'ヘッダー・フッターの関連付けが不明確または未対応です。領域は変更できません。元の文書を4Dで開き、セクションとサブセクションを確認してください。',
+    headerUnsupported: 'この領域には未対応の構造または操作があります。表、画像、アンカー・保護付きの内容、未対応の数式、リスト、ページ種別の作成・削除には4Dが必要です。内容は保持され、単純化されません。数式を含む領域は削除できません。',
+    headerPrint: '以下は保存済みヘッダー・フッターの付録です。セクションとページ種別ごとに一度表示し、ページ上の配置や繰り返しは再現しません。無効または関連付けが不明な領域も表示される場合があります。先頭・左・右ページの繰り返し、距離、評価済みフィールドが必要な場合はダウンロードして4Dで印刷してください。',
+  },
+  fr: {
+    headerSetup: 'En-têtes et pieds de page', editingScope: 'Zone de modification', bodyScope: 'Corps du document',
+    headerSection: 'Section native', headerDefault: 'Par défaut', headerFirst: 'Première page', headerLeft: 'Page gauche', headerRight: 'Page droite',
+    headerHeader: 'En-tête', headerFooter: 'Pied de page', headerCreate: 'Créer', headerRemove: 'Supprimer la zone par défaut',
+    headerStructure: 'Création/suppression des zones par défaut uniquement sans variantes première/gauche/droite. Supprimer une zone efface son contenu ; Annuler le restaure. Passez au corps pour la mise en page et les signets.',
+    headerHelp: 'Modifiez le texte et le format d’une zone enregistrée indépendamment du corps. Par défaut désigne cette section, pas un contenu global : une zone absente n’hérite pas du texte d’une autre section. La mise en page règle la géométrie du document et des sections. Les variantes existantes sont modifiables ; leur activation et les distances nécessitent 4D.',
+    headerAssociation: 'Association d’en-tête ou de pied de page ambiguë ou non prise en charge. Aucune modification autorisée. Ouvrez l’original dans 4D pour vérifier les sections et sous-sections.',
+    headerUnsupported: 'Structure ou opération non prise en charge. Tableaux, images, contenu ancré ou protégé, formules non prises en charge, listes et création/suppression de variantes nécessitent 4D. Le contenu est conservé sans aplatissement. Une zone contenant des formules ne peut pas être supprimée.',
+    headerPrint: 'Le contenu enregistré figure ci-dessous une fois par zone, avec sa section et sa variante. Cette annexe ne reproduit ni le placement ni la répétition. Des associations désactivées ou ambiguës peuvent aussi apparaître. Pour les variantes natives, distances et champs évalués, téléchargez et imprimez dans 4D.',
+  },
+  de: {
+    headerSetup: 'Kopf- und Fußzeilen', editingScope: 'Bearbeitungsbereich', bodyScope: 'Dokumenttext',
+    headerSection: 'Nativer Abschnitt', headerDefault: 'Standard', headerFirst: 'Erste Seite', headerLeft: 'Linke Seite', headerRight: 'Rechte Seite',
+    headerHeader: 'Kopfzeile', headerFooter: 'Fußzeile', headerCreate: 'Erstellen', headerRemove: 'Standardbereich entfernen',
+    headerStructure: 'Standardbereiche lassen sich nur ohne Erst-/Links-/Rechtsvarianten erstellen/entfernen. Entfernen löscht den Inhalt; Rückgängig stellt ihn wieder her. Für Seiteneinstellungen und Lesezeichen zum Dokumenttext wechseln.',
+    headerHelp: 'Text und Format eines gespeicherten Bereichs getrennt vom Haupttext bearbeiten. Standard gilt nur für diesen Abschnitt, nicht dokumentweit: Fehlende Bereiche erben keinen Text anderer Abschnitte. Seiteneinstellungen steuern die Dokument- und Abschnittsgeometrie. Vorhandene Varianten sind bearbeitbar; Aktivierung und Abstände erfordern 4D.',
+    headerAssociation: 'Die Zuordnung ist mehrdeutig oder nicht unterstützt. Änderungen sind gesperrt. Prüfen Sie Abschnitte und Unterabschnitte im Original in 4D.',
+    headerUnsupported: 'Nicht unterstützte Struktur oder Aktion. Tabellen, Bilder, verankerte/geschützte Inhalte, nicht unterstützte Formeln, Listen und das Erstellen/Entfernen von Varianten erfordern 4D. Inhalte bleiben unverändert erhalten. Bereiche mit Formeln können nicht entfernt werden.',
+    headerPrint: 'Gespeicherte Inhalte folgen einmal pro Bereich mit Abschnitts- und Variantenbezeichnung. Dieser Inhaltsanhang bildet weder Seitenposition noch Wiederholung ab. Auch deaktivierte oder mehrdeutige Zuordnungen können erscheinen. Für native Varianten, Abstände und berechnete Felder bitte herunterladen und in 4D drucken.',
+  },
+  es: {
+    headerSetup: 'Encabezados y pies de página', editingScope: 'Área de edición', bodyScope: 'Cuerpo del documento',
+    headerSection: 'Sección nativa', headerDefault: 'Predeterminado', headerFirst: 'Primera página', headerLeft: 'Página izquierda', headerRight: 'Página derecha',
+    headerHeader: 'Encabezado', headerFooter: 'Pie de página', headerCreate: 'Crear', headerRemove: 'Eliminar área predeterminada',
+    headerStructure: 'Solo se crean/eliminan áreas predeterminadas en secciones sin variantes primera/izquierda/derecha. Eliminar borra el contenido; Deshacer lo restaura. Cambie al cuerpo para configurar páginas y marcadores.',
+    headerHelp: 'Edite texto y formato de un área guardada sin cambiar el cuerpo. Predeterminado se refiere a esta sección, no al documento entero: las áreas ausentes no heredan texto de otra sección. La configuración de página controla la geometría del documento y las secciones. Se pueden editar variantes existentes; activarlas y cambiar distancias requiere 4D.',
+    headerAssociation: 'Asociación ambigua o no compatible. No se permiten cambios de área. Abra el original en 4D para revisar las secciones y subsecciones.',
+    headerUnsupported: 'Estructura u operación no compatible. Tablas, imágenes, contenido anclado/protegido, fórmulas no compatibles, listas y crear/eliminar variantes requieren 4D. El contenido se conserva sin aplanarlo. No se pueden eliminar áreas con fórmulas.',
+    headerPrint: 'El contenido guardado aparece abajo una vez por área, con su sección y variante. Este anexo no reproduce posición ni repetición. Puede incluir asociaciones desactivadas o ambiguas. Para variantes nativas, distancias y campos evaluados, descargue e imprima en 4D.',
+  },
+  it: {
+    headerSetup: 'Intestazioni e piè di pagina', editingScope: 'Area di modifica', bodyScope: 'Corpo del documento',
+    headerSection: 'Sezione nativa', headerDefault: 'Predefinito', headerFirst: 'Prima pagina', headerLeft: 'Pagina sinistra', headerRight: 'Pagina destra',
+    headerHeader: 'Intestazione', headerFooter: 'Piè di pagina', headerCreate: 'Crea', headerRemove: 'Rimuovi area predefinita',
+    headerStructure: 'Creazione/rimozione delle aree predefinite solo senza varianti prima/sinistra/destra. Rimuovere elimina il contenuto; Annulla lo ripristina. Passare al corpo per impostazioni pagina e segnalibri.',
+    headerHelp: 'Modifica testo e formato di un’area salvata separatamente dal corpo. Predefinito indica questa sezione, non tutto il documento: le aree assenti non ereditano testo da altre sezioni. Le impostazioni pagina regolano la geometria del documento e delle sezioni. Le varianti esistenti sono modificabili; attivazione e distanze richiedono 4D.',
+    headerAssociation: 'Associazione ambigua o non supportata. Modifiche alle aree bloccate. Aprire l’originale in 4D per verificare sezioni e sottosezioni.',
+    headerUnsupported: 'Struttura o operazione non supportata. Tabelle, immagini, contenuti ancorati/protetti, formule non supportate, elenchi e creazione/rimozione di varianti richiedono 4D. Il contenuto è conservato senza appiattirlo. Le aree contenenti formule non possono essere rimosse.',
+    headerPrint: 'Il contenuto salvato segue una volta per area, con sezione e variante. Questa appendice non riproduce posizione o ripetizione. Possono apparire anche associazioni disattivate o ambigue. Per varianti native, distanze e campi calcolati, scaricare e stampare in 4D.',
+  },
+};
+
+export function areaLabel(area, labels) {
+  return `${labels.headerSection} ${area.section} · ${labels[`header${area.variant || 'Default'}`]} · ${labels[`header${area.kind}`]}`;
+}

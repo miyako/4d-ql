@@ -300,8 +300,9 @@ reports are retained in `Output/section-report.json` and adjacent files.
   names are retained.
 
 The browser shows localized explicit-break markers and section-sized continuous
-surfaces. It does not render automatic native pagination or editable
-headers/footers. Browser printing uses the same safe projection on a disposable
+surfaces. It does not render automatic native pagination or page-margin
+header/footer placement. The separate header/footer scope editor is described
+below. Browser printing uses the same safe projection on a disposable
 model copy; it does not change native XML or associations.
 
 ### Column/tab authoring evidence (full 4D F0012102)
@@ -358,7 +359,7 @@ the default tab interval as approximate CSS spacing. It does **not** implement
 absolute tab alignment, bar/decimal alignment, leaders, native font metrics,
 native automatic page flow.
 
-### Browser print projection (in progress)
+### Browser print projection (available on main)
 
 Named CSS pages use oriented native paper dimensions and four margins. Explicit
 page/new-page section breaks create browser pages. Continuous sections with the
@@ -384,6 +385,57 @@ body). Every section gets its own copy. A page uses the header and footer of
 the section it starts in: with a continuous break, the new section's header
 appears only from its next page. With `-d4-page-first-right:false`, page 1 is
 a left page.
+
+### Header/footer editing evidence (in progress; full 4D F0012102)
+
+`wp_header_probe` creates seven independent native cases: default, first page,
+left/right, right/left, immutable text formulas, header-bookmark rejection and
+custom distances. Fourteen stages per case retain original and mutated `.4wp`
+files, native-original PDFs, effective area getters, local selected text/range
+coordinates, body bookmark/range units and geometry. The gate compares web-model
+and real browser downloads with those independent native mutations after
+import/export/reopening. This is section-aware content editing, not browser
+pagination or native field evaluation.
+
+- `WP Get header/footer` on an absent later section returns no area; content
+  does not inherit from the preceding section or `section0`. Document defaults
+  still supply section geometry. A stored default area is section-local.
+- Native subsection creation copies the section's current default header/footer.
+  Creating left also creates right, and conversely. First/left/right enabling
+  rules export as `div.sectionNFirst|Left|Right { white-space:normal }` with
+  separate trailing `sectionNFirst|Left|RightHeader|Footer` divs. Native disabling
+  removes the selected subsection; disabling left/right removes the pair.
+  Editing one stored area's text does not change the default or opposite
+  subsection. The editor edits existing areas only; enable/disable remains
+  native-only.
+- Each area has its **own** UTF-16 range domain starting at 1. Supported text
+  formulas consume one local native slot, independently of cached/source length.
+  Unicode insertion, paragraph/line breaks and formatting in an area do not
+  change body bookmark pairs or body text. `WP NEW BOOKMARK` on a header range
+  returns native error **110**; the editor does not invent a header bookmark
+  coordinate scheme or route header edits through body bookmark splices.
+- Native default creation exports an empty ordinary paragraph in a hidden
+  trailing area. At 36 pt page margins, headers use
+  `margin:1cm 36pt 0.5cm` and footers `margin:0.5cm 36pt 1cm`.
+  Independently set four-sided distances survive text/formatting edits and
+  reimport. These area margins are distinct from `-d4-page-margin`; the
+  serialized wrapper's `height:0`/hidden visibility is not an editable physical
+  header height. Existing area CSS and native geometry stay authoritative.
+- Splitting an associated body section can copy and renumber its areas; merging
+  can discard associations. The preexisting section-structure protections remain
+  in force. Default-area create/remove is exposed only for sections without
+  variants. Removing an area with a formula, unsupported object or ambiguous
+  association is protected, not interpreted as permission to discard that object.
+
+The text/formatting scope transaction permits changes only inside one identified div and checks
+that all other serialized XML is unchanged, including metadata, body bookmarks,
+nonactive variants and anchored associations. Default-area create/remove likewise
+checks all XML outside the exact target wrapper and its exact CSS rules.
+Original formula nodes and archive
+resource bytes are immutable. Tables, pictures, protected/anchored content,
+unsupported references and lists within areas have explicit capability notices.
+Browser print includes supported stored content once in a labeled appendix,
+not repeated page margins; native 4D remains the compatibility/placement authority.
 
 ## Formulas
 

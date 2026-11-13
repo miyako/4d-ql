@@ -84,9 +84,13 @@ Scoped page/section breaks and section-specific names, orientation, margins
 and inheritance are available on main via [#44](https://github.com/miyako/4d-ql/pull/44).
 Section/default column count and gap, paragraph tab stops and real tab entry
 are available on main via [#47](https://github.com/miyako/4d-ql/pull/47).
-This independent unmerged increment adds section-sized continuous preview and
-local browser Print/Save-as-PDF, without exact 4D pagination. It is not deployed;
-header/footer editing, floating objects and automatic pagination remain unimplemented.
+Section-sized continuous preview and local browser Print/Save-as-PDF are
+available on main via [#48](https://github.com/miyako/4d-ql/pull/48), without
+claiming exact 4D pagination. The next header/footer increment is **in progress**:
+separate native-section text/formatting scopes, guarded default-area creation/removal
+and a labeled print content appendix. It is not merged or deployed.
+Advanced pictures/text boxes, floating objects and native pagination remain
+proposals, not started.
 See the editor README for the exact feature boundaries, local data
 limits and full-4D compatibility gate. The Pages demo follows `main`, not
 unmerged feature branches.

@@ -2,6 +2,7 @@ import { WriteProDocument } from './document.js';
 import { DocumentError } from './archive.js';
 import { paperGeometry } from './layout-preview.js';
 import { pagePoints } from './page-setup.js';
+import { areaLabel } from './header-messages.js';
 
 export function printCapability(model) {
   const setup = model.pageSetup();
@@ -53,6 +54,25 @@ export function createPrintProjection(model, labels) {
   for (const marker of root.querySelectorAll('.explicit-break')) {
     if (marker.dataset.break === 'page' && marker.nextElementSibling) marker.nextElementSibling.classList.add('print-new-page');
     marker.remove();
+  }
+  const areas = copy.headerAreas().areas;
+  if (areas.length) {
+    const appendix = document.createElement('section');
+    appendix.className = 'header-appendix';
+    const notice = document.createElement('p');
+    notice.textContent = labels.headerPrint;
+    appendix.append(notice);
+    for (const area of areas) {
+      const heading = document.createElement('h3');
+      heading.textContent = areaLabel(area, labels);
+      const content = document.createElement('div');
+      copy.setScope(area.name);
+      if (copy.headerReason()) {
+        content.textContent = labels[copy.headerReason()];
+      } else copy.render(content, labels);
+      appendix.append(heading, content);
+    }
+    root.append(appendix);
   }
   for (const element of root.querySelectorAll('*')) {
     for (const attribute of [...element.attributes]) {

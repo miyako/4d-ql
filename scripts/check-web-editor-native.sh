@@ -46,6 +46,23 @@ with (root / logfile).open("w") as log:
         raise SystemExit(f"Full 4D exited with {code}; inspect native.log. No native pass is claimed.")
 PY
 }
+run_4d wp_header_check header-native.log
+[ -s "$DEST/Output/header-report.json" ] || { echo "Full 4D produced no header report; inspect $DEST/header-native.log." >&2; exit 1; }
+python3 - "$DEST" <<'PY'
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1]) / "Output"
+errors = json.loads((root / "header-errors.json").read_text())
+report = json.loads((root / "header-report.json").read_text())
+if errors or report.get("version") != "F0012102" or len(report.get("cases", [])) != 7:
+    raise SystemExit("Native header/footer probe failed: " + json.dumps(errors, ensure_ascii=False))
+if [error["code"] for error in report.get("bookmarkErrors", [])] != [110]:
+    raise SystemExit("Missing native header-bookmark rejection evidence.")
+if any(len(case.get("stages", [])) != 14 for case in report["cases"]):
+    raise SystemExit("Missing native header/footer mutation stages.")
+PY
 run_4d wp_layout_check layout-native.log
 [ -s "$DEST/Output/layout-report.json" ] || { echo "Full 4D produced no layout report; inspect $DEST/layout-native.log." >&2; exit 1; }
 python3 - "$DEST" <<'PY'

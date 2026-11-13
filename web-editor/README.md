@@ -7,12 +7,12 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`fa0d28d` / #47](https://github.com/miyako/4d-ql/pull/47).
+[`9d67432` / #48](https://github.com/miyako/4d-ql/pull/48).
 **Available** means merged there; **In progress** is this unmerged increment;
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
-Page setup, sections/breaks and columns/tabs (steps 1–3 of the approved phase) are available on main;
+Page setup, sections/breaks, columns/tabs and preview/printing are available on main;
 deployment status is separate. The table is not a
 promise of dates or full Write Pro parity.
 
@@ -28,14 +28,15 @@ promise of dates or full Write Pro parity.
 | 8.1. Page setup | Document-level paper presets/custom dimensions, orientation, margins and preference-only units; inherited section values retained | Available on main via #43; deployment status is separate |
 | 8.2. Sections and breaks | Insert/remove page and section breaks; defaults and section-specific settings without flattening inheritance | Available on main via #44; deployment status is separate |
 | 8.3. Columns and tabs | Column count/gap and paragraph tab stops, with explicit preview limits | Available on main via #47; deployment status is separate |
-| 8.4. Preview/output | Section-sized continuous preview and local browser printing without claiming exact 4D pagination | In progress; this independent increment is not merged or deployed |
-| 9. Richer media and objects | More native picture formats, anchored objects and text boxes with preservation-aware controls | Proposed; floating objects remain unimplemented |
-| 10. Headers/footers and advanced layout | Header/footer editing, object wrapping and automatic native-equivalent pagination | Proposed; unscheduled, unimplemented, outside the approved four-step increment |
+| 8.4. Preview/output | Section-sized continuous preview and local browser printing without claiming exact 4D pagination | Available on main via #48 |
+| 9. Headers and footers | Section-aware text/formatting in stored default/first/left/right areas, protected default-area creation/removal, labeled print content appendix | In progress; this increment is not merged or deployed |
+| 10. Richer media and advanced layout | More picture formats, floating objects, text boxes, object wrapping and automatic native-equivalent pagination | Proposed; not started |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
-Steps 8.1–8.3 are available on main. Step 8.4 is in progress on this branch;
-its preview/printing changes are not merged or deployed. Headers/footers,
-floating objects and automatic pagination are explicitly outside this increment.
+Steps 8.1–8.4 are available on main. The selected next phase is headers/footers;
+it remains **In progress** until merged. Publication is separately gated; this
+increment does not merge or deploy itself. Advanced pictures/text boxes,
+floating objects and automatic native pagination are proposals, not started.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
 The [preservation contract](#preservation-contract-and-limits) and
@@ -91,8 +92,8 @@ Unsupported/invalid geometry, nonnative selectors, nested conditional geometry,
 longhands protect **all paper, orientation and margin controls**, with a
 specific notice; the preference-only unit selector stays usable.
 
-The preview reflects physical paper width, minimum height and margins. This
-increment adds section-specific white surfaces and browser printing as described
+The preview reflects physical paper width, minimum height and margins. The merged
+preview/printing phase provides section-specific white surfaces and browser printing as described
 below; neither is an automatic native pagination engine.
 
 ## Sections and breaks (available on main)
@@ -139,7 +140,8 @@ controls, system/light/dark appearance and small screens are supported.
 Page and section break markers are visible, localized separators on the
 continuous preview; they are authoring guides, **not automatic or exact native
 pagination**. Supported section geometry is projected on white surfaces in this
-increment. Headers and footers remain read-only placeholders.
+preview phase. Stored headers/footers have separate editing scopes below;
+they are not placed in simulated page margins.
 
 ## Columns and paragraph tabs (available on main)
 
@@ -201,7 +203,8 @@ balances columns **between explicit breaks within each section**, without fixed 
 Tab spacing uses only the default interval; absolute alignment, decimal/bar stops
 and leaders are saved for native 4D, **not rendered**. Fonts, line wrapping and
 leader placement are not exact native equivalents. Native-equivalent automatic
-pagination, headers/footers and floating-object editing are not included.
+pagination and floating-object editing are not included. Header/footer text
+uses the independent scope editor described below.
 
 The full-4D gate adds focused column/tab originals, independent native mutations,
 real browser downloads (including Undo and recovered Redo), effective section and
@@ -216,7 +219,74 @@ import/export/reopen cases. Of the latter, 281 are column/tab cases: 109 model
 exports and 172 actual browser downloads. These are scoped attribute/content
 checks in full 4D 21.2 `F0012102`, not arbitrary document or visual-layout parity.
 
-## Layout preview and browser printing (in progress, not deployed)
+## Headers and footers (in progress, not merged or deployed)
+
+The **Editing scope** selector separates the body from each stored header/footer,
+identified by **native section number, default/first/left/right variant and kind**.
+It renders the selected area's supported text, formatting and inert formula cards
+instead of editing hidden body XML through the body projection. Scope changes
+are preferences, not document edits; recovery retains the selected scope.
+Text replacement, direct character formatting, alignment/paragraph spacing,
+paragraph and line breaks, safe inline links, find/replace and paragraph-only
+sanitized paste reuse central atomic history/version/recovery transactions.
+Selections crossing a formula remain protected; no formula execution or
+page-number substitution occurs.
+
+**Native default is section-local**, not a document-wide content template.
+Native document/default paper geometry is still `div.section0`; numbered
+sections inherit or override its geometry, not another section's header text.
+Absent header/footer areas are absent, not inherited content. Creating a native
+subsection copies existing default content, and creating left or right also
+creates its opposite. Those operations, variant enable/disable, header/footer
+distances/heights/margins and section association changes require **4D** here.
+Existing first/left/right stored areas can be edited without changing their
+enabling rules or any other area.
+
+The separate section/kind selectors create an **empty default** header/footer
+only in sections without variants. **Remove default area** confirms content
+deletion and is available only for supported default areas without variants or
+formulas. Undo restores the original content, declarations and associations.
+Orphaned style rules, duplicated/malformed area identities, missing variant
+enabling rules, unsupported/nested section structure and ambiguous selectors
+protect area changes explicitly rather than guessing associations.
+
+Supported areas contain ordinary paragraphs, inline text/formatting/links and
+supported immutable inline text formulas. Tables, pictures, nested lists,
+anchored/protected content, unsupported formula forms and other native objects
+remain read-only with a localized capability notice. They are never flattened
+or removed. Header/footer editing preserves the rest of the serialized XML
+**exactly**, including body bookmarks, section settings, nonactive variants,
+anchored associations and unknown resources. It does not relax the existing
+body-range/merged-table/complex-bookmark or section split/merge guards.
+Switch to the body for page setup and bookmark tools.
+
+Printing always projects the **whole document**, not just the current editing
+scope. Supported stored header/footer content is included **once per area in a
+labeled content appendix** with an explicit placement warning. Native repeating
+headers, first/left/right page selection, distances, field evaluation and native
+pagination are not reproduced. Unsupported/ambiguous areas keep explicit
+preservation notices; download and print in 4D for actual native layout. Preview
+and print use disposable models and never dirty the original.
+
+`wp_header_probe` independently creates default, first, left/right, formula,
+bookmark-rejection and custom-distance cases in full 4D F0012102. Its native
+mutations cover text/formatting, default creation/removal, subsection disabling,
+section splits/merges, Unicode growth and paragraph/line breaks. The expanded
+gate compares actual browser/model downloads with native originals mutated
+independently, effective area getters, local range coordinates, body bookmark
+pairs, geometry, formula XML and native reexports/reopens. The browser suite
+also covers scope-aware recovery, safe removal/undo, unsupported structures,
+six languages, mobile, themes, keyboard focus and content-appendix PDF output.
+
+This unmerged increment passed **408 unit tests, 101 browser tests and 1,692
+full-4D import/export/reopen cases**. The unchanged 1,548-case printing baseline
+is retained; 144 additions comprise 62 model exports and 82 actual browser and
+recovered downloads. Seven independent native cases each retain fourteen
+mutation stages. Native-original PDF observations verify first/right selection,
+cached formula text, absent-section content and mixed page geometry; they do not
+assert browser/native page-count or repetition parity.
+
+## Layout preview and browser printing (available on main)
 
 White section surfaces reflect supported oriented paper dimensions and each
 section's inherited/explicit margins. Their height is a **minimum**, not a
@@ -259,8 +329,10 @@ Use the document paper size, default scaling and CSS margins, and disable
 browser-added headers/footers. Browser/printer margin overrides, background
 printing, fonts, wrapping and automatic page counts can differ. Absolute tab
 stops, right/center/decimal/bar alignment and leaders are **not rendered**; only
-the repeating default interval is approximate. Native headers/footers, floating
-objects and native-equivalent automatic pagination remain unscheduled proposals.
+the repeating default interval is approximate. This increment adds the labeled
+header/footer content appendix described above, not native page-margin placement
+or repetition. Floating objects and native-equivalent automatic pagination remain
+proposals, not started.
 No arbitrary document, printer or native visual-layout parity is certified.
 
 PDF regressions inspect extracted content, image presence, page dimensions,
@@ -280,7 +352,7 @@ and complete IndexedDB recovery record. Its report/screenshots stay in the
 evidence directory. Run builds/browser suites **before**, not during, the native
 gate: replacing `dist` while its server is handling a reload invalidates asset URLs.
 
-This increment passes **394 unit tests, 90 browser tests and 1,548 full-4D
+The merged preview/printing increment passed **394 unit tests, 90 browser tests and 1,548 full-4D
 import/export/reopen cases** in 4D 21.2 `F0012102`. The original 1,532 cases
 remain; 16 new browser downloads bracket printing of eight independently
 native-created sources (portrait, landscape, wide portrait, mixed sections,
@@ -443,7 +515,8 @@ formulas and resource payloads are retained, not translated into editor markup.
 The UI renders an allowlisted projection, never the source HTML or stylesheet
 directly. Document scripts, navigation, external images, CSS URLs and embedded
 active content do not run. Native formulas/data-source tables, protected text,
-headers/footers, hidden or anchored objects are not editable. Browser-compatible
+generic hidden or anchored objects are not editable. Header/footer text has
+separate, capability-checked scopes described above. Browser-compatible
 inline and archive-relative PNG/JPEG/GIF/WebP images are shown without network
 requests; other images (including native 4DPicture wrappers) and unsupported
 objects have placeholders.
@@ -487,7 +560,7 @@ protected. A compiled source is explicitly unavailable; its resource is not
 decoded or executed. Surrounding-edit compatibility is not claimed for these
 forms. In bookmarked documents they retain the existing whole-document guard.
 Formula-containing list conversion, destructive selections across objects,
-generic/malformed ranges, headers/footers, anchored/hidden objects and other
+generic/malformed ranges, unsupported header/footer content, anchored/hidden objects and other
 unsupported structures remain protected. The table capabilities below do not
 permit formula mutation or crossing a formula atom; the combined transaction
 retains formula tracking even without bookmark metadata. The native gate

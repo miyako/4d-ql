@@ -39,6 +39,9 @@ Else
 		End if
 		$doc:=WP Import document($root.file("Input/"+$case.file).platformPath)
 		If ($doc#Null)
+			If (OB Is defined($case; "header"))
+				$result.headerImported:=wp_header_stats($doc)
+			End if
 			If (OB Is defined($case; "flow"))
 				$result.flowImported:=wp_layout_stats($doc)
 				$result.flowSectionsImported:=wp_section_stats($doc)
@@ -53,6 +56,9 @@ Else
 			WP EXPORT DOCUMENT($doc; $root.file("Output/"+$case.name+".4wp").platformPath; wk 4wp)
 			$reopened:=WP Import document($root.file("Output/"+$case.name+".4wp").platformPath)
 			If ($reopened#Null)
+				If (OB Is defined($case; "header"))
+					$result.headerReopened:=wp_header_stats($reopened)
+				End if
 				If (OB Is defined($case; "flow"))
 					$result.flowReopened:=wp_layout_stats($reopened)
 					$result.flowSectionsReopened:=wp_section_stats($reopened)
