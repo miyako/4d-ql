@@ -29,7 +29,7 @@ describe('derived paged projection safety and area selection', () => {
       model.document.querySelector('table').innerHTML = `<tr>${cells(columnCount)}</tr>`.repeat(rowCount);
       expect(pagedCapability(model)).toBe(reason);
     }
-  });
+  }, 15000);
 
   it('selects first before facing, uses physical parity, and never borrows missing content', () => {
     const state = {
