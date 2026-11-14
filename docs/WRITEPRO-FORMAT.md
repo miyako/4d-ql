@@ -662,10 +662,11 @@ page 4 uses section 2's left header, **not section 2's first header**.
 These observations do not establish general native wrapping, column balancing,
 exact pagination/page counts or footer coordinates.
 
-The in-progress browser subset permits only identical effective paper,
+The #57 browser subset permitted only identical effective paper,
 orientation, all margins and one-column count/gap on both sides, without stored
-areas, enabled first/facing variants or column breaks. Empty areas/variants are
-not treated as absent. Compatible seams retain the current disposable flow;
+areas, enabled first/facing variants or column breaks (empty areas/variants were
+not treated as absent); the area restriction is lifted by the continuous-section
+area increment below. Compatible seams retain the current disposable flow;
 new sheets are created only for measured overflow or existing explicit page/
 new-page boundaries. Sheet ownership is its starting section; per-fragment
 section identities and participating-section metadata remain separate from
@@ -675,8 +676,9 @@ Existing admitted paragraph/list/image/formula and rectangular table handling
 is reused without relaxing authoring guards. A rich-content browser regression
 checks residual seam capacity, later table fragments, stable widths, repeated
 leading headers, complete ordered fitting content and exact print membership.
-Geometry-changing, area-bearing, multi-column or otherwise unsupported seams
-use localized atomic continuous fallback. #57 is available on main and deployed;
+Geometry-changing, multi-column or otherwise unsupported seams
+use localized atomic continuous fallback; area-bearing compatible seams are admitted
+by the continuous-section area increment below. #57 is available on main and deployed;
 Vertical row bands are **Available/deployed via #62** (milestone M1). `wp_rowspan_probe` independently creates thirteen installed-4D
 originals (`vertical`, `header`, `two-headers`, `mixed`, `unicode`, `lists`, `rich`,
 `media`, `seam`, `chain`, `tall`, `header-cross`, `no-witness`) with the requested
@@ -974,6 +976,37 @@ picture-bearing text boxes and objects that do not fit the browser paper stay on
 labeled appendix sheets. Positions are browser approximations of the stored
 paper-origin offsets/alignment; no coordinate, wrapping, layering-order or
 page-count parity is claimed.
+
+### Continuous-section header/footer page membership (M4, first increment; full 4D F0012102)
+
+`wp_contheader_probe` (gate flag `--contheader-probe`, also run by the full gate)
+authors seventeen native documents on 300×360 pt paper (60/30 pt margins, area margins
+`10pt 30pt`) with continuous (and, in `newpage-after`, new-page) section breaks, body
+paragraphs `CH<section>BODY<n>`, and unique area words `CH<section><DEFAULT|FIRST|LEFT|RIGHT><HEADER|FOOTER>`.
+It exports the original, area/section/break getters, a native PDF, a re-imported PDF and
+a body-edited target. Native PDFs read per page are the oracle for header/footer
+**membership**, never positions:
+
+- A page draws the header and footer of the section in effect at its top. On a page
+  shared through a continuous break both come from the outgoing section; a section that
+  ends on a shared page never draws its areas.
+- A section's first-page areas are used only on the page where its content starts. When
+  it starts on a shared page, its next page uses left/right or default areas. When the
+  outgoing paragraph's space after pushes its content to the top of a new page, that
+  page uses its first-page areas (`fresh-top`).
+- Otherwise left/right areas follow physical page parity (page 1 right), then the
+  default area; a section without stored areas draws none (no inheritance).
+- New 4D paragraphs inherit the preceding paragraph's style, including space after
+  (`wk margin bottom`); the probe resets it after the break.
+- With an area-bearing seam whose incoming section changes its left margin, 4D continues
+  that section on the shared page at the new margin; with an orientation change it
+  starts a new page of the other orientation. Both remain protected.
+- `WP Get breaks` also lists paragraph breaks (type 4) alongside page (2), new-page
+  section (1) and continuous section (5) breaks.
+
+The paged browser preview applies the same rule to its own measured sheets; where a
+section starts, and therefore physical parity, can differ from 4D. No position,
+wrapping or page-count parity is claimed.
 
 ## Preview limits
 
