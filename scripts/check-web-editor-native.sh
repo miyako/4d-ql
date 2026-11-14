@@ -3,8 +3,8 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FOURD=${FOURD:-"/Applications/4D 21.2/4D.app/Contents/MacOS/4D"}
-DEST=${1:?Usage: bash scripts/check-web-editor-native.sh OUTPUT_DIRECTORY [--continuous-probe|--cell-list-probe|--colspan-probe|--rowspan-probe|--nowitness-probe|--objpage-probe|--recheck]}
-[ "${2:-}" = "" ] || [ "$2" = "--continuous-probe" ] || [ "$2" = "--cell-list-probe" ] || [ "$2" = "--colspan-probe" ] || [ "$2" = "--rowspan-probe" ] || [ "$2" = "--nowitness-probe" ] || [ "$2" = "--objpage-probe" ] || [ "$2" = "--recheck" ] || { echo "Unknown native gate mode." >&2; exit 1; }
+DEST=${1:?Usage: bash scripts/check-web-editor-native.sh OUTPUT_DIRECTORY [--continuous-probe|--cell-list-probe|--colspan-probe|--rowspan-probe|--nowitness-probe|--objpage-probe|--contheader-probe|--recheck]}
+[ "${2:-}" = "" ] || [ "$2" = "--continuous-probe" ] || [ "$2" = "--cell-list-probe" ] || [ "$2" = "--colspan-probe" ] || [ "$2" = "--rowspan-probe" ] || [ "$2" = "--nowitness-probe" ] || [ "$2" = "--objpage-probe" ] || [ "$2" = "--contheader-probe" ] || [ "$2" = "--recheck" ] || { echo "Unknown native gate mode." >&2; exit 1; }
 [ -x "$FOURD" ] || { echo "Full 4D application not found; set FOURD. tool4d cannot validate Write Pro." >&2; exit 1; }
 if [ "${2:-}" = "--recheck" ]; then
   [ -s "$DEST/Input/cases.json" ] && [ -s "$DEST/Project/wpfixture.4DProject" ] || { echo "Recheck requires existing generated evidence." >&2; exit 1; }
@@ -28,12 +28,18 @@ fi
 DEST=$(cd "$DEST" && pwd)
 run_4d() {
 python3 - "$FOURD" "$DEST" "$1" "$2" <<'PY'
+import json
 import pathlib
 import subprocess
 import sys
 
 application, destination, method, logfile = sys.argv[1:]
 root = pathlib.Path(destination)
+# The per-run limit scales with this run's own case manifest (about 0.07 s per case was measured for one 4D launch),
+# keeping roughly 2x headroom so a hung 4D is still caught: max(300, 0.15 x cases + 60) seconds.
+manifest = root / "Input/cases.json"
+cases = len(json.loads(manifest.read_text())["cases"]) if manifest.is_file() else 0
+limit = max(300, 0.15 * cases + 60)
 with (root / logfile).open("w") as log:
     process = subprocess.Popen(
         [application, "--project=" + str(root / "Project/wpfixture.4DProject"),
@@ -41,7 +47,7 @@ with (root / logfile).open("w") as log:
         stdout=log, stderr=subprocess.STDOUT,
     )
     try:
-        code = process.wait(timeout=300)
+        code = process.wait(timeout=limit)
     except subprocess.TimeoutExpired:
         process.terminate()
         try:
@@ -49,7 +55,7 @@ with (root / logfile).open("w") as log:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
-        raise SystemExit("Full 4D did not finish in 300 seconds; inspect native.log and any application dialog. No native pass is claimed.")
+        raise SystemExit(f"Full 4D did not finish in {limit:g} seconds (limit for {cases} cases); inspect native.log and any application dialog. No native pass is claimed.")
     if code:
         raise SystemExit(f"Full 4D exited with {code}; inspect native.log. No native pass is claimed.")
 PY
@@ -58,6 +64,21 @@ if [ "${2:-}" = "--recheck" ]; then
   run_4d wp_web_check final-native.log
   (cd "$ROOT/web-editor" && node scripts/native-roundtrip.mjs verify "$DEST") > "$DEST/final-verify.log" 2>&1
   cat "$DEST/final-verify.log"
+  exit 0
+fi
+if [ "${2:-}" = "--contheader-probe" ]; then
+  run_4d wp_contheader_check contheader-native.log
+  python3 - "$DEST" <<'PY'
+import json
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1]) / "Output"
+errors = json.loads((root / "contheader-errors.json").read_text())
+report = json.loads((root / "contheader-report.json").read_text())
+if errors or report.get("version") != "F0012102" or len(report.get("cases", [])) != 17:
+    raise SystemExit("Native continuous-section area probe failed: " + json.dumps(errors, ensure_ascii=False))
+PY
+  echo "Independent native continuous-section area evidence retained in $DEST"
   exit 0
 fi
 if [ "${2:-}" = "--objpage-probe" ]; then
@@ -268,6 +289,7 @@ run_4d wp_colspan_check colspan-native.log
 run_4d wp_rowspan_check rowspan-native.log
 run_4d wp_nowitness_check nowitness-native.log
 run_4d wp_objpage_check objpage-native.log
+run_4d wp_contheader_check contheader-native.log
 [ -s "$DEST/Output/range-report.json" ] || { echo "Full 4D produced no range report; inspect $DEST/range-native.log." >&2; exit 1; }
 (cd "$ROOT/web-editor" && npm run build && node scripts/native-roundtrip.mjs prepare "$DEST")
 run_4d wp_web_check native.log

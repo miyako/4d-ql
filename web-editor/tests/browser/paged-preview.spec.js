@@ -567,8 +567,8 @@ test('unsupported continuous seams use localized atomic fallback without partial
     ['div.section2{-d4-page-margin:40pt}', '<p>TAIL</p>'],
     ['div.section0{column-count:2}', '<p>TAIL</p>'],
     ['div.section2{-d4-page-orientation:landscape}', '<p>TAIL</p>'],
-    ['div.section2Header{margin:10pt}', '<p>TAIL</p><div class="section2Header" style="visibility:hidden;height:0"><p>STORED</p></div>'],
-    ['div.section2First{white-space:normal}', '<p>TAIL</p>'],
+    ['div.section2Header{margin:10pt}div.section2{-d4-page-margin:40pt}', '<p>TAIL</p><div class="section2Header" style="visibility:hidden;height:0"><p>STORED</p></div>'],
+    ['div.section2First{white-space:normal}div.section2{-d4-page-orientation:landscape}', '<p>TAIL</p>'],
   ]) {
     await open(page, style, '<p style="-d4-section-break-after:continuous">RETAINED</p>' + body);
     const before = await bytes(page);
@@ -585,6 +585,151 @@ test('unsupported continuous seams use localized atomic fallback without partial
     }
     await page.locator('#language').selectOption('en');
   }
+});
+
+// Shapes mirror wp_contheader_probe (full 4D 21.2 F0012102): a page shows the areas of the section in effect at its
+// top; a section's first-page areas only where its content starts; otherwise physical left/right parity or default.
+function seamDocument(sections) {
+  const variantsOf = areas => ['', ...(areas.includes('first') ? ['First'] : []), ...(areas.includes('facing') ? ['Left', 'Right'] : [])];
+  let style = '';
+  let body = '';
+  let stored = '';
+  sections.forEach((spec, index) => {
+    const section = index + 1;
+    if (spec.areas !== 'none') {
+      for (const variant of variantsOf(spec.areas)) {
+        if (variant) style += `div.section${section}${variant}{white-space:normal}`;
+        for (const kind of spec.areas === 'footer' ? ['Footer'] : ['Header', 'Footer']) {
+          style += `div.section${section}${variant}${kind}{margin:10pt 30pt}`;
+          stored += `<div class="section${section}${variant}${kind}" style="visibility:hidden;height:0"><p>CH${section}${(variant || 'Default').toUpperCase()}${kind.toUpperCase()}</p></div>`;
+        }
+      }
+    }
+    for (let line = 1; line <= spec.length; line++) {
+      const styles = [];
+      if (spec.pageBreak === line + 1) styles.push('page-break-after:always');
+      if (line === spec.length && spec.spaceAfter) styles.push(`margin-bottom:${spec.spaceAfter}`);
+      if (line === spec.length && index < sections.length - 1) styles.push('-d4-section-break-after:continuous');
+      body += `<p${styles.length ? ` style="${styles.join(';')}"` : ''}>CH${section}BODY${line}</p>`;
+    }
+  });
+  return [style, body + stored];
+}
+const seamShapes = {
+  'default-both': [[{ areas: 'default', length: 2 }, { areas: 'default', length: 30 }],
+    [['CH1DEFAULTHEADER', 'CH1DEFAULTFOOTER'], ['CH2DEFAULTHEADER', 'CH2DEFAULTFOOTER'], ['CH2DEFAULTHEADER', 'CH2DEFAULTFOOTER']]],
+  'outgoing-only': [[{ areas: 'default', length: 2 }, { areas: 'none', length: 30 }], [['CH1DEFAULTHEADER', 'CH1DEFAULTFOOTER'], [], []]],
+  'incoming-only': [[{ areas: 'none', length: 2 }, { areas: 'default', length: 30 }],
+    [[], ['CH2DEFAULTHEADER', 'CH2DEFAULTFOOTER'], ['CH2DEFAULTHEADER', 'CH2DEFAULTFOOTER']]],
+  'first-incoming': [[{ areas: 'default', length: 2 }, { areas: 'first', length: 30 }],
+    [['CH1DEFAULTHEADER', 'CH1DEFAULTFOOTER'], ['CH2DEFAULTHEADER', 'CH2DEFAULTFOOTER'], ['CH2DEFAULTHEADER', 'CH2DEFAULTFOOTER']]],
+  'facing-incoming': [[{ areas: 'default', length: 2 }, { areas: 'facing', length: 30 }],
+    [['CH1DEFAULTHEADER', 'CH1DEFAULTFOOTER'], ['CH2LEFTHEADER', 'CH2LEFTFOOTER'], ['CH2RIGHTHEADER', 'CH2RIGHTFOOTER']]],
+  'first-facing-both': [[{ areas: 'first-facing', length: 20 }, { areas: 'first-facing', length: 30 }],
+    [['CH1FIRSTHEADER', 'CH1FIRSTFOOTER'], ['CH1LEFTHEADER', 'CH1LEFTFOOTER'], ['CH2RIGHTHEADER', 'CH2RIGHTFOOTER'], ['CH2LEFTHEADER', 'CH2LEFTFOOTER']]],
+  'chain-short': [[{ areas: 'default', length: 2 }, { areas: 'first', length: 2 }, { areas: 'default', length: 30 }],
+    [['CH1DEFAULTHEADER', 'CH1DEFAULTFOOTER'], ['CH3DEFAULTHEADER', 'CH3DEFAULTFOOTER'], ['CH3DEFAULTHEADER', 'CH3DEFAULTFOOTER']]],
+  'chain-long': [[{ areas: 'default', length: 2 }, { areas: 'first', length: 20 }, { areas: 'first', length: 20 }],
+    [['CH1DEFAULTHEADER', 'CH1DEFAULTFOOTER'], ['CH2DEFAULTHEADER', 'CH2DEFAULTFOOTER'], ['CH3DEFAULTHEADER', 'CH3DEFAULTFOOTER'], ['CH3DEFAULTHEADER', 'CH3DEFAULTFOOTER']]],
+  'page-break-incoming': [[{ areas: 'default', length: 2 }, { areas: 'first-facing', length: 8, pageBreak: 4 }],
+    [['CH1DEFAULTHEADER', 'CH1DEFAULTFOOTER'], ['CH2LEFTHEADER', 'CH2LEFTFOOTER']]],
+  'fresh-top': [[{ areas: 'default', length: 1, spaceAfter: '212pt' }, { areas: 'first-facing', length: 20 }],
+    [['CH1DEFAULTHEADER', 'CH1DEFAULTFOOTER'], ['CH2FIRSTHEADER', 'CH2FIRSTFOOTER'], ['CH2RIGHTHEADER', 'CH2RIGHTFOOTER']]],
+  'single-page': [[{ areas: 'first', length: 2 }, { areas: 'first', length: 2 }], [['CH1FIRSTHEADER', 'CH1FIRSTFOOTER']]],
+  'footer-only': [[{ areas: 'footer', length: 2 }, { areas: 'footer', length: 30 }], [['CH1DEFAULTFOOTER'], ['CH2DEFAULTFOOTER'], ['CH2DEFAULTFOOTER']]],
+};
+const areaToken = /^CH\d(?:DEFAULT|FIRST|LEFT|RIGHT)(?:HEADER|FOOTER)$/;
+
+for (const [name, [sections, expected]] of Object.entries(seamShapes)) test(`continuous seam areas follow native page membership: ${name}`, async ({ page }, testInfo) => {
+  const [style, body] = seamDocument(sections);
+  await open(page, style, body);
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets).toHaveCount(expected.length);
+  const measured = await sheets.evaluateAll(sheets => sheets.map(sheet => ({
+    owner: sheet.dataset.section, sections: sheet.dataset.sections,
+    areas: [...sheet.querySelectorAll(':scope > .page-area')].map(area => area.textContent.trim()),
+    body: sheet.querySelector('.page-body').textContent.match(/CH\d+BODY\d+/g) || [],
+  })));
+  expect(measured.map(sheet => sheet.areas)).toEqual(expected);
+  // Every body paragraph exactly once, in order; the owner is the section of the first body content on each page.
+  expect(measured.flatMap(sheet => sheet.body)).toEqual(sections.flatMap((spec, index) =>
+    Array.from({ length: spec.length }, (_, line) => `CH${index + 1}BODY${line + 1}`)));
+  for (const sheet of measured) expect(sheet.owner).toBe(sheet.body[0].match(/^CH(\d+)/)[1]);
+  if (sections.length > 1 && name !== 'fresh-top') expect(measured.some(sheet => sheet.sections.split(' ').length > 1)).toBe(true);
+  if (name === 'fresh-top') expect(measured.map(sheet => sheet.sections)).toEqual(['1', '2', '2']);
+  const notices = await page.locator('#paged-objects > p').evaluateAll(items => items.map(item => item.dataset.notice));
+  expect(notices).toEqual(sections.some(spec => spec.areas !== 'none') ? ['pagedSeamAreas'] : []);
+  const output = await pdf(page, testInfo, `seam-areas-${name}`);
+  expect(output.slice(0, expected.length).map(sheet => sheet.words.filter(word => areaToken.test(word)).sort()))
+    .toEqual(expected.map(tokens => [...tokens].sort()));
+  expect(output.slice(0, expected.length).map(sheet => sheet.words.filter(word => /^CH\d+BODY\d+$/.test(word)))).toEqual(measured.map(sheet => sheet.body));
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('seam area membership notice, themes, zoom and mobile keep the same pages in all six locales', async ({ page }, testInfo) => {
+  const [style, body] = seamDocument(seamShapes['first-facing-both'][0]);
+  await open(page, style, body);
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets).toHaveCount(4);
+  const baseline = await pdf(page, testInfo, 'seam-areas-locales');
+  await expect(page.locator('#paged-objects')).toBeVisible();
+  await expect(page.locator('#paged-objects > p')).toHaveText(messages.en.pagedSeamAreas);
+  await page.locator('#settings-toggle').click();
+  for (const language of ['ja', 'fr', 'de', 'es', 'it', 'en']) {
+    await page.locator('#language').selectOption(language);
+    await expect(page.locator('#paged-objects > p')).toHaveText(messages[language].pagedSeamAreas);
+    await expect(page.locator('#paged-status')).toHaveText(`4 · ${messages[language].pagedSheet}`);
+  }
+  for (const theme of ['dark', 'system', 'light']) {
+    await page.locator('#theme').selectOption(theme);
+    await page.locator('#zoom').selectOption('2');
+    expect(await pdf(page, testInfo, `seam-areas-${theme}`)).toEqual(baseline);
+  }
+  await page.evaluate(() => {
+    window.seamAreasResize = new Promise(resolve => window.addEventListener('resize', () => resolve(), { once: true }));
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.seamAreasResize);
+  await expect(sheets).toHaveCount(4);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await pdf(page, testInfo, 'seam-areas-mobile')).toEqual(baseline);
+  await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('seam area projection stays derived across area edits, undo, print Cancel and recovered Redo', async ({ page }) => {
+  const [style, body] = seamDocument(seamShapes['facing-incoming'][0]);
+  await open(page, style, body);
+  const before = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-view .browser-page').nth(1)).toContainText('CH2LEFTHEADER');
+  await page.locator('#editing-scope').selectOption('section2LeftHeader');
+  await page.locator('#paper [contenteditable]').first().fill('WEBCHLEFT');
+  await expect(page.locator('#paged-view .browser-page').nth(1).locator(':scope > .page-area').first()).toHaveText('WEBCHLEFT');
+  await expect(page.locator('#paged-view .browser-page').nth(2)).toContainText('CH2RIGHTHEADER');
+  const edited = await bytes(page);
+  expect(contents(edited).xml).toContain('WEBCHLEFT');
+  await page.locator('#undo').click();
+  await expect(page.locator('#paged-view .browser-page').nth(1)).toContainText('CH2LEFTHEADER');
+  expect(await bytes(page)).toEqual(before);
+  await page.evaluate(() => {
+    window.print = () => { dispatchEvent(new Event('beforeprint')); dispatchEvent(new Event('afterprint')); };
+  });
+  await page.locator('#print-toggle').click();
+  await page.locator('#print-open').click();
+  expect(await bytes(page)).toEqual(before);
+  await expect(page.locator('#redo')).toBeEnabled();
+  await expect(page.locator('#draft-state')).toHaveText(messages.en.draftSaved);
+  await page.reload();
+  await expect(page.locator('#recovery-notice')).toBeVisible();
+  await page.locator('#redo').click();
+  await preview(page);
+  await expect(page.locator('#paged-view .browser-page').nth(1).locator(':scope > .page-area').first()).toHaveText('WEBCHLEFT');
+  expect(contents(await bytes(page))).toEqual(contents(edited));
 });
 
 test('equal columns exhaust vertical capacity sequentially with exact preview/print geometry and no balancing', async ({ page }, testInfo) => {

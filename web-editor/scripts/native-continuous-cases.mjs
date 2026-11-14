@@ -8,7 +8,13 @@ import { geometry, inspectPDF } from './native-print-cases.mjs';
 const normalize = text => text.replace(/&(?:amp|lt|gt|quot|apos);/g, entity =>
   ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" })[entity]).replace(/[\s\u200b]/gu, '').normalize('NFC');
 const tokens = text => normalize(text).match(/SEAM[12]TOKEN\d+/g) || [];
-const positives = new Set(['compatible', 'explicit', 'overflow', 'chain', 'newpage']);
+// Area-bearing compatible seams are admitted after wp_contheader_probe established native header/footer page membership.
+const positives = new Set(['compatible', 'explicit', 'overflow', 'chain', 'newpage', 'areas', 'variants', 'empty-variants', 'areas-overflow', 'variants-overflow']);
+// Facing areas follow physical parity: when browser and native page numbers differ in parity, the native left/right
+// choice maps to the other facing variant on the browser page (page counts are not reproduced).
+export const atParity = (tokens, nativePage, browserPage) => (nativePage - browserPage) % 2 === 0 ? tokens :
+  tokens.map(token => token.replace(/LEFT|RIGHT/, side => side === 'LEFT' ? 'RIGHT' : 'LEFT')).sort();
+const headerTokens = words => words.filter(word => /^S\d(?:DEFAULT|FIRST|LEFT|RIGHT)(?:HEADER|FOOTER)$/.test(word)).sort();
 
 export async function prepareContinuousCases(directory, cases, browser, url, download) {
   const report = JSON.parse(await readFile(resolve(directory, 'Output/continuous-paged-report.json'), 'utf8'));
@@ -104,6 +110,16 @@ export async function prepareContinuousCases(directory, cases, browser, url, dow
         assert(measured.every((sheet, i) => sheet.fits && sheet.page === i + 1));
         assert(measured.some(sheet => sheet.sections.split(' ').includes('1') && sheet.sections.split(' ').includes('2')),
           'The evidenced seam must share a measured physical page, not just avoid a fallback notice');
+        if (/^(areas|variants|empty-variants)/.test(item.name)) {
+          // Native page 1 and the first page owned by section 2 (if any) carry exactly the same area tokens.
+          const sheetTokens = sheet => headerTokens(sheet.areas.flatMap(area => area.text.split(/\s+/)));
+          assert.deepEqual(sheetTokens(measured[0]), headerTokens(native.pages[0].words.map(word => word.text)), 'Shared page keeps the outgoing areas');
+          const nativeOwned = native.pages.findIndex(page => page.words.findIndex(word => /^SEAM\dTOKEN\d+$/.test(word.text)) >= 0 &&
+            page.words.find(word => /^SEAM\dTOKEN\d+$/.test(word.text)).text.startsWith('SEAM2'));
+          const browserOwned = measured.find(sheet => sheet.owner === 2);
+          assert.equal(Boolean(browserOwned), nativeOwned >= 0, 'Section 2 owns a page in both renderings');
+          if (browserOwned) assert.deepEqual(sheetTokens(browserOwned), atParity(headerTokens(native.pages[nativeOwned].words.map(word => word.text)), nativeOwned + 1, browserOwned.page), 'First page owned by section 2');
+        }
         assert(await page.locator('#paged-view .text-run').filter({ hasText: /SEAM[12]TOKEN\d+/ }).evaluateAll(runs =>
           runs.length > 0 && runs.every(run => getComputedStyle(run).fontWeight === '700' &&
             getComputedStyle(run).color === 'rgb(19, 87, 36)')), 'All nonempty TOKEN runs must retain computed bold/color across fragments');
@@ -150,7 +166,7 @@ export async function prepareContinuousCases(directory, cases, browser, url, dow
       assert.deepEqual(external, []);
       results.push({ name: item.name, supported, nativePages: native.pages.length, measured,
         unchangedOriginalBytes: true, nativeMutationUndoRecoveryExports: true,
-        limits: 'Area-free compatible single-column seams only. No native wrapping, balancing, exact pagination/page counts or footer coordinates.' });
+        limits: 'Compatible single-column seams only; header/footer page membership per wp_contheader_probe. No native wrapping, balancing, exact pagination/page counts or area coordinates.' });
     } finally { await page.close(); }
   }
   await writeFile(resolve(directory, 'Output/continuous-paged-browser-report.json'), JSON.stringify(results, null, 2));

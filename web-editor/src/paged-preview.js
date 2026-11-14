@@ -379,7 +379,13 @@ function pagedBreak(values) {
   return column === 'column' ? 'column' : kind;
 }
 
-function continuousSections(model, layout, setup, areas) {
+// Continuous seams (wp_continuous_paged_probe, wp_contheader_probe; full 4D 21.2 F0012102) are admitted only between
+// sections with identical effective paper, orientation, margins and one column, without column breaks. Stored
+// headers, footers and first/left/right variants no longer block a seam: 4D draws on every page the areas of the
+// section in effect at the top of that page (a shared page keeps the outgoing section's header and footer), uses a
+// section's first-page areas only on the page where its content starts, and otherwise follows physical left/right
+// parity. Geometry-changing seams remain on the continuous fallback.
+function continuousSections(model, layout, setup) {
   for (let index = 1; index < layout.sections.length; index++) {
     const previous = layout.sections[index - 1];
     if (paragraphBreak(model.values(previous.elements.at(-1))) !== 'continuous') continue;
@@ -389,10 +395,7 @@ function continuousSections(model, layout, setup, areas) {
     const columns = [previous, section].map((item, i) => pagedColumnGeometry(model, item.index, papers[i], true));
     if (columns.some(column => column.count !== 1) || columns[0].gap !== columns[1].gap ||
       geometries[0].orientation !== geometries[1].orientation || JSON.stringify(papers[0]) !== JSON.stringify(papers[1]) ||
-      [previous, section].some(item => areas.areas.some(area => area.section === item.index) ||
-        areas.variants.some(name => name.startsWith(`section${item.index}First`) ||
-          name.startsWith(`section${item.index}Left`) || name.startsWith(`section${item.index}Right`)) ||
-        item.elements.some(element => model.values(element)['break-after'] === 'column'))) {
+      [previous, section].some(item => item.elements.some(element => model.values(element)['break-after'] === 'column'))) {
       throw new DocumentError('pagedContinuous');
     }
   }
@@ -497,7 +500,7 @@ export function pagedCapability(model) {
   const areas = model.headerAreas();
   if (setup.reason || layout.reason || areas.reason) return 'pagedSettings';
   try {
-    continuousSections(model, layout, setup, areas);
+    continuousSections(model, layout, setup);
   } catch (error) {
     if (!(error instanceof DocumentError) && error.name !== 'SyntaxError') throw error;
     return 'pagedContinuous';
@@ -628,6 +631,9 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
     let columnIndex;
     let flows;
     let previous;
+    // The sheet a section shares through a continuous seam, until the section's own first new page is decided.
+    let shared = null;
+    let seamAreas = false;
     for (const section of state.sections) {
       const setup = copy.sectionSetup(section.index);
       const paper = paperGeometry(setup.geometry);
@@ -670,6 +676,12 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
         const objects = placed.filter(plan => plan.section === null || plan.section === section.index);
         for (const plan of objects) sheet.append(plan.template.cloneNode(true));
         if (objects.length) sheet.dataset.objects = objects.map(plan => plan.item.id).join(' ');
+        // Native: the section's first-page areas belong to the page where its content starts. If any of it was
+        // already placed on the shared sheet, this new page is not its first page.
+        if (shared) {
+          if (localPage === 0 && shared.querySelector(`.page-body [data-section="${section.index}"]`)) localPage = 1;
+          shared = null;
+        }
         for (const kind of ['Header', 'Footer']) {
           const area = selectedPageArea(state, section.index, localPage === 0, pageNumber, rightFirst, kind);
           if (!area) continue;
@@ -696,9 +708,11 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
         if (++columnIndex === columns.count) newPage();
         else flow = flows[columnIndex];
       };
-      // A shared page already counts for the new section, without resetting physical numbering.
-      if (previous && paragraphBreak(copy.values(previous.elements.at(-1))) === 'continuous') localPage = 1;
-      else newPage();
+      // A shared page keeps the areas of the section that started it; physical numbering is never reset.
+      if (previous && paragraphBreak(copy.values(previous.elements.at(-1))) === 'continuous') {
+        shared = sheet;
+        if (state.areas.some(area => area.section === previous.index || area.section === section.index)) seamAreas = true;
+      } else newPage();
       const fits = candidate => {
         const bounds = flow.getBoundingClientRect();
         const last = candidate.getBoundingClientRect();
@@ -976,6 +990,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
         content.scrollHeight > content.clientHeight + 1 || flow.scrollWidth > flow.clientWidth + 1) throw new DocumentError('pagedOverflow');
     }
     const notices = [];
+    if (seamAreas) notices.push('pagedSeamAreas');
     if (placed.some(plan => plan.layout === 'wrap-square')) notices.push('pagedObjectWrap');
     if (placed.length) notices.push('pagedObjectPlaced');
     if (appended.length) notices.push('pagedObjectAppendix');
