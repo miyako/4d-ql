@@ -74,11 +74,21 @@ function pagedTable(model, element) {
   try {
     if (element.children.length > 1000 || element.querySelectorAll('td,th').length > 10000) throw new DocumentError('pagedTables');
     const grid = nativeTableGrid(element);
-    const witness = grid.rows.findIndex(row => [...row.children].every(cell =>
-      Number(cell.getAttribute('colspan') || 1) === 1 && Number(cell.getAttribute('rowspan') || 1) === 1));
-    if (witness < 0 || grid.rows.some(row => [...row.children].some(cell => Number(cell.getAttribute('rowspan') || 1) !== 1)) ||
-      grid.rows.length > 1000 || grid.rows.length * grid.columns > 10000 ||
+    const span = (cell, name) => Number(cell.getAttribute(name) || 1);
+    // A width witness owns every grid column itself: rows covered by a vertical merge never qualify.
+    const witness = grid.rows.findIndex(row => row.children.length === grid.columns && [...row.children].every(cell =>
+      span(cell, 'colspan') === 1 && span(cell, 'rowspan') === 1));
+    if (witness < 0 || grid.rows.length > 1000 || grid.rows.length * grid.columns > 10000 ||
       element.previousElementSibling?.localName !== 'p' || element.nextElementSibling?.localName !== 'p') throw new DocumentError('pagedTables');
+    // Rows tied together by vertical merges form one unbreakable band [start, end).
+    const bands = [];
+    for (let start = 0, end = 0; start < grid.rows.length; start = end) {
+      end = start + 1;
+      for (let index = start; index < end; index++) {
+        for (const cell of grid.rows[index].children) end = Math.max(end, index + span(cell, 'rowspan'));
+      }
+      bands.push([start, end]);
+    }
     let headers = 0;
     let markers = 0;
     for (const [index, row] of grid.rows.entries()) {
@@ -105,7 +115,8 @@ function pagedTable(model, element) {
         }
       }
     }
-    if (headers === grid.rows.length) throw new DocumentError('pagedTables');
+    // Repeated headers must be whole bands; a merge crossing into the body has no unambiguous repetition.
+    if (headers === grid.rows.length || (headers && !bands.some(([, end]) => end === headers))) throw new DocumentError('pagedTables');
     for (const node of [element, ...element.querySelectorAll('*')]) {
       const values = model.values(node);
       if (Object.keys(values).some(key => /^-d4-(ref|anchor)/.test(key) && !model.formula(node)?.supported) ||
@@ -113,7 +124,7 @@ function pagedTable(model, element) {
         paragraphBreak(values) || values['break-after'] === 'column' || (node.localName !== 'img' &&
         ['height', 'min-height', 'max-height'].some(key => values[key]))) throw new DocumentError('pagedTables');
     }
-    return { ...grid, headers, witness };
+    return { ...grid, headers, witness, bands: bands.filter(([start]) => start >= headers) };
   } catch (error) {
     if (!(error instanceof DocumentError)) throw error;
     throw new DocumentError('pagedTables');
@@ -373,7 +384,7 @@ export function pagedCapability(model) {
     }
   } catch (error) {
     if (!(error instanceof DocumentError) && error.name !== 'SyntaxError') throw error;
-    return ['pagedShape', 'pagedOverflow', 'pagedTables', 'pagedColumns'].includes(error.code) ? error.code : 'pagedSettings';
+    return ['pagedShape', 'pagedOverflow', 'pagedBand', 'pagedTables', 'pagedColumns'].includes(error.code) ? error.code : 'pagedSettings';
   }
   return null;
 }
@@ -516,7 +527,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
       };
       for (const element of section.elements) {
         if (element.localName === 'table') {
-          const { rows, headers, witness, merged } = pagedTable(copy, element);
+          const { rows, headers, witness, merged, bands } = pagedTable(copy, element);
           const table = mappings.get(element);
           if (!table || table.localName !== 'table' ||
             table.querySelector('.preserved-object:not(.formula-object):not(.paged-image)')) throw new DocumentError('pagedTables');
@@ -571,9 +582,10 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
           table.prepend(cols);
           for (const row of table.rows) for (const cell of row.cells) cell.style.width = 'auto';
           table.remove();
+          let band = 0;
           let start = headers;
           let first = true;
-          while (start < rows.length) {
+          while (band < bands.length) {
             const fragment = table.cloneNode(false);
             fragment.append(cols.cloneNode(true));
             if (!first) fragment.style.marginTop = '0';
@@ -582,16 +594,21 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
             for (let index = 0; index < headers; index++) fragmentRows.append(mappings.get(rows[index]).cloneNode(true));
             flow.append(fragment);
             let end = start;
-            while (end < rows.length) {
-              const row = mappings.get(rows[end]).cloneNode(true);
-              fragmentRows.append(row);
-              fragment.style.marginBottom = end === rows.length - 1 ? table.style.marginBottom : '0';
-              if (!fits(fragment)) { row.remove(); break; }
-              end++;
+            let next = band;
+            while (next < bands.length) {
+              const added = [];
+              for (let index = bands[next][0]; index < bands[next][1]; index++) {
+                added.push(mappings.get(rows[index]).cloneNode(true));
+              }
+              fragmentRows.append(...added);
+              fragment.style.marginBottom = bands[next][1] === rows.length ? table.style.marginBottom : '0';
+              if (!fits(fragment)) { added.forEach(row => row.remove()); break; }
+              end = bands[next][1];
+              next++;
             }
             if (end === start) {
               fragment.remove();
-              if (!flow.children.length) throw new DocumentError('pagedOverflow');
+              if (!flow.children.length) throw new DocumentError(bands[band][1] - bands[band][0] > 1 ? 'pagedBand' : 'pagedOverflow');
               newPage();
               continue;
             }
@@ -609,8 +626,9 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
               }
             }
             start = end;
+            band = next;
             first = false;
-            if (start < rows.length) nextColumn();
+            if (band < bands.length) nextColumn();
           }
           continue;
         }

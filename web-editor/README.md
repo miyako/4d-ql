@@ -7,8 +7,8 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`94915de` / #60](https://github.com/miyako/4d-ql/pull/60).
-**Available** means merged there; **In progress** is an unmerged increment (none currently);
+[`f926cdf` / #61](https://github.com/miyako/4d-ql/pull/61) (README refresh after #60).
+**Available** means merged there; **In progress** is an unmerged increment (10.9.1, vertical row bands, in this version);
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
@@ -40,15 +40,16 @@ promise of dates or full Write Pro parity.
 | 10.7. Continuous-section pages | Area-free compatible single-column boundaries share measured pages and matching browser print; unsupported seams retain explicit fallback | Available on main via #57; deployed |
 | 10.8. Paged table-cell lists | Native-evidenced bounded flat cell lists, mixed paragraphs, stable unequal columns and list-bearing leading headers in read-only pages and matching print | Available on main via #59; deployed |
 | 10.9. Paged horizontal table spans | Native-evidenced horizontal-only merges with a fully unmerged width-witness row, stable frozen geometry and complete-row/header fragments | Available on main via #60; deployed |
-| 10.10. Further layout parity | Vertical/mixed spans, area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled |
+| 10.9.1. Paged vertical table spans | Native-evidenced vertical and mixed merges as unbreakable row bands, whole header bands repeated, #60 frozen geometry; over-tall bands use a localized fallback | In progress (M1); implemented in this version, not merged or deployed |
+| 10.10. Further layout parity | No-witness merged grids, area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
 Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
 on main. #60 was deployed by successful Pages run
 [`43515562104`](https://github.com/miyako/4d-ql/actions/runs/43515562104)
 at `94915de6bd21dfe2c8f33b50106a315951ed5148`.
-No increment is currently in progress; the feature campaign is paused and
-10.10/11 remain **Proposed**. Arbitrary wrapping and
+Milestone M1 (10.9.1, vertical row bands) is implemented in this version and awaits
+review; it is not merged or deployed. 10.10/11 remain **Proposed**. Arbitrary wrapping and
 automatic native pagination remain unscheduled proposals.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
@@ -527,7 +528,7 @@ class-renumbering counterexample are independently preserved in
 `~/.copilot/evidence-backups/4wp-objects-20261113-probes-33ac49fe/`.
 The #52 increment is merged and deployed at the baseline recorded above.
 
-## Paged browser preview (available through #60)
+## Paged browser preview (available through #60; vertical row bands in this version)
 
 Open **Paged browser preview** above the continuous editor. It is a separate,
 read-only projection of the whole document, even while authoring a header/footer.
@@ -610,10 +611,10 @@ Only contiguous leading rows with native `-d4-header:true` repeat, based on
 independent full-4D `wk header row count` originals/getters/PDF evidence. A `th`
 element alone does not invent a native header. Each fragment requires at least
 one data row in addition to its headers. Nonleading/invalid/all-header metadata,
-vertical/mixed spans, horizontal grids without an unmerged witness row,
+header rows sharing a vertical merge with body rows, grids without a width-witness row,
 irregular/nested/data-source tables, unsupported lists within cells,
-fixed-height structures, negative margins, horizontal overflow, and rows that
-cannot fit with their headers fall back explicitly. Limits are 1,000 rows and
+fixed-height structures, negative margins, horizontal overflow, and rows or
+vertical bands that cannot fit with their headers fall back explicitly. Limits are 1,000 rows and
 10,000 cells per table, the existing 1,000-column grid limit, and the shared
 100,000 measured-grapheme/500-sheet budgets. These are conservative browser
 limits, not native maxima. Native table row/page counts, border-conflict parity,
@@ -663,9 +664,9 @@ notice; cached values are retained only when actually present. A rich two-header
 overflow original remains atomic fallback without altering paper or row geometry.
 Browser frozen dimensions are
 not asserted equal to native width getters or native collapsed-border decisions.
-Vertical/mixed spans, no witness, ambiguous/irregular/overlapping/nested/data-source
-grids, unsafe content and changing geometry remain localized atomic fallback with
-untouched original downloads. No authoring, bookmark/range guard, formula execution,
+Under #60, vertical/mixed spans, no witness, ambiguous/irregular/overlapping/nested/data-source
+grids, unsafe content and changing geometry remained localized atomic fallback with
+untouched original downloads; 10.9.1 below admits native vertical/mixed bands. No authoring, bookmark/range guard, formula execution,
 row-splitting, continuous-section or multi-column admission is broadened; all prior
 row/cell/column/list/grapheme/sheet limits remain. Native wrapping, pagination,
 page-count and border-conflict parity remain **Proposed**, not promised.
@@ -693,6 +694,54 @@ independent byte/SHA-verified backup:
 The source/build/native/browser/PDF/Cancel/baseline reproduction is sealed before
 PR publication; exact publication heads and unique/unpushed state are reported
 separately from the immutable verification snapshot.
+
+The **in-progress 10.9.1 (M1)** vertical-span support, implemented in this version
+and not merged or deployed, extends #60 to native vertical and mixed merges. Rows
+tied together by `rowspan` (including chained merges) form one **unbreakable band**
+that is placed whole after the same whole-table measurement and frozen column
+geometry. The width witness must own every grid column itself: a row covered by a
+vertical merge never qualifies. Leading native headers repeat on each page only when
+they end on a band boundary; a header sharing a merge with body rows falls back.
+Fragments keep original `rowspan`/`colspan`, every row and cell appears exactly once
+in reading order, and every fragment cell keeps whole-table width/height within
+**0.25 CSS px**. A band that cannot fit on an empty page with its headers falls back
+with a dedicated localized notice in all six languages; nothing is split, clipped
+or shrunk, and the original download is untouched.
+
+Installed full 4D 21.2 `F0012102` originals/getters/PDFs from `wp_rowspan_probe`
+(13 shapes) independently establish vertical, chained and 2×2 mixed merges,
+zero/one/two headers including a merged two-row header band, Unicode, disc/diamond
+cell lists, local pictures, inert formulas and links in merged cells, compatible-seam
+capacity and an 18-row over-tall band. Native findings that shape the scope: a merge
+covering every column of two rows collapses into one row; a header-into-body merge
+is silently declined; and native PDF pagination splits merged bands across pages,
+which the browser deliberately does not reproduce. An earlier probe run in which
+native PDF output omitted a whole row at a page boundary is retained as evidence.
+The `rich` shape, whose protected formula display beside a four-item cell list
+makes one band taller than the browser page body, and the 18-row `tall` band are
+recorded as band fallbacks; the no-witness shape keeps the table fallback. No
+authoring, bookmark/range guard, formula execution or budget is broadened, and
+native pagination, page-count, wrapping and border-conflict parity are not claimed.
+
+Vertical-band (10.9.1) verification: **442 unit tests, 163 production browser tests,
+2,586 installed-4D generation cases and 2,602 final strict import/export/reopen
+cases passed** under 4D 21.2 `F0012102`. All **2,538 #60 definitions** remain
+unchanged by name; **2,240 unaffected inputs and 2,761 dependency archives** were
+independently byte/SHA-compared. The 64 new cases are 56 native row-band downloads,
+6 recovery downloads for the #60 `vertical`/`mixed` originals (now admitted and fully
+verified instead of falling back), and 2 new Cancel exports. All **eighteen genuine headed
+Chromium Cancel states** passed: continuous, paged, expanded, tables, columns, seams,
+cell lists, horizontal spans and vertical bands, each clean/Redo and dirty/Undo,
+preserving complete DOM, selection paths/endpoints, scope, zoom, exact bytes,
+history and the entire IndexedDB record. A first complete attempt
+(`4wp-rowspan-20261114-gate-01`) passed generation, Cancel and comparison, but its
+final recheck exceeded the former 180-second 4D limit. It is retained as a failed
+attempt, not represented as a passing gate.
+
+Final evidence: `~/.copilot/evidence/4wp-rowspan-20261114-gate-02/`;
+independent byte/SHA-verified backup:
+`~/.copilot/evidence-backups/4wp-rowspan-20261114-gate-02/`. This is scoped
+evidence, not certification.
 
 The available #56 column increment admits **2-4 equal-width, left-to-right columns**,
 with a **0-72 pt gap** and **at least 72 pt of text width in each column** after
@@ -1093,8 +1142,8 @@ comparison. It does not normalize away DOM, history, recovery or source changes.
 Run all modes, then
 re-import the augmented manifest in full 4D and run the complete verifier.
 
-For the strict #56 baseline comparison, run
-`node scripts/reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_56_BASELINE`
+For the strict baseline comparison (currently the sealed #60 evidence), run
+`node scripts/reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_60_BASELINE`
 after the initial full gate. It preserves unrelated baseline input/dependency
 bytes and regenerates affected paged exports with the current production build.
 Run all Cancel modes, then the same command with `--compare` to check every
@@ -1435,7 +1484,11 @@ Missing application/report, compilation/native errors, timeouts and semantic
 differences fail the gate. The gate uses the shared fail-fast directory lock
 `$HOME/.copilot/4d-ql-native-gate.lock`; coordinate app ownership before manual
 probes too. A live lock is never removed by another run. A timeout terminates
-only that gate's own process.
+only that gate's own process. Each full-4D run has a 300-second wall-clock
+limit (raised from 180 seconds in 10.9.1, when the 2,602-case recheck needed about
+three minutes); a run that exceeds it is terminated and no pass is claimed.
+Independent probes run with `--continuous-probe`, `--cell-list-probe`,
+`--colspan-probe` or `--rowspan-probe`; each also runs inside the full gate.
 
 The gate first runs isolated native section/break, page geometry, offset and mutation probes, then creates
 genuine browser downloads and model exports, imports them in full 4D, exports

@@ -121,8 +121,36 @@ describe('derived paged projection safety and area selection', () => {
       expect(model.projection).toBe(mappings);
     }
     for (const rows of [merged(false) + merged(false),
-      '<tr><td rowspan="2"><p>A</p></td><td colspan="2"><p>BC</p></td></tr><tr><td><p>B</p></td><td><p>C</p></td></tr>' + row,
       merged(false) + '<tr><td colspan="4"><p>IRREGULAR</p></td></tr>' + row]) {
+      const model = new WriteProDocument(source('', `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`));
+      const before = model.pack();
+      expect(pagedCapability(model)).toBe('pagedTables');
+      expect(() => createPagedProjection(model, messages.en)).toThrow(expect.objectContaining({ code: 'pagedTables' }));
+      expect(model.pack()).toEqual(before);
+      expect(document.querySelector('.paged-measure')).toBeNull();
+    }
+  });
+
+  it('admits vertical row bands only with a full witness row and whole header bands, without touching the source', () => {
+    const row = '<tr><td><p>A</p></td><td><p>B</p></td><td><p>C</p></td></tr>';
+    const band = (header = false, cell = '<p>A</p>') => `<tr${header ? ' style="-d4-header:true"' : ''}><td rowspan="2">${cell}</td><td><p>B</p></td><td><p>C</p></td></tr>` +
+      `<tr${header ? ' style="-d4-header:true"' : ''}><td><p>B</p></td><td><p>C</p></td></tr>`;
+    for (const rows of [row + band(), band() + row, band(true) + row,
+      '<tr><td rowspan="2"><p>A</p></td><td colspan="2"><p>BC</p></td></tr><tr><td><p>B</p></td><td><p>C</p></td></tr>' + row,
+      row + '<tr><td colspan="2" rowspan="2"><p>AB</p></td><td><p>C</p></td></tr><tr><td><p>C</p></td></tr>',
+      row + '<tr><td rowspan="2"><p>A</p></td><td rowspan="3"><p>B</p></td><td><p>C</p></td></tr><tr><td><p>C</p></td></tr><tr><td><p>A</p></td><td><p>C</p></td></tr>']) {
+      const model = new WriteProDocument(source('', `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`));
+      model.render(document.createElement('article'), messages.en);
+      const before = model.pack();
+      const mappings = model.projection;
+      expect(pagedCapability(model)).toBeNull();
+      expect(model.pack()).toEqual(before);
+      expect(model.projection).toBe(mappings);
+    }
+    // Covered rows are never witnesses; header merges must not reach the body; band content stays guarded.
+    for (const rows of [band() + band(),
+      '<tr style="-d4-header:true"><td rowspan="2"><p>H</p></td><td><p>B</p></td><td><p>C</p></td></tr><tr><td><p>B</p></td><td><p>C</p></td></tr>' + row,
+      row + band(false, '<table><tr><td><p>NESTED</p></td></tr></table>'), row + band(false, '<p style="height:900pt">TALL</p>')]) {
       const model = new WriteProDocument(source('', `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`));
       const before = model.pack();
       expect(pagedCapability(model)).toBe('pagedTables');
