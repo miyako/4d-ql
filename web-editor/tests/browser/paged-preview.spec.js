@@ -1122,3 +1122,124 @@ for (const locale of ['en', 'ja', 'fr', 'de', 'es', 'it']) {
     await expect(page.locator('#paged-panel > summary')).toBeFocused();
   });
 }
+
+// Anchored objects (M3): wp_objpage_probe establishes native page membership only, not coordinates or wrapping.
+const objectBox = (n, rules) => `div._div${n}{padding:4pt;width:120pt;height:40pt;background-color:#FFFFFF;border-style:solid;border-width:1pt;${rules}position:absolute;display:none}`;
+const objectPicture = (n, rules) => `img._img${n}{width:48pt;height:32pt;${rules}position:absolute;display:none}`;
+const objectBody = objects => '<p>OBJP1</p><p class="_pb">ONE</p><p>OBJP2</p><p class="_sb">TWO</p><p>OBJP3</p><p class="_pb">THREE</p><p>OBJP4</p><p>FOUR</p>' + objects;
+const objectBreaks = 'p._pb{page-break-after:always}p._sb{page-break-after:always;-d4-section-break-after:always}';
+const placedObjects = objectBreaks +
+  objectBox(1, '-d4-anchor-layout:front;-d4-anchor-h-offset:150pt;-d4-anchor-v-offset:200pt;') +
+  objectBox(2, '-d4-anchor-section:2;-d4-anchor-layout:behind;z-index:-1;-d4-anchor-h-offset:20pt;-d4-anchor-v-offset:120pt;') +
+  objectBox(3, '-d4-anchor-section:2;-d4-anchor-layout:wrap-square;-d4-anchor-h-offset:150pt;-d4-anchor-v-offset:120pt;') +
+  objectPicture(1, '-d4-anchor-section:1;-d4-anchor-layout:front;-d4-anchor-h-offset:40pt;-d4-anchor-v-offset:280pt;');
+const placedBody = objectBody(`<img id="img1" class="_img1" src="${localPNG}" alt="checker"/>` +
+  '<div id="textBox1" class="_div1"><p>OBJBOXDOC</p></div><div id="textBox2" class="_div2"><p>OBJBOXBEHIND 日本語</p></div>' +
+  '<div id="textBox3" class="_div3"><p>OBJBOXSQUARE</p></div>');
+
+test('anchored objects follow native page membership and layers on preview and print pages', async ({ page }, testInfo) => {
+  await open(page, placedObjects, placedBody);
+  const before = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-status')).toHaveText(`4 · ${messages.en.pagedSheet}`);
+  await expect(page.locator('#paged-objects > p')).toHaveText([messages.en.pagedObjectWrap, messages.en.pagedObjectPlaced]);
+  const sheets = await page.locator('#paged-view .browser-page').evaluateAll(sheets => sheets.map(sheet => ({
+    body: sheet.querySelector('.page-body').textContent.match(/OBJP\d/g),
+    objects: [...sheet.querySelectorAll(':scope > .paged-object')].map(object => [object.dataset.object, object.dataset.layer,
+      getComputedStyle(object).zIndex, object.getAttribute('aria-label')]),
+    bodyLayer: getComputedStyle(sheet.querySelector('.page-body')).zIndex,
+    reserved: [...sheet.querySelectorAll('.layer-wrap-square')].map(object => getComputedStyle(object).outlineStyle),
+    inside: [...sheet.querySelectorAll(':scope > .paged-object')].every(object => {
+      const a = sheet.getBoundingClientRect(), b = object.getBoundingClientRect();
+      return b.left >= a.left && b.right <= a.right && b.top >= a.top && b.bottom <= a.bottom;
+    }),
+  })));
+  expect(sheets.map(sheet => sheet.body)).toEqual([['OBJP1'], ['OBJP2'], ['OBJP3'], ['OBJP4']]);
+  const first = [['img1', 'front', '2', 'Anchored picture · img1'], ['textBox1', 'front', '2', 'Text box · textBox1']];
+  const second = [['textBox1', 'front', '2', 'Text box · textBox1'], ['textBox2', 'behind', '0', 'Text box · textBox2'], ['textBox3', 'wrap-square', '2', 'Text box · textBox3']];
+  expect(sheets.map(sheet => sheet.objects.sort())).toEqual([first, first, second, second]);
+  expect(sheets.every(sheet => sheet.bodyLayer === '1' && sheet.inside)).toBe(true);
+  expect(sheets.map(sheet => sheet.reserved)).toEqual([[], [], ['dashed'], ['dashed']]);
+  await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
+  await page.locator('#settings-toggle').click();
+  await page.locator('#theme').selectOption('dark');
+  await page.locator('#zoom').selectOption('2');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('#paged-view .browser-page')).toHaveCount(4);
+  const path = testInfo.outputPath('objects.pdf');
+  await page.pdf({ path, preferCSSPageSize: true, printBackground: true });
+  const printed = inspectPDF(path);
+  expect(printed.pages).toHaveLength(4);
+  const tokens = printed.pages.map(sheet => sheet.words.map(word => word.text).filter(word => /^OBJ/.test(word)).sort());
+  expect(tokens).toEqual([['OBJBOXDOC', 'OBJP1'], ['OBJBOXDOC', 'OBJP2'], ['OBJBOXBEHIND', 'OBJBOXDOC', 'OBJBOXSQUARE', 'OBJP3'],
+    ['OBJBOXBEHIND', 'OBJBOXDOC', 'OBJBOXSQUARE', 'OBJP4']]);
+  const images = execFileSync('pdfimages', ['-list', path], { encoding: 'utf8' }).split('\n').slice(2).filter(Boolean)
+    .map(line => Number(line.trim().split(/\s+/)[0]));
+  expect(images).toEqual([1, 2]);
+  expect(printed.pages.every(sheet => Math.abs(sheet.width - 300) < 1 && Math.abs(sheet.height - 360) < 1)).toBe(true);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('other object targets keep labeled appendix sheets with a localized notice in all six locales on mobile', async ({ page }, testInfo) => {
+  const style = 'p._pb{page-break-after:always}p._cb{-d4-section-break-after:continuous}' +
+    objectBox(1, '-d4-anchor-page:2;-d4-anchor-layout:front;-d4-anchor-h-offset:150pt;-d4-anchor-v-offset:200pt;') +
+    objectBox(2, '-d4-anchor-section:2;-d4-anchor-layout:front;-d4-anchor-h-offset:150pt;-d4-anchor-v-offset:200pt;') +
+    objectPicture(1, '-d4-anchor-section:1;-d4-anchor-layout:behind;z-index:-1;') +
+    objectBox(3, '-d4-anchor-layout:front;-d4-anchor-h-offset:250pt;-d4-anchor-v-offset:20pt;');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, style, '<p>OBJP1</p><p class="_pb">ONE</p><p>OBJP2</p><p class="_cb">TWO</p><p>OBJP3</p><p>THREE</p>' +
+    `<img id="img1" class="_img1" src="${localPNG}" alt="checker"/><div id="textBox1" class="_div1"><p>OBJBOXPAGE</p></div>` +
+    '<div id="textBox2" class="_div2"><p>OBJBOXSEAM</p></div><div id="textBox3" class="_div3"><p>OBJBOXOUTSIDE</p></div>');
+  const before = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-status')).toHaveText(`2 · ${messages.en.pagedSheet}`);
+  await expect(page.locator('#paged-view .browser-page .paged-object')).toHaveCount(0);
+  const appendix = page.locator('#paged-view .paged-object-appendix');
+  await expect(appendix).toHaveCount(4);
+  expect(await appendix.evaluateAll(sheets => sheets.map(sheet => [sheet.dataset.object, sheet.querySelector('h3').textContent]))).toEqual([
+    ['img1', 'Anchored picture · img1'], ['textBox1', 'Text box · textBox1'], ['textBox2', 'Text box · textBox2'], ['textBox3', 'Text box · textBox3']]);
+  await expect(appendix.first().locator('img')).toHaveCount(1);
+  await expect(appendix.nth(3)).toContainText('OBJBOXOUTSIDE');
+  const path = testInfo.outputPath('object-appendix.pdf');
+  await page.pdf({ path, preferCSSPageSize: true, printBackground: true });
+  const words = inspectPDF(path).pages.flatMap(sheet => sheet.words.map(word => word.text));
+  for (const token of ['OBJBOXPAGE', 'OBJBOXSEAM', 'OBJBOXOUTSIDE']) expect(words.filter(word => word === token)).toHaveLength(1);
+  await page.locator('#settings-toggle').click();
+  for (const language of ['ja', 'fr', 'de', 'es', 'it', 'en']) {
+    await page.locator('#language').selectOption(language);
+    await expect(page.locator('#paged-objects > p')).toHaveText([messages[language].pagedObjectAppendix]);
+    await expect(appendix.first().locator('p').first()).toHaveText(messages[language].pagedObjectSheet);
+    expect(await page.locator('#paged-panel').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('object projection stays derived across box edits, undo, print Cancel and recovered Redo', async ({ page }) => {
+  await open(page, placedObjects, placedBody);
+  const original = await bytes(page);
+  await page.locator('#editing-scope').selectOption('object:textBox1');
+  await page.locator('#paper [contenteditable]').first().fill('WEBOBJBOX');
+  const edited = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-view .browser-page [data-object="textBox1"]')).toHaveText(Array(4).fill('WEBOBJBOX'));
+  await page.locator('#undo').click();
+  await expect(page.locator('#paged-view .browser-page [data-object="textBox1"]')).toHaveText(Array(4).fill('OBJBOXDOC'));
+  expect(contents(await bytes(page))).toEqual(contents(original));
+  await page.evaluate(() => {
+    window.print = () => { dispatchEvent(new Event('beforeprint')); dispatchEvent(new Event('afterprint')); };
+  });
+  await page.locator('#print-toggle').click();
+  await page.locator('#print-open').click();
+  await expect(page.locator('#editing-scope')).toHaveValue('object:textBox1');
+  expect(contents(await bytes(page))).toEqual(contents(original));
+  await expect(page.locator('#redo')).toBeEnabled();
+  await page.locator('#redo').click();
+  expect(contents(await bytes(page))).toEqual(contents(edited));
+  await expect(page.locator('#draft-state')).toHaveText(messages.en.draftSaved);
+  await page.reload();
+  await expect(page.locator('#recovery-notice')).toBeVisible();
+  await preview(page);
+  await expect(page.locator('#paged-view .browser-page [data-object="textBox1"]')).toHaveText(Array(4).fill('WEBOBJBOX'));
+  expect(contents(await bytes(page))).toEqual(contents(edited));
+});

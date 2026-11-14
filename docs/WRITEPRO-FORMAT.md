@@ -943,10 +943,42 @@ simulate these native placement, wrapping, layer, repetition or pagination
 semantics. Other origins, arbitrary layers/wrap modes and picture display-mode
 changes remain native-only. See the [in-progress support contract](../web-editor/README.md#object-lifecycle-and-stored-native-placement-in-progress).
 
+### Anchored object page membership (M3; full 4D F0012102)
+
+`wp_objpage_probe` (gate flag `--objpage-probe`, also run by the full gate)
+authors eleven native documents on 300×360 pt paper with explicit page/section
+breaks (body markers `OBJPn`), anchored text boxes (unique tokens, including
+Japanese/Greek/Arabic text) and one anchored picture each, then exports the
+original, a native PDF, a re-imported PDF and a body-edited target. The native
+PDFs, read per page with `pdftotext` and `pdfimages -list`, are the oracle for
+**which pages each object is drawn on**, never for coordinates or wrapping:
+
+- All pages/all sections: drawn on every page, including automatically
+  paginated pages, in front of and behind text alike.
+- Section N/all pages (`-d4-anchor-section:N`): drawn on every page of that
+  section, including its first, left and right variant pages, and on no other.
+- Document page N (`-d4-anchor-page:N`): that page only.
+- Requesting section 2 and page 1 is normalized by 4D to all sections, page 1
+  (section getter `-1`): the page setter clears the section association.
+- On a page shared through a continuous section break, only the outgoing
+  section's objects are drawn; the incoming section's objects start on its first
+  own page.
+- Square wrapping reflows native body text (five native pages instead of four in
+  the probe); stored geometry and getters survive re-import unchanged.
+
+The paged browser preview places only whole-document and whole-section targets
+on sections that do not border a continuous seam, with front, behind and
+square-wrap layers; square wrap is drawn as a reserved box without text flow.
+Page targets, seam-bordering section targets, protected objects, auto-width or
+picture-bearing text boxes and objects that do not fit the browser paper stay on
+labeled appendix sheets. Positions are browser approximations of the stored
+paper-origin offsets/alignment; no coordinate, wrapping, layering-order or
+page-count parity is claimed.
+
 ## Preview limits
 
 The preview rebuilds documents from a fixed vocabulary of elements and
 validated CSS values; nothing from the document reaches the page unfiltered.
 Pages split at hard breaks only (no reflow across pages), text wrap around
-anchored objects is not simulated, links do not navigate, and very large
+anchored objects is not simulated (the paged preview draws square-wrapped objects as reserved boxes without text flow), links do not navigate, and very large
 documents are cut after about 8,000 paragraphs with a notice.

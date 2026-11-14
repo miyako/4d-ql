@@ -7,8 +7,8 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`9146f12` / #62](https://github.com/miyako/4d-ql/pull/62) (M1, vertical row bands), deployed.
-**Available** means merged there; **In progress** is an unmerged increment (10.9.2, no-witness merged grids, in this version);
+[`6052b32` / #63](https://github.com/miyako/4d-ql/pull/63) (M2, no-witness merged grids), deployed.
+**Available** means merged there; **In progress** is an unmerged increment (10.9.3, object and media pagination, in this version);
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
@@ -41,15 +41,16 @@ promise of dates or full Write Pro parity.
 | 10.8. Paged table-cell lists | Native-evidenced bounded flat cell lists, mixed paragraphs, stable unequal columns and list-bearing leading headers in read-only pages and matching print | Available on main via #59; deployed |
 | 10.9. Paged horizontal table spans | Native-evidenced horizontal-only merges with a fully unmerged width-witness row, stable frozen geometry and complete-row/header fragments | Available on main via #60; deployed |
 | 10.9.1. Paged vertical table spans | Native-evidenced vertical and mixed merges as unbreakable row bands, whole header bands repeated, #60 frozen geometry; over-tall bands use a localized fallback | Available on main via #62 (M1); deployed |
-| 10.9.2. Paged no-witness merged grids | Merged tables with no merge-free row, paged only when native stored cell widths resolve every column exactly (uniform padding, native default borders, every boundary fixed and consistent, within the page width); other grids keep the localized fallback | In progress (M2); implemented in this version, not merged or deployed |
-| 10.10. Further layout parity | No-witness grids that native widths do not resolve exactly, area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled |
+| 10.9.2. Paged no-witness merged grids | Merged tables with no merge-free row, paged only when native stored cell widths resolve every column exactly (uniform padding, native default borders, every boundary fixed and consistent, within the page width); other grids keep the localized fallback | Available on main via #63 (M2); deployed |
+| 10.9.3. Paged objects and media | Supported anchored pictures and text boxes targeted at the whole document or a whole section placed on paged preview/print pages (front/behind layers; square wrap drawn as a reserved box without text flow, with a localized notice); other targets keep labeled appendix sheets | In progress (M3); implemented in this version, not merged or deployed |
+| 10.10. Further layout parity | No-witness grids that native widths do not resolve exactly, area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, page-targeted/seam objects, real text wrapping around objects, arbitrary layers and native-equivalent pagination/balancing | Proposed; unscheduled |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
 Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
-on main. #62 (M1, vertical row bands) was deployed by successful Pages run
-[`43570735842`](https://github.com/miyako/4d-ql/actions/runs/43570735842)
-at `9146f129176da79b2b8a7102bc83f24d56d5e74b`; the live bundle carries its band notice.
-Milestone M2 (10.9.2, no-witness merged grids) is implemented in this version and awaits
+on main. #63 (M2, no-witness merged grids) was deployed by successful Pages run
+[`43619276251`](https://github.com/miyako/4d-ql/actions/runs/43619276251)
+at `6052b32a6f7e31297ce2923948a6f06b405e88af`.
+Milestone M3 (10.9.3, object and media pagination) is implemented in this version and awaits
 review; it is not merged or deployed. 10.10/11 remain **Proposed**. Arbitrary wrapping and
 automatic native pagination remain unscheduled proposals.
 Native formula execution/a 4D backend, real-time collaboration and exact
@@ -495,7 +496,7 @@ changes do not create history entries. Delayed picture reads refuse stale
 documents rather than inserting into a replacement document.
 
 These are **native export controls, not a native-layout browser preview**.
-The isolated object guide and once-per-object print appendix remain unchanged.
+The isolated object guide and once-per-object continuous print appendix remain unchanged; the paged preview (10.9.3, in this version) places supported whole-document/whole-section objects on its pages (see [Paged browser preview](#paged-browser-preview-available-through-63-anchored-objects-in-this-version)).
 Native pagination, wrapping, layering, repetition and page targeting are not
 simulated in the browser; arbitrary z-order, other origins/wrap modes, formula
 execution and conversion of inline pictures to anchored objects remain outside
@@ -529,7 +530,7 @@ class-renumbering counterexample are independently preserved in
 `~/.copilot/evidence-backups/4wp-objects-20261113-probes-33ac49fe/`.
 The #52 increment is merged and deployed at the baseline recorded above.
 
-## Paged browser preview (available through #62; no-witness merged grids in this version)
+## Paged browser preview (available through #63; anchored objects in this version)
 
 Open **Paged browser preview** above the continuous editor. It is a separate,
 read-only projection of the whole document, even while authoring a header/footer.
@@ -745,8 +746,7 @@ independent byte/SHA-verified backup:
 `~/.copilot/evidence-backups/4wp-rowspan-20261114-gate-02/`. This is scoped
 evidence, not certification.
 
-The **in-progress 10.9.2 (M2)** no-witness support, implemented in this version and
-not merged or deployed, pages merged tables that have **no merge-free row** only when
+The **available/deployed 10.9.2 (M2, #63)** no-witness support pages merged tables that have **no merge-free row** only when
 the native stored cell widths fix every column exactly. Installed full 4D 21.2
 `F0012102` originals, getters, native re-imports and PDFs from `wp_nowitness_probe`
 (14 shapes) establish that a merged cell stores a content width whose outer width
@@ -791,6 +791,53 @@ Final evidence: `~/.copilot/evidence/4wp-nowitness-20261114-gate-01/`;
 independent byte/SHA-verified backup:
 `~/.copilot/evidence-backups/4wp-nowitness-20261114-gate-01/`. This is scoped
 evidence, not certification.
+
+The **in-progress 10.9.3 (M3)** object and media pagination, implemented in this
+version and not merged or deployed, draws supported anchored pictures and text boxes on
+the paged preview and print pages instead of excluding the whole document. Installed
+full 4D 21.2 `F0012102` originals, getters, re-imports and per-page native PDF text and
+image lists from `wp_objpage_probe` (11 shapes, `--objpage-probe`) are the oracle for
+**which pages each object appears on**: an all-pages/all-sections object is drawn on
+every page, including automatic pages; a section-N object on every page of that section,
+including its first, left and right variant pages; a document-page target on that page
+only. 4D normalizes a section 2 + page 1 request to page 1 of the document, and on a page
+shared through a continuous section break it draws only the outgoing section's objects.
+
+The browser places an object only when its stored target is the whole document or a whole
+section that does not border a continuous seam, its layer is front, behind or square wrap,
+it passes the existing object protection checks, a text box has an explicit width and no
+nested picture, and its box fits inside the browser paper of every page it repeats on.
+It is drawn at the stored paper-origin size and offset, or paper alignment, in front of
+(`front`, square wrap) or behind (`behind`) the read-only body text. **Square wrapping is a
+reserved box** (dashed outline in the preview) **with no text flowing around it**; the panel
+says so with a localized notice, and lines and page breaks can differ from 4D. Picture
+dimensions follow the stored size or the decoded natural size; text boxes keep their stored
+padding, background and border. Every other object (page targets, seam-bordering section
+targets, protected, auto-width or picture-bearing boxes, boxes outside the paper) is shown
+once on a labeled appendix sheet after the pages, with a localized notice; nothing is
+dropped. The continuous print projection keeps its existing once-per-object appendix.
+The projection is disposable: source bytes, history, selection and IndexedDB recovery are
+unchanged, and object text edited in its own scope refreshes every placed copy.
+
+Admitted native shapes: whole-document front and behind, section-1/section-2 front and
+behind, square wrap (whole-document box, section-2 picture), section-1 objects across
+first/left/right header variants, Unicode boxes (Japanese, Greek, Arabic) and automatic
+pagination. Appendix (protected) shapes: page target, section+page normalization and the
+continuous-seam section objects. Native PDF evidence covers page membership only; **no
+coordinate, wrapping, layering-order or page-count parity is claimed** (the automatic
+shape has 6 native and 7 browser pages; both carry every object on every page).
+
+Object pagination (10.9.3) verification: **445 unit tests, 169 production browser
+tests, 2,708 installed-4D generation cases and 2,728 final strict import/export/reopen
+cases passed** under 4D 21.2 `F0012102`. All **2,671 #63 definitions** remain unchanged by
+name; **2,240 unaffected inputs and 2,761 dependency archives** were independently byte/SHA-compared. The 57 new cases are 55 native anchored-object downloads (before,
+after, edited, Undo and recovered Redo for each of the 11 shapes) and 2 new Cancel exports.
+All **twenty-two genuine headed Chromium Cancel states** passed across eleven modes (adding
+anchored objects), each clean/Redo and dirty/Undo. The final recheck's 4D run took about
+195 seconds, within the unchanged 300-second limit. Two probe runs are retained as evidence: `4wp-objpage-20261115-probe-01` (default header margins on the variants shape, which the browser area band rejects) and `-probe-02` (the final probe; native page membership unchanged).
+
+Final evidence: `~/.copilot/evidence/4wp-objpage-20261115-gate-01/`; independent byte/SHA-verified backup:
+`~/.copilot/evidence-backups/4wp-objpage-20261115-gate-01/`. This is scoped evidence, not certification.
 
 The available #56 column increment admits **2-4 equal-width, left-to-right columns**,
 with a **0-72 pt gap** and **at least 72 pt of text width in each column** after
@@ -854,11 +901,11 @@ complete ordered content, fitting bounds and exact measured print membership.
 No native wrapping, final-column balancing, exact native pagination/page counts
 or footer coordinates are claimed.
 
-Unsupported continuous seams, unsupported column shapes/geometry/content, unsupported tables/lists/images, anchored
-objects, ambiguous associations/settings, fixed-size body paragraphs and
+Unsupported continuous seams, unsupported column shapes/geometry/content, unsupported tables/lists/images,
+ambiguous associations/settings, fixed-size body paragraphs and
 unsupported paragraph content use the existing continuous view/print mode.
-Unsplittable oversized lines/atoms, unsafe area bands, oversized unused appendix
-areas, more than 500 browser sheets (body plus appendices) or more than 100,000
+Unsplittable oversized lines/atoms, unsafe area bands, oversized unused or object appendix
+sheets, more than 500 browser sheets (body plus appendices) or more than 100,000
 graphemes measured for splitting or table preparation also fall
 back. Localized notices explain the reason; no partial paged view, clipped
 content, fabricated fallback text or archive mutation is returned. The fallback
@@ -1186,15 +1233,17 @@ exact selection endpoint paths, scope, zoom, history, IndexedDB and before/after
 source export bytes. `seams-cancel-*` adds two cases without replacing any
 baseline definition. Later increments add `--cell-lists`, `--colspans`, `--rowspans` and
 `--nowitnesses` (the native no-witness `rich` original and its first-header
-target), each adding two `*-cancel-*` cases: ten modes and twenty states in all. The harness settles its own download-triggered draft write
+target) and `--objpages` (the native anchored-object `variants` original and its
+first-paragraph target), each adding two `*-cancel-*` cases: eleven modes and
+twenty-two states in all. The harness settles its own download-triggered draft write
 before taking the snapshots and fixes the browser's Date per phase (timers still
 run), so dirty-export modification timestamps are identical for exact byte
 comparison. It does not normalize away DOM, history, recovery or source changes.
 Run all modes, then
 re-import the augmented manifest in full 4D and run the complete verifier.
 
-For the strict baseline comparison (currently the sealed #62 evidence), run
-`node scripts/reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_62_BASELINE`
+For the strict baseline comparison (currently the sealed #63 evidence), run
+`node scripts/reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_63_BASELINE`
 after the initial full gate. It preserves unrelated baseline input/dependency
 bytes and regenerates affected paged exports with the current production build.
 Run all Cancel modes, then the same command with `--compare` to check every
@@ -1539,7 +1588,7 @@ only that gate's own process. Each full-4D run has a 300-second wall-clock
 limit (raised from 180 seconds in 10.9.1, when the 2,602-case recheck needed about
 three minutes); a run that exceeds it is terminated and no pass is claimed.
 Independent probes run with `--continuous-probe`, `--cell-list-probe`,
-`--colspan-probe`, `--rowspan-probe` or `--nowitness-probe`; each also runs inside the full gate.
+`--colspan-probe`, `--rowspan-probe`, `--nowitness-probe` or `--objpage-probe`; each also runs inside the full gate.
 
 The gate first runs isolated native section/break, page geometry, offset and mutation probes, then creates
 genuine browser downloads and model exports, imports them in full 4D, exports

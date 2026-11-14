@@ -143,6 +143,9 @@ div.preserved-object { display: block; margin-top: 16px; }
 .section-flow { display: flow-root; }
 .paged-panel > summary { cursor: pointer; padding: 12px 18px; }
 .paged-panel > p { margin: 12px 18px; line-height: 1.6; }
+.paged-notices { margin: 12px 18px; padding: 8px 12px; border-inline-start: 3px solid #8a6d00; line-height: 1.6; }
+.paged-notices > p { margin: 0 0 6px; }
+.paged-notices > p:last-child { margin-bottom: 0; }
 .paper.paged-document { padding: 0; margin: 0; width: max-content; min-width: 0; max-width: none; min-height: 0; background: transparent; box-shadow: none; zoom: 1; }
 .paged-measure { position: absolute; left: -20000px; top: 0; visibility: hidden; width: max-content; pointer-events: none; }
 .browser-page, .browser-appendix { position: relative; box-sizing: border-box; background: #fff; color: #222; margin: 0 auto 24pt; box-shadow: 0 3px 14px #0000000e; break-after: page; }
@@ -160,6 +163,15 @@ div.preserved-object { display: block; margin-top: 16px; }
 .paged-document .paged-image { border: 0; background: transparent; padding: 0; margin: 0; font: inherit; }
 .paged-document .paged-image img { display: inline-block; }
 .paged-list-marker { position: absolute; right: calc(100% + .5em); white-space: pre; }
+.browser-page { isolation: isolate; }
+.browser-page > :is(.page-body, .page-area) { z-index: 1; }
+.paged-object { position: absolute; margin: 0; box-sizing: content-box; display: block; }
+.paged-object.layer-behind { z-index: 0; }
+.paged-object:is(.layer-front, .layer-wrap-square) { z-index: 2; }
+.paged-object.layer-wrap-square { outline: 1.5pt dashed #8a6d00; outline-offset: 1pt; }
+.paged-object-content > p { margin-block: 0; }
+.paged-anchored-picture img { display: block; }
+.paged-object-appendix .paged-object-content img { max-width: 100%; max-height: 100%; }
 .print-panel h3, .print-panel p { flex-basis: 100%; margin: 0; line-height: 1.6; }
 #print-document { display: none; }
 .section-controls select, #page-target { max-width: 100%; }
@@ -220,6 +232,7 @@ div.preserved-object { display: block; margin-top: 16px; }
   #print-document.paged-document { width: auto; }
   #print-document.paged-document .paged-image { border: 0; padding: 0; }
   #print-document.paged-document .paged-image img { height: var(--paged-image-height) !important; }
+  #print-document.paged-document .paged-anchored-picture img { width: var(--paged-object-width) !important; height: var(--paged-object-height) !important; max-width: none !important; max-height: none; }
   #print-document :is(.browser-page, .browser-appendix) { margin: 0; box-shadow: none; }
   #print-document .paged-unused { max-width: none !important; margin: 0; }
 }

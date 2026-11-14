@@ -207,8 +207,14 @@ export async function preparePagedProjection(model, labels) {
   if (reason) throw new DocumentError(reason);
   const decoded = new Map();
   const deadline = performance.now() + 10000;
-  for (const source of copy.document.querySelectorAll('body img')) {
-    const info = inlineImage(copy, source);
+  const owners = copy.storedObjects().map(item => item.element);
+  const sources = [...copy.document.querySelectorAll('body img')].filter(source => !owners.some(owner => owner.contains(source)))
+    .map(source => inlineImage(copy, source).src);
+  for (const plan of pagedObjectPlan(copy)) {
+    if (plan.item.kind === 'anchoredPicture' && !plan.protected) sources.push(copy.imageInfo(plan.item.element).src);
+  }
+  for (const src of sources) {
+    const info = { src };
     if (decoded.has(info.src)) continue;
     const image = new Image();
     image.src = info.src;
@@ -285,7 +291,7 @@ function makeInert(root) {
     if (['p', 'li'].includes(element.localName) || element.classList.contains('text-run')) element.style.whiteSpace = 'break-spaces';
     for (const attribute of [...element.attributes]) {
       if (['contenteditable', 'tabindex', 'role', 'spellcheck'].includes(attribute.name) ||
-        attribute.name.startsWith('data-') && !['data-page', 'data-section', 'data-sections', 'data-area', 'data-column'].includes(attribute.name)) element.removeAttribute(attribute.name);
+        attribute.name.startsWith('data-') && !['data-page', 'data-section', 'data-sections', 'data-area', 'data-column', 'data-object', 'data-objects', 'data-layer'].includes(attribute.name)) element.removeAttribute(attribute.name);
     }
   }
 }
@@ -392,12 +398,104 @@ function continuousSections(model, layout, setup, areas) {
   }
 }
 
+// Anchored objects (wp_objpage_probe, full 4D 21.2 F0012102): document-wide objects are drawn on every native page,
+// including automatic pages; section objects on every page of their section, including first/left/right pages; a
+// specific page only there. A page shared through a continuous seam draws only the outgoing section's objects, and
+// 4D normalizes a section+page request to that page alone. Only whole-document and whole-section targets that do
+// not border a continuous seam are placed; everything else stays on labeled appendix sheets, never guessed.
+function seamSections(model, layout) {
+  const sections = new Set();
+  for (let index = 1; index < layout.sections.length; index++) {
+    if (paragraphBreak(model.values(layout.sections[index - 1].elements.at(-1))) !== 'continuous') continue;
+    sections.add(layout.sections[index - 1].index);
+    sections.add(layout.sections[index].index);
+  }
+  return sections;
+}
+
+export function pagedObjectPlan(model) {
+  const layout = model.sectionLayout();
+  const seams = seamSections(model, layout);
+  return model.storedObjects().map(item => {
+    const state = model.objectState(item.name);
+    if (state.reason) return { item, protected: true, appendix: true };
+    const { values } = state;
+    const page = values['-d4-anchor-page'];
+    const section = values['-d4-anchor-section'] && values['-d4-anchor-section'] !== 'all' ? Number(values['-d4-anchor-section']) : null;
+    if (page && page !== 'all' || section !== null && seams.has(section) ||
+      item.kind === 'textBox' && (state.geometry.width === 'auto' || item.element.querySelector('img'))) return { item, appendix: true };
+    return { item, section, layout: values['-d4-anchor-layout'], values, geometry: state.geometry };
+  });
+}
+
+const visualProperty = /^(padding(?:-(?:top|right|bottom|left))?|background-color|border(?:-(?:style|width|color))?)$/;
+function placedObject(copy, plan, labels, decoded) {
+  const { item, values, geometry } = plan;
+  const element = document.createElement('figure');
+  element.className = `paged-object layer-${plan.layout}`;
+  element.dataset.object = item.id;
+  element.dataset.layer = plan.layout;
+  element.setAttribute('aria-label', `${labels[item.kind]} · ${item.id}`);
+  const hAlign = values['-d4-anchor-h-align'];
+  const vAlign = values['-d4-anchor-v-align'];
+  const transform = [];
+  if (hAlign === 'right') element.style.right = '0';
+  else if (hAlign === 'center') { element.style.left = '50%'; transform.push('translateX(-50%)'); }
+  else element.style.left = `${pagePoints(geometry.x)}pt`;
+  if (vAlign === 'bottom') element.style.bottom = '0';
+  else if (vAlign === 'center') { element.style.top = '50%'; transform.push('translateY(-50%)'); }
+  else element.style.top = `${pagePoints(geometry.y)}pt`;
+  if (transform.length) element.style.transform = transform.join(' ');
+  if (item.kind === 'anchoredPicture') {
+    const info = copy.imageInfo(item.element);
+    const dimensions = decoded.get(info.src);
+    if (!dimensions) throw new DocumentError('pagedUnavailable');
+    let width = geometry.width === 'auto' ? null : pagePoints(geometry.width);
+    let height = geometry.height === 'auto' ? null : pagePoints(geometry.height);
+    width ??= height ? height * dimensions.width / dimensions.height : dimensions.width * .75;
+    height ??= width * dimensions.height / dimensions.width;
+    const image = copy.projectImage(item.element, labels).querySelector('img');
+    if (!image) throw new DocumentError('pagedShape');
+    Object.assign(image.style, { width: `${width}pt`, height: `${height}pt`, maxWidth: 'none', maxHeight: 'none' });
+    image.style.setProperty('--paged-object-width', `${width}pt`);
+    image.style.setProperty('--paged-object-height', `${height}pt`);
+    image.loading = 'eager';
+    element.classList.add('paged-anchored-picture');
+    element.append(image);
+    return element;
+  }
+  element.classList.add('paged-text-box');
+  element.style.width = `${pagePoints(geometry.width)}pt`;
+  if (geometry.height !== 'auto') element.style.height = `${pagePoints(geometry.height)}pt`;
+  for (const [property, value] of Object.entries(values)) {
+    if (visualProperty.test(property) && /^[#\w\s.,%()-]{1,80}$/.test(value) && !/url|expression|var\(/i.test(value)) element.style.setProperty(property, value);
+  }
+  copy.setScope(item.name);
+  const content = document.createElement('div');
+  copy.render(content, labels);
+  makeInert(content);
+  content.removeAttribute('style');
+  content.className = 'paged-object-content';
+  element.append(content);
+  return element;
+}
+
+function objectFits(element, sheet) {
+  const bounds = sheet.getBoundingClientRect();
+  const box = element.getBoundingClientRect();
+  const inside = rect => rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25 &&
+    rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25;
+  return box.width > 0 && box.height > 0 && inside(box) && element.scrollHeight <= element.clientHeight + 1 &&
+    element.scrollWidth <= element.clientWidth + 1 &&
+    [...element.querySelectorAll('.text-run,.preserved-object,img')].every(run => [...run.getClientRects()].every(rect =>
+      rect.left >= box.left - .25 && rect.right <= box.right + .25 && rect.top >= box.top - .25 && rect.bottom <= box.bottom + .25));
+}
+
 export function pagedCapability(model) {
   const setup = model.pageSetup();
   const layout = model.sectionLayout();
   const areas = model.headerAreas();
   if (setup.reason || layout.reason || areas.reason) return 'pagedSettings';
-  if (model.storedObjects().length) return 'pagedShape';
   try {
     continuousSections(model, layout, setup, areas);
   } catch (error) {
@@ -470,7 +568,9 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
     copy.render(rendered, labels);
     makeInert(rendered);
     const mappings = copy.projection;
+    const owners = copy.storedObjects().map(item => item.element);
     for (const source of copy.document.querySelectorAll('body img')) {
+      if (owners.some(owner => owner.contains(source))) continue;
       const info = inlineImage(copy, source);
       const dimensions = decoded.get(info.src);
       if (!dimensions) throw new DocumentError('pagedUnavailable');
@@ -499,6 +599,28 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
       content.removeAttribute('style');
       content.className = 'page-area';
       areaContent.set(area.name, content);
+    }
+    // Objects are rendered once and cloned per page; each must fit every paper it repeats on, or it is appended.
+    const objectPlans = pagedObjectPlan(copy);
+    const placed = [];
+    for (const plan of objectPlans) {
+      if (plan.appendix) continue;
+      const template = placedObject(copy, plan, labels, decoded);
+      const targets = state.sections.filter(section => plan.section === null || section.index === plan.section);
+      let fits = targets.length > 0;
+      for (const section of targets) {
+        const paper = paperGeometry(copy.sectionSetup(section.index).geometry);
+        const probe = document.createElement('section');
+        probe.className = 'browser-page';
+        Object.assign(probe.style, { width: `${paper.width}pt`, height: `${paper.height}pt` });
+        const clone = template.cloneNode(true);
+        probe.append(clone);
+        root.append(probe);
+        fits &&= objectFits(clone, probe);
+        probe.remove();
+      }
+      if (fits) placed.push({ ...plan, template });
+      else plan.appendix = true;
     }
     let firstPaper;
     let sheet;
@@ -545,6 +667,9 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
         flow = flows[0];
         sheet.append(body);
         root.append(sheet);
+        const objects = placed.filter(plan => plan.section === null || plan.section === section.index);
+        for (const plan of objects) sheet.append(plan.template.cloneNode(true));
+        if (objects.length) sheet.dataset.objects = objects.map(plan => plan.item.id).join(' ');
         for (const kind of ['Header', 'Footer']) {
           const area = selectedPageArea(state, section.index, localPage === 0, pageNumber, rightFirst, kind);
           if (!area) continue;
@@ -791,7 +916,8 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
       page.dataset.sections = [...new Set([...page.querySelectorAll('.page-body [data-section]')].map(block => block.dataset.section))].join(' ');
     }
     const unused = state.areas.filter(area => !used.has(area.name));
-    if (pageNumber + unused.length > 500) throw new DocumentError('pagedOverflow');
+    const appended = objectPlans.filter(plan => plan.appendix);
+    if (pageNumber + unused.length + appended.length > 500) throw new DocumentError('pagedOverflow');
     for (const area of unused) {
       const appendix = document.createElement('section');
       appendix.className = 'browser-appendix paged-unused';
@@ -815,9 +941,47 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
         content.scrollHeight > content.clientHeight + 1 ||
         flow.scrollWidth > flow.clientWidth + 1) throw new DocumentError('pagedAreas');
     }
+    for (const plan of appended) {
+      const appendix = document.createElement('section');
+      appendix.className = 'browser-appendix paged-unused paged-object-appendix';
+      appendix.dataset.object = plan.item.id;
+      appendix.style.page = 'wppaged1';
+      appendix.style.width = `${firstPaper.width}pt`;
+      appendix.style.height = `${firstPaper.height}pt`;
+      const flow = document.createElement('div');
+      flow.className = 'page-body';
+      const [top, right, bottom, left] = firstPaper.margins;
+      Object.assign(flow.style, { top: `${top}pt`, right: `${right}pt`, bottom: `${bottom}pt`, left: `${left}pt` });
+      const notice = document.createElement('p');
+      notice.textContent = labels.pagedObjectSheet;
+      const heading = document.createElement('h3');
+      heading.textContent = `${labels[plan.item.kind]} · ${plan.item.id}`;
+      const content = document.createElement('div');
+      content.className = 'unused-area paged-object-content';
+      if (plan.protected) content.textContent = labels.objectProtected;
+      else if (plan.item.kind === 'anchoredPicture') {
+        const image = copy.projectImage(plan.item.element, labels);
+        image.querySelector('img')?.setAttribute('loading', 'eager');
+        content.append(image);
+      } else {
+        copy.setScope(plan.item.name);
+        copy.render(content, labels);
+        makeInert(content);
+        content.removeAttribute('style');
+      }
+      flow.append(notice, heading, content);
+      appendix.append(flow);
+      root.append(appendix);
+      if (content.getBoundingClientRect().bottom > flow.getBoundingClientRect().bottom + .25 ||
+        content.scrollHeight > content.clientHeight + 1 || flow.scrollWidth > flow.clientWidth + 1) throw new DocumentError('pagedOverflow');
+    }
+    const notices = [];
+    if (placed.some(plan => plan.layout === 'wrap-square')) notices.push('pagedObjectWrap');
+    if (placed.length) notices.push('pagedObjectPlaced');
+    if (appended.length) notices.push('pagedObjectAppendix');
     makeInert(root);
     root.remove();
-    return { root, rules: rules.join('\n'), pages: pageNumber };
+    return { root, rules: rules.join('\n'), pages: pageNumber, notices };
   } finally {
     staging.remove();
   }

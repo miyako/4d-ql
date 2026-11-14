@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WriteProDocument } from '../src/document.js';
-import { pagedCapability, createPagedProjection, selectedPageArea, pageListMarker, pagedColumnGeometry } from '../src/paged-preview.js';
+import { pagedCapability, createPagedProjection, selectedPageArea, pageListMarker, pagedColumnGeometry, pagedObjectPlan } from '../src/paged-preview.js';
 import { messages } from '../src/i18n.js';
 
 const source = (style, body) => `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Pages</title><style>${style}</style></head><body>${body}</body></html>`;
@@ -305,5 +305,48 @@ describe('derived paged projection safety and area selection', () => {
     expect(pageListMarker({ 'list-style-type': 'diamond' }, 1, 'ul')).toBe('\u25c6');
     for (const values of [{ '-d4-list-style-type': 'custom' }, { '-d4-list-level': '2' },
       { '-d4-list-string-format-ltr': "'#.#'" }]) expect(() => pageListMarker(values, 1, 'ol')).toThrow();
+  });
+});
+
+describe('anchored object pagination plan (wp_objpage_probe page membership)', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAASklEQVR4nO3OMQ0AIBBD0VPCjCtM4gBhYOA6kg79Scef9NU9s91Yu93vvgABAhQHch2rHhAgQHkg17HqAQEClAdyHaseECBAcaAH191RiEIeQFYAAAAASUVORK5CYII=';
+  const box = (n, rules) => `div._div${n}{padding:4pt;width:120pt;height:40pt;border-style:solid;border-width:1pt;${rules}position:absolute;display:none}`;
+  const pic = (n, rules) => `img._img${n}{width:48pt;height:32pt;${rules}position:absolute;display:none}`;
+  const document4 = (style, objects, seam = 'always') =>
+    source(`p._s{${seam === 'always' ? 'page-break-after:always;' : ''}-d4-section-break-after:${seam}}${style}`,
+      `<p>OBJP1</p><p class="_s">ONE</p><p>OBJP2</p>${objects}`);
+
+  it('places whole-document and whole-section front/behind/square targets, appending everything else', () => {
+    const model = new WriteProDocument(document4(
+      box(1, '-d4-anchor-layout:front;') + box(2, '-d4-anchor-section:2;-d4-anchor-layout:behind;z-index:-1;') +
+      box(3, '-d4-anchor-page:2;-d4-anchor-layout:front;') + pic(1, '-d4-anchor-section:1;-d4-anchor-layout:wrap-square;') +
+      box(4, 'width:auto;-d4-anchor-layout:front;'),
+      `<img id="img1" class="_img1" src="${png}"/><div id="textBox1" class="_div1"><p>OBJBOXDOC</p></div>` +
+      '<div id="textBox2" class="_div2"><p>日本語 OBJBOXSECTION</p></div><div id="textBox3" class="_div3"><p>OBJBOXPAGE</p></div>' +
+      '<div id="textBox4" class="_div4"><p>AUTO</p></div>'));
+    const before = model.pack();
+    expect(pagedCapability(model)).toBeNull();
+    const plan = Object.fromEntries(pagedObjectPlan(model).map(entry => [entry.item.id, entry]));
+    expect(plan.textBox1).toMatchObject({ section: null, layout: 'front' });
+    expect(plan.textBox2).toMatchObject({ section: 2, layout: 'behind' });
+    expect(plan.img1).toMatchObject({ section: 1, layout: 'wrap-square' });
+    expect(plan.textBox3.appendix).toBe(true);
+    expect(plan.textBox4.appendix).toBe(true);
+    expect(Object.values(plan).some(entry => entry.protected)).toBe(false);
+    expect(model.pack()).toEqual(before);
+  });
+
+  it('appends section targets on either side of a continuous seam and protected objects, never guessing', () => {
+    const model = new WriteProDocument(document4(
+      box(1, '-d4-anchor-section:2;-d4-anchor-layout:front;') + pic(1, '-d4-anchor-section:1;-d4-anchor-layout:behind;z-index:-1;') +
+      box(2, '-d4-anchor-layout:front;') + box(3, '-d4-anchor-layout:front;-d4-anchor-origin:header-box;'),
+      `<img id="img1" class="_img1" src="${png}"/><div id="textBox1" class="_div1"><p>SEAM</p></div>` +
+      '<div id="textBox2" class="_div2"><p>DOC</p></div><div id="textBox3" class="_div3"><p>HEADER ORIGIN</p></div>', 'continuous'));
+    expect(pagedCapability(model)).toBeNull();
+    const plan = Object.fromEntries(pagedObjectPlan(model).map(entry => [entry.item.id, entry]));
+    expect(plan.textBox1.appendix).toBe(true);
+    expect(plan.img1.appendix).toBe(true);
+    expect(plan.textBox2).toMatchObject({ section: null, layout: 'front' });
+    expect(plan.textBox3).toMatchObject({ appendix: true, protected: true });
   });
 });
