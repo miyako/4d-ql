@@ -7,8 +7,8 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`f926cdf` / #61](https://github.com/miyako/4d-ql/pull/61) (README refresh after #60).
-**Available** means merged there; **In progress** is an unmerged increment (10.9.1, vertical row bands, in this version);
+[`9146f12` / #62](https://github.com/miyako/4d-ql/pull/62) (M1, vertical row bands), deployed.
+**Available** means merged there; **In progress** is an unmerged increment (10.9.2, no-witness merged grids, in this version);
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
@@ -40,15 +40,16 @@ promise of dates or full Write Pro parity.
 | 10.7. Continuous-section pages | Area-free compatible single-column boundaries share measured pages and matching browser print; unsupported seams retain explicit fallback | Available on main via #57; deployed |
 | 10.8. Paged table-cell lists | Native-evidenced bounded flat cell lists, mixed paragraphs, stable unequal columns and list-bearing leading headers in read-only pages and matching print | Available on main via #59; deployed |
 | 10.9. Paged horizontal table spans | Native-evidenced horizontal-only merges with a fully unmerged width-witness row, stable frozen geometry and complete-row/header fragments | Available on main via #60; deployed |
-| 10.9.1. Paged vertical table spans | Native-evidenced vertical and mixed merges as unbreakable row bands, whole header bands repeated, #60 frozen geometry; over-tall bands use a localized fallback | In progress (M1); implemented in this version, not merged or deployed |
-| 10.10. Further layout parity | No-witness merged grids, area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled |
+| 10.9.1. Paged vertical table spans | Native-evidenced vertical and mixed merges as unbreakable row bands, whole header bands repeated, #60 frozen geometry; over-tall bands use a localized fallback | Available on main via #62 (M1); deployed |
+| 10.9.2. Paged no-witness merged grids | Merged tables with no merge-free row, paged only when native stored cell widths resolve every column exactly (uniform padding, native default borders, every boundary fixed and consistent, within the page width); other grids keep the localized fallback | In progress (M2); implemented in this version, not merged or deployed |
+| 10.10. Further layout parity | No-witness grids that native widths do not resolve exactly, area-bearing or geometry-changing continuous seams, multi-column/complex table pagination, divider rules, arbitrary object wrapping/layers and native-equivalent pagination/balancing | Proposed; unscheduled |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
 Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
-on main. #60 was deployed by successful Pages run
-[`43515562104`](https://github.com/miyako/4d-ql/actions/runs/43515562104)
-at `94915de6bd21dfe2c8f33b50106a315951ed5148`.
-Milestone M1 (10.9.1, vertical row bands) is implemented in this version and awaits
+on main. #62 (M1, vertical row bands) was deployed by successful Pages run
+[`43570735842`](https://github.com/miyako/4d-ql/actions/runs/43570735842)
+at `9146f129176da79b2b8a7102bc83f24d56d5e74b`; the live bundle carries its band notice.
+Milestone M2 (10.9.2, no-witness merged grids) is implemented in this version and awaits
 review; it is not merged or deployed. 10.10/11 remain **Proposed**. Arbitrary wrapping and
 automatic native pagination remain unscheduled proposals.
 Native formula execution/a 4D backend, real-time collaboration and exact
@@ -528,7 +529,7 @@ class-renumbering counterexample are independently preserved in
 `~/.copilot/evidence-backups/4wp-objects-20261113-probes-33ac49fe/`.
 The #52 increment is merged and deployed at the baseline recorded above.
 
-## Paged browser preview (available through #60; vertical row bands in this version)
+## Paged browser preview (available through #62; no-witness merged grids in this version)
 
 Open **Paged browser preview** above the continuous editor. It is a separate,
 read-only projection of the whole document, even while authoring a header/footer.
@@ -611,7 +612,8 @@ Only contiguous leading rows with native `-d4-header:true` repeat, based on
 independent full-4D `wk header row count` originals/getters/PDF evidence. A `th`
 element alone does not invent a native header. Each fragment requires at least
 one data row in addition to its headers. Nonleading/invalid/all-header metadata,
-header rows sharing a vertical merge with body rows, grids without a width-witness row,
+header rows sharing a vertical merge with body rows, grids whose columns neither a width-witness
+row nor exact native stored widths resolve,
 irregular/nested/data-source tables, unsupported lists within cells,
 fixed-height structures, negative margins, horizontal overflow, and rows or
 vertical bands that cannot fit with their headers fall back explicitly. Limits are 1,000 rows and
@@ -695,8 +697,7 @@ The source/build/native/browser/PDF/Cancel/baseline reproduction is sealed befor
 PR publication; exact publication heads and unique/unpushed state are reported
 separately from the immutable verification snapshot.
 
-The **in-progress 10.9.1 (M1)** vertical-span support, implemented in this version
-and not merged or deployed, extends #60 to native vertical and mixed merges. Rows
+The **Available/deployed #62 (M1)** vertical-span support extends #60 to native vertical and mixed merges. Rows
 tied together by `rowspan` (including chained merges) form one **unbreakable band**
 that is placed whole after the same whole-table measurement and frozen column
 geometry. The width witness must own every grid column itself: a row covered by a
@@ -719,7 +720,8 @@ which the browser deliberately does not reproduce. An earlier probe run in which
 native PDF output omitted a whole row at a page boundary is retained as evidence.
 The `rich` shape, whose protected formula display beside a four-item cell list
 makes one band taller than the browser page body, and the 18-row `tall` band are
-recorded as band fallbacks; the no-witness shape keeps the table fallback. No
+recorded as band fallbacks; the no-witness shape kept the table fallback under #62
+and is admitted by 10.9.2 below. No
 authoring, bookmark/range guard, formula execution or budget is broadened, and
 native pagination, page-count, wrapping and border-conflict parity are not claimed.
 
@@ -741,6 +743,53 @@ attempt, not represented as a passing gate.
 Final evidence: `~/.copilot/evidence/4wp-rowspan-20261114-gate-02/`;
 independent byte/SHA-verified backup:
 `~/.copilot/evidence-backups/4wp-rowspan-20261114-gate-02/`. This is scoped
+evidence, not certification.
+
+The **in-progress 10.9.2 (M2)** no-witness support, implemented in this version and
+not merged or deployed, pages merged tables that have **no merge-free row** only when
+the native stored cell widths fix every column exactly. Installed full 4D 21.2
+`F0012102` originals, getters, native re-imports and PDFs from `wp_nowitness_probe`
+(14 shapes) establish that a merged cell stores a content width whose outer width
+(`width + 2 × padding + 1pt` default border) equals the sum of its columns' outer
+widths, and that native column getters return no width for any column containing a
+merge, even after re-import. The browser therefore requires native collapsed solid
+borders with only the native 1 pt default width, a point `width` on every cell and
+one uniform `padding`; every column boundary must be fixed by some cell edge, every
+redundant cell must agree exactly, and the resolved table must fit the page width.
+The resolved columns are laid out before the same single whole-table measurement,
+every cell must measure its columns' sum within 0.25 CSS px, and #60's frozen
+colgroup, complete-row placement, #62's bands and header repetition then apply
+unchanged. Witness tables are not affected.
+
+Admitted native shapes: alternating horizontal merges with zero, one and two
+headers, column-A row bands, 2×2 blocks, a four-column staircase, rich merged
+content (disc/diamond lists, a local picture, an inert formula and a link),
+a compatible seam, 5 pt padding, and two grids full 4D itself normalizes (it removes
+a column that never separates from its neighbour). The #60 and #62 `no-witness`
+originals are now admitted and fully verified. Protected with the localized
+`pagedTables` notice: a declared 2 pt border, where full 4D stores merged widths
+that drift by 0.5 pt per row; per-column padding, where a column that never stands
+alone declares no padding of its own; and exactly resolved columns wider than the
+page text width, which the browser never shrinks. Hand-made XML with an unfixed
+boundary or contradictory widths also stays atomic; no native shape produced one.
+No width is estimated, and native wrapping, pagination, page-count and
+border-conflict parity are not claimed.
+
+No-witness (10.9.2) verification: **443 unit tests, 166 production browser tests,
+2,653 installed-4D generation cases and 2,671 final strict import/export/reopen
+cases passed** under 4D 21.2 `F0012102`. All **2,602 #62 definitions** remain
+unchanged by name; **2,240 unaffected inputs and 2,761 dependency archives** were
+independently byte/SHA-compared. The 69 new cases are 61 native no-witness downloads,
+6 recovery downloads for the #60/#62 `no-witness` originals (now admitted), and 2 new
+Cancel exports. All **twenty genuine headed Chromium Cancel states** passed across ten
+modes (adding no-witness grids), each clean/Redo and dirty/Undo. The final recheck's
+4D run took about 180 seconds, within the unchanged 300-second limit. Two earlier
+probe runs (`4wp-nowitness-20261114-probe-01`, `-probe-02`) recorded native column
+removal as errors and are retained as evidence.
+
+Final evidence: `~/.copilot/evidence/4wp-nowitness-20261114-gate-01/`;
+independent byte/SHA-verified backup:
+`~/.copilot/evidence-backups/4wp-nowitness-20261114-gate-01/`. This is scoped
 evidence, not certification.
 
 The available #56 column increment admits **2-4 equal-width, left-to-right columns**,
@@ -1135,15 +1184,17 @@ in clean/Redo and dirty/Undo states. All six modes (default continuous print,
 `--paged`, `--expanded`, `--tables`, `--columns`, `--seams`) compare full DOM,
 exact selection endpoint paths, scope, zoom, history, IndexedDB and before/after
 source export bytes. `seams-cancel-*` adds two cases without replacing any
-baseline definition. The harness settles its own download-triggered draft write
+baseline definition. Later increments add `--cell-lists`, `--colspans`, `--rowspans` and
+`--nowitnesses` (the native no-witness `rich` original and its first-header
+target), each adding two `*-cancel-*` cases: ten modes and twenty states in all. The harness settles its own download-triggered draft write
 before taking the snapshots and fixes the browser's Date per phase (timers still
 run), so dirty-export modification timestamps are identical for exact byte
 comparison. It does not normalize away DOM, history, recovery or source changes.
 Run all modes, then
 re-import the augmented manifest in full 4D and run the complete verifier.
 
-For the strict baseline comparison (currently the sealed #60 evidence), run
-`node scripts/reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_60_BASELINE`
+For the strict baseline comparison (currently the sealed #62 evidence), run
+`node scripts/reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_62_BASELINE`
 after the initial full gate. It preserves unrelated baseline input/dependency
 bytes and regenerates affected paged exports with the current production build.
 Run all Cancel modes, then the same command with `--compare` to check every
@@ -1488,7 +1539,7 @@ only that gate's own process. Each full-4D run has a 300-second wall-clock
 limit (raised from 180 seconds in 10.9.1, when the 2,602-case recheck needed about
 three minutes); a run that exceeds it is terminated and no pass is claimed.
 Independent probes run with `--continuous-probe`, `--cell-list-probe`,
-`--colspan-probe` or `--rowspan-probe`; each also runs inside the full gate.
+`--colspan-probe`, `--rowspan-probe` or `--nowitness-probe`; each also runs inside the full gate.
 
 The gate first runs isolated native section/break, page geometry, offset and mutation probes, then creates
 genuine browser downloads and model exports, imports them in full 4D, exports

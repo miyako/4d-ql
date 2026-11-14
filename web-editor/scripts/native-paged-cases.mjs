@@ -10,6 +10,7 @@ import { prepareContinuousCases } from './native-continuous-cases.mjs';
 import { prepareCellListCases } from './native-cell-list-cases.mjs';
 import { prepareColspanCases } from './native-colspan-cases.mjs';
 import { prepareRowspanCases } from './native-rowspan-cases.mjs';
+import { prepareNowitnessCases } from './native-nowitness-cases.mjs';
 
 export async function preparePagedCases(directory, cases, browser, url, download) {
   const report = JSON.parse(await readFile(resolve(directory, 'Output/paged-report.json'), 'utf8'));
@@ -104,6 +105,7 @@ export async function preparePagedCases(directory, cases, browser, url, download
   await prepareCellListCases(directory, cases, browser, url, download);
   await prepareColspanCases(directory, cases, browser, url, download);
   await prepareRowspanCases(directory, cases, browser, url, download);
+  await prepareNowitnessCases(directory, cases, browser, url, download);
 }
 
 async function preparePagedTableCases(directory, cases, browser, url, download) {

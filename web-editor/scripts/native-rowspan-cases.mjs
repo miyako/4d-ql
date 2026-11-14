@@ -18,7 +18,8 @@ export const rowspanShapes = {
   tall: 'pagedBand',
   // Full 4D 21.2 silently declines a merge from a header row into a body row, so this native table is admitted as stored.
   'header-cross': null,
-  'no-witness': 'pagedTables',
+  // M2: every native stored width is a single column (rowspan only), so the grid resolves without a witness row.
+  'no-witness': null,
 };
 const tokens = text => text.match(/R\d+[ABC]/g) || [];
 const normalize = text => text.replace(/&(?:amp|lt|gt|quot|apos);/g, entity =>
@@ -115,7 +116,8 @@ export async function prepareRowspanCases(directory, cases, browser, url, downlo
       window.rowspanWholeMeasurements = [];
       const bounds = Element.prototype.getBoundingClientRect;
       Element.prototype.getBoundingClientRect = function () {
-        if (this.localName === 'table' && this.closest('.paged-measure .page-body') && this.style.tableLayout !== 'fixed') {
+        if (this.localName === 'table' && this.closest('.paged-measure .page-body') &&
+          (this.style.tableLayout !== 'fixed' || this.querySelector(':scope > colgroup[data-native-columns]'))) {
           window.rowspanWholeMeasurements.push([...this.rows].map(row => [...row.cells].map(cell => {
             const rect = bounds.call(cell);
             return { width: rect.width, height: rect.height, colSpan: cell.colSpan, rowSpan: cell.rowSpan };

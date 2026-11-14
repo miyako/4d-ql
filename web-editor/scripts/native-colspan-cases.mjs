@@ -25,7 +25,8 @@ export async function prepareColspanCases(directory, cases, browser, url, downlo
     const dom = new JSDOM(html, { contentType: 'application/xhtml+xml' });
     const grid = nativeTableGrid(dom.window.document.querySelector('table'));
     // #60 excluded vertical/mixed; with native row bands (M1) they are admitted and fully verified below.
-    const excluded = ['no-witness', 'overflow'].includes(item.name);
+    // M2 admits no-witness: its native stored widths resolve every column exactly (see native-nowitness-cases.mjs).
+    const excluded = ['overflow'].includes(item.name);
     const witness = grid.rows.findIndex(row => row.children.length === 3 && [...row.children].every(cell => !cell.hasAttribute('colspan') && !cell.hasAttribute('rowspan')));
     assert.equal(grid.columns, 3);
     assert.equal(grid.rows.length, 26);
@@ -53,7 +54,9 @@ export async function prepareColspanCases(directory, cases, browser, url, downlo
           row <= item.headers ? nativeTablePages.length : 1, `${item.name}: complete independent native PDF token ${token}`);
       }
       const witnessCells = item.cells.filter(cell => cell.row === witness + 1);
-      assert.deepEqual(witnessCells.map(cell => cell.width), ['50pt', '70pt', '110pt']);
+      if (witness >= 0) assert.deepEqual(witnessCells.map(cell => cell.width), ['50pt', '70pt', '110pt']);
+      // No witness: native stores merged content widths whose outer widths add up (50+70+2x3+1, 70+110+2x3+1).
+      else assert.deepEqual(item.cells.slice(0, 6).map(cell => cell.width), ['127pt', '127pt', '110pt', '50pt', '187pt', '187pt']);
       if (item.name === 'rich') {
         const text = native.pages.flatMap(sheet => sheet.words).map(word => word.text).join('');
         assert(text.includes('\u25cf') && text.includes('\u2666') && text.includes('SPANCACHE'));
@@ -66,7 +69,8 @@ export async function prepareColspanCases(directory, cases, browser, url, downlo
       window.colspanWholeMeasurements = [];
       const bounds = Element.prototype.getBoundingClientRect;
       Element.prototype.getBoundingClientRect = function () {
-        if (this.localName === 'table' && this.closest('.paged-measure .page-body') && this.style.tableLayout !== 'fixed') {
+        if (this.localName === 'table' && this.closest('.paged-measure .page-body') &&
+          (this.style.tableLayout !== 'fixed' || this.querySelector(':scope > colgroup[data-native-columns]'))) {
           window.colspanWholeMeasurements.push([...this.rows].map(row => [...row.cells].map(cell => {
             const rect = bounds.call(cell);
             return { width: rect.width, height: rect.height, span: cell.colSpan };

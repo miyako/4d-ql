@@ -70,6 +70,62 @@ function prepareListItem(model, list, item, index, content, first = true) {
   content.prepend(marker);
 }
 
+const points = value => (/^(?:0|[1-9]\d{0,4})(?:\.\d{1,3})?pt$/.test(value || '') ? Number(value.slice(0, -2)) : null);
+
+// Full 4D 21.2 (wp_nowitness_probe) stores every merged cell's content width so that outer widths add up:
+// width + 2 x padding + the default 1pt solid border equals the sum of its columns' outer widths. Native column
+// getters report no width for merged columns, so the stored cell widths are the only evidence. A grid is resolved
+// only when uniform padding and default borders make that rule exact, every column boundary is fixed by some
+// cell edge, and every redundant cell agrees; anything else (declared border widths, per-column padding,
+// drifting stored widths, an unfixed boundary) stays atomic. Returns column widths in points, as a witness row would.
+function nativeColumnWidths(model, element, grid) {
+  const fail = () => { throw new DocumentError('pagedTables'); };
+  // The native default stylesheet declares border-width:1pt on table, tr and td; any other border geometry is unproven.
+  const border = values => Object.entries(values).some(([key, value]) => /^border/.test(key) &&
+    !['border-style', 'border-color', 'border-width', 'border-collapse', 'border-spacing'].includes(key)) ||
+    (values['border-width'] !== undefined && values['border-width'] !== '1pt');
+  const table = model.values(element);
+  if (table['border-style'] !== 'solid' || table['border-collapse'] !== 'collapse' || border(table)) fail();
+  const occupied = grid.rows.map(() => Array(grid.columns).fill(false));
+  const edges = Array.from({ length: grid.columns + 1 }, () => []);
+  let padding = null;
+  for (const [index, row] of grid.rows.entries()) {
+    if (border(model.values(row))) fail();
+    let column = 0;
+    for (const cell of row.children) {
+      while (occupied[index][column]) column++;
+      const across = Number(cell.getAttribute('colspan') || 1);
+      const down = Number(cell.getAttribute('rowspan') || 1);
+      for (let r = index; r < index + down; r++) for (let c = column; c < column + across; c++) occupied[r][c] = true;
+      const values = model.values(cell);
+      const width = points(values.width);
+      padding ??= points(values.padding);
+      if (!width || padding === null || points(values.padding) !== padding || values['border-style'] !== 'solid' ||
+        border(values) || Object.keys(values).some(key => /^padding-/.test(key))) fail();
+      const outer = width + 2 * padding + 1;
+      edges[column].push([column + across, outer]);
+      edges[column + across].push([column, -outer]);
+      column += across;
+    }
+  }
+  const positions = Array(grid.columns + 1).fill(null);
+  positions[0] = 0;
+  for (const queue = [0]; queue.length;) {
+    const boundary = queue.shift();
+    for (const [other, distance] of edges[boundary]) {
+      const position = positions[boundary] + distance;
+      if (positions[other] === null) {
+        positions[other] = position;
+        queue.push(other);
+      } else if (Math.abs(positions[other] - position) > 1e-6) fail();
+    }
+  }
+  if (positions.some(position => position === null)) fail();
+  const widths = positions.slice(1).map((position, index) => position - positions[index] - 2 * padding - 1);
+  if (widths.some(width => width <= 0)) fail();
+  return widths;
+}
+
 function pagedTable(model, element) {
   try {
     if (element.children.length > 1000 || element.querySelectorAll('td,th').length > 10000) throw new DocumentError('pagedTables');
@@ -78,8 +134,10 @@ function pagedTable(model, element) {
     // A width witness owns every grid column itself: rows covered by a vertical merge never qualify.
     const witness = grid.rows.findIndex(row => row.children.length === grid.columns && [...row.children].every(cell =>
       span(cell, 'colspan') === 1 && span(cell, 'rowspan') === 1));
-    if (witness < 0 || grid.rows.length > 1000 || grid.rows.length * grid.columns > 10000 ||
-      element.previousElementSibling?.localName !== 'p' || element.nextElementSibling?.localName !== 'p') throw new DocumentError('pagedTables');
+    if (grid.rows.length > 1000 || grid.rows.length * grid.columns > 10000) throw new DocumentError('pagedTables');
+    // Without a witness, only the native stored cell widths may fix the column grid (M2); otherwise atomic fallback.
+    const resolved = witness < 0 ? nativeColumnWidths(model, element, grid) : null;
+    if (element.previousElementSibling?.localName !== 'p' || element.nextElementSibling?.localName !== 'p') throw new DocumentError('pagedTables');
     // Rows tied together by vertical merges form one unbreakable band [start, end).
     const bands = [];
     for (let start = 0, end = 0; start < grid.rows.length; start = end) {
@@ -124,7 +182,7 @@ function pagedTable(model, element) {
         paragraphBreak(values) || values['break-after'] === 'column' || (node.localName !== 'img' &&
         ['height', 'min-height', 'max-height'].some(key => values[key]))) throw new DocumentError('pagedTables');
     }
-    return { ...grid, headers, witness, bands: bands.filter(([start]) => start >= headers) };
+    return { ...grid, headers, witness, resolved, bands: bands.filter(([start]) => start >= headers) };
   } catch (error) {
     if (!(error instanceof DocumentError)) throw error;
     throw new DocumentError('pagedTables');
@@ -527,7 +585,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
       };
       for (const element of section.elements) {
         if (element.localName === 'table') {
-          const { rows, headers, witness, merged, bands } = pagedTable(copy, element);
+          const { rows, headers, witness, merged, bands, resolved } = pagedTable(copy, element);
           const table = mappings.get(element);
           if (!table || table.localName !== 'table' ||
             table.querySelector('.preserved-object:not(.formula-object):not(.paged-image)')) throw new DocumentError('pagedTables');
@@ -552,14 +610,46 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
           if (align === 'center' || align === 'right') table.style.marginLeft = 'auto';
           if (align === 'center') table.style.marginRight = 'auto';
           // Measure the whole table once, then freeze its grid before selecting rows.
+          // A no-witness grid is laid out on its natively resolved columns before that single measurement.
+          const preset = resolved && document.createElement('colgroup');
+          if (resolved) {
+            preset.dataset.nativeColumns = '';
+            for (const value of resolved) {
+              const col = document.createElement('col');
+              col.style.width = `${value}pt`;
+              preset.append(col);
+            }
+            table.prepend(preset);
+            table.style.tableLayout = 'fixed';
+            table.style.width = `${resolved.reduce((sum, value) => sum + value, 0)}pt`;
+            for (const row of table.rows) for (const cell of row.cells) cell.style.width = 'auto';
+          }
           flow.append(table);
           const width = table.getBoundingClientRect().width;
-          const widths = [...table.rows[witness].cells].map(cell => cell.getBoundingClientRect().width);
+          const widths = resolved ? resolved.map(value => value * 4 / 3) :
+            [...table.rows[witness].cells].map(cell => cell.getBoundingClientRect().width);
           const reference = [...table.rows].map(row => [...row.cells].map(cell => {
             const bounds = cell.getBoundingClientRect();
             return { width: bounds.width, height: bounds.height };
           }));
           if (!width || widths.some(value => value <= 0)) throw new DocumentError('pagedUnavailable');
+          if (resolved) {
+            const bounds = flow.getBoundingClientRect();
+            const box = table.getBoundingClientRect();
+            if (box.left < bounds.left - .25 || box.right > bounds.right + .25) throw new DocumentError('pagedTables');
+            const offsets = [0];
+            for (const value of widths) offsets.push(offsets.at(-1) + value);
+            const occupied = [...table.rows].map(() => Array(widths.length).fill(false));
+            for (const [index, row] of [...table.rows].entries()) {
+              let column = 0;
+              for (const cell of row.cells) {
+                while (occupied[index][column]) column++;
+                for (let r = index; r < index + cell.rowSpan; r++) for (let c = column; c < column + cell.colSpan; c++) occupied[r][c] = true;
+                if (Math.abs(cell.getBoundingClientRect().width - (offsets[column + cell.colSpan] - offsets[column])) > .25) throw new DocumentError('pagedTables');
+                column += cell.colSpan;
+              }
+            }
+          }
           for (const node of [table, ...table.querySelectorAll('tr,td,th,p,li,ul,ol')]) {
             const style = getComputedStyle(node);
             if (['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].some(side => parseFloat(style[side]) < 0)) throw new DocumentError('pagedTables');
@@ -571,6 +661,8 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
               [...run.getClientRects()].every(rect => rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25 &&
                 rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25))) throw new DocumentError('pagedTables');
           }
+          // The frozen colgroup below carries the same resolved widths for every fragment.
+          preset?.remove();
           table.style.width = `${width}px`;
           table.style.tableLayout = 'fixed';
           const cols = document.createElement('colgroup');

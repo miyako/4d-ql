@@ -677,8 +677,7 @@ checks residual seam capacity, later table fragments, stable widths, repeated
 leading headers, complete ordered fitting content and exact print membership.
 Geometry-changing, area-bearing, multi-column or otherwise unsupported seams
 use localized atomic continuous fallback. #57 is available on main and deployed;
-Vertical row bands are **implemented in this version** (milestone M1), not merged
-or deployed. `wp_rowspan_probe` independently creates thirteen installed-4D
+Vertical row bands are **Available/deployed via #62** (milestone M1). `wp_rowspan_probe` independently creates thirteen installed-4D
 originals (`vertical`, `header`, `two-headers`, `mixed`, `unicode`, `lists`, `rich`,
 `media`, `seam`, `chain`, `tall`, `header-cross`, `no-witness`) with the requested
 merge list, native getters, safe header/body edit targets and PDFs, on 300×360 pt
@@ -714,9 +713,56 @@ keeps its original `rowspan`/`colspan`, and every fragment cell keeps whole-tabl
 width/height within 0.25 CSS px. A band that cannot fit on an empty page with its
 headers (`tall`, and `rich`, where the browser's protected formula display beside a
 four-item cell list is taller than the page body) falls back with the localized
-`pagedBand` notice. No-witness grids keep `pagedTables`. Authoring, native-range
+`pagedBand` notice. Under #62 no-witness grids kept `pagedTables` (lifted for
+natively resolvable grids below). Authoring, native-range
 guards, formula execution, row splitting and all budgets are unchanged; native
 wrapping/pagination/page-count/border-conflict parity remains Proposed.
+
+No-witness merged grids are **implemented in this version** (milestone M2), not
+merged or deployed. `wp_nowitness_probe` independently authors fourteen installed-4D
+originals with **no merge-free row** (`alternate`, `header`, `two-headers`, `band`,
+`block`, `stair`, `rich`, `seam`, `border2`, `pad5`, `uneven`, `gap`, `pair`, `wide`)
+on 300×360 pt paper, records cell and column getters, re-imports each exported
+original and reads the getters again, and exports PDFs and safe header/body edit
+targets. Observed full 4D 21.2 `F0012102` behavior:
+
+- A merged cell stores a content `width` such that **outer widths add up**:
+  `width + 2 × padding + 1pt` equals the sum of the outer widths of the columns it
+  covers (`50+70+2×3+1 = 127pt`, `70+110+7 = 187pt`; with 5 pt padding 131/191 pt).
+  The 1 pt is the native default `border-width:1pt` written in the document's own
+  `table`/`tr`/`td` rules; a 1 pt setter is not serialized as a declaration.
+- `wk width` getters on a **column** that contains a merged cell return the empty
+  mixed value, before and after native re-import. The stored cell widths are the
+  only evidence of such a column's width; re-import returns the same cell widths.
+- With a declared 2 pt table border the stored merged widths **drift by 0.5 pt per
+  row** (187.5, 188, 188.5 pt, …): no single column grid satisfies them.
+- With per-column padding (2/5/3 pt) a merged cell takes the padding of its first
+  column; outer widths still add up, but a column that never stands alone has no
+  padding of its own in the file.
+- Full 4D **removes a column that never separates** from its neighbour: merging
+  A+B in every row leaves a plain two-column table (`pair`), and the `gap` request
+  (A+B always together) is stored as a three-column grid. No stored grid had a
+  column boundary that no cell edge fixes.
+- 80/90/100 pt columns resolve exactly but exceed the 240 pt text width; the native
+  PDF draws the table past the right margin.
+- Every serialized token appears exactly once in every native PDF (leading headers
+  repeated on each table page).
+
+Browser admission: without a width witness the grid is resolved only from the
+stored widths. The table must have native `border-collapse:collapse`, solid table
+and cell borders and no border geometry other than the native `1pt` default; every
+cell needs a point `width` and the same uniform `padding` (no per-side padding).
+Each cell edge pair is an equation on column boundaries; every boundary must be
+reached from the left edge, every redundant cell must agree exactly and every
+column width must be positive. The resolved columns are laid out before the single
+whole-table measurement, every cell must measure its columns' sum within 0.25 CSS px
+and the table must lie within the page body; then the existing frozen colgroup,
+complete-row/band placement and header repetition apply unchanged. `border2`,
+`uneven` and `wide` (and hand-made XML with an unfixed boundary or contradictory
+widths) keep the localized `pagedTables` fallback. The #60 `no-witness` and #62
+`no-witness` originals are now admitted and fully verified. Witness tables keep
+#60's measured geometry and #62's bands. No widths are estimated, and native
+wrapping/pagination/page-count/border-conflict parity is not claimed.
 
 ## Formulas
 
