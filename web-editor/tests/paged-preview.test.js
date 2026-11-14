@@ -160,6 +160,49 @@ describe('derived paged projection safety and area selection', () => {
     }
   });
 
+  it('resolves no-witness grids only from native stored widths with uniform padding and default borders', () => {
+    // Native 4D 21.2 shape (wp_nowitness_probe): outer widths add up, width + 2 x padding + 1pt default border.
+    const style = (cells = 'td._td1{padding:3pt;width:127pt;border-style:solid}td._td2{padding:3pt;width:110pt;border-style:solid}' +
+      'td._td3{padding:3pt;width:50pt;border-style:solid}td._td4{padding:3pt;width:187pt;border-style:solid}', table = '') =>
+      'table{border-collapse:collapse;border-spacing:0;border-width:1pt}tr{border-width:1pt}td{vertical-align:top;border-width:1pt}' +
+      `table._table1{margin:2pt 0pt;border-style:solid;border-color:#234567${table}}${cells}`;
+    const odd = '<tr><td colspan="2" class="_td1"><p>AB</p></td><td class="_td2"><p>C</p></td></tr>';
+    const even = '<tr><td class="_td3"><p>A</p></td><td colspan="2" class="_td4"><p>BC</p></td></tr>';
+    const header = row => row.replace('<tr>', '<tr style="-d4-header:true">');
+    const block = '<tr><td colspan="2" rowspan="2" class="_td1"><p>AB</p></td><td class="_td2"><p>C</p></td></tr><tr><td class="_td2"><p>C</p></td></tr>' +
+      '<tr><td class="_td3"><p>A</p></td><td colspan="2" rowspan="2" class="_td4"><p>BC</p></td></tr><tr><td class="_td3"><p>A</p></td></tr>';
+    const table = (rows, css = style()) => source(css, `<p>BEFORE</p><table class="_table1">${rows}</table><p>AFTER</p>`);
+    for (const html of [table(odd + even), table(header(odd) + even + odd), table(header(odd) + header(even) + odd + even), table(block + block),
+      table(odd + even, style('td._td1{padding:5pt;width:131pt;border-style:solid}td._td2{padding:5pt;width:110pt;border-style:solid}' +
+        'td._td3{padding:5pt;width:50pt;border-style:solid}td._td4{padding:5pt;width:191pt;border-style:solid}'))]) {
+      const model = new WriteProDocument(html);
+      model.render(document.createElement('article'), messages.en);
+      const before = model.pack();
+      const mappings = model.projection;
+      expect(pagedCapability(model)).toBeNull();
+      expect(model.pack()).toEqual(before);
+      expect(model.projection).toBe(mappings);
+    }
+    // Counterexamples: the native drifting 2pt-border widths, per-column padding, missing or non-point widths,
+    // a boundary no cell edge fixes (4D never stores one; hand-made XML stays atomic) and contradictory widths.
+    for (const html of [
+      table(odd + even, style('td._td1{padding:3pt;width:127pt;border-style:solid}td._td2{padding:3pt;width:110pt;border-style:solid}' +
+        'td._td3{padding:3pt;width:50pt;border-style:solid}td._td4{padding:3pt;width:187.5pt;border-style:solid}', ';border-width:2pt')),
+      table(odd + even, style('td._td1{padding:2pt;width:131pt;border-style:solid}td._td2{padding:3pt;width:110pt;border-style:solid}' +
+        'td._td3{padding:2pt;width:50pt;border-style:solid}td._td4{padding:5pt;width:187pt;border-style:solid}')),
+      table(odd + even.replace('class="_td4"', 'class="_td4" style="width:14em"')),
+      table(odd + even.replace('class="_td4"', 'class="_td4" style="padding-left:9pt"')),
+      table(odd + odd), table(odd + even.replace('class="_td4"', 'class="_td4" style="width:188pt"')),
+      table(odd + even, style().replace('border-style:solid;border-color', 'border-style:none;border-color'))]) {
+      const model = new WriteProDocument(html);
+      const before = model.pack();
+      expect(pagedCapability(model)).toBe('pagedTables');
+      expect(() => createPagedProjection(model, messages.en)).toThrow(expect.objectContaining({ code: 'pagedTables' }));
+      expect(model.pack()).toEqual(before);
+      expect(document.querySelector('.paged-measure')).toBeNull();
+    }
+  });
+
   it('admits bounded mixed flat cell lists without inventing counters or changing live mappings', () => {
     for (const list of ['<ul><li style="margin-left:24pt;list-style-type:square">A</li><li>B</li></ul>',
       '<ol start="7"><li>A</li><li>B</li></ol>',

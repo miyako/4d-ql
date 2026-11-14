@@ -125,6 +125,91 @@ for (const headers of [0, 1, 2]) test(`horizontal spans retain later witness wid
   expect(await bytes(page)).toEqual(before);
 });
 
+// Native 4D 21.2 shape (wp_nowitness_probe): no merge-free row; stored merged widths resolve 50/70/110pt exactly.
+const nativeTable = (cells = 'td.ab{padding:3pt;width:127pt;border-style:solid}td.c{padding:3pt;width:110pt;border-style:solid}' +
+  'td.a{padding:3pt;width:50pt;border-style:solid}td.bc{padding:3pt;width:187pt;border-style:solid}', table = '') =>
+  'table{border-collapse:collapse;border-spacing:0;border-width:1pt}tr{border-width:1pt}td{vertical-align:top;border-width:1pt}' +
+  `table.t{border-style:solid;border-color:#234567${table}}${cells}tr.header{-d4-header:true}ol{margin:0;padding:0}li{font:12pt Arial;margin:0 0 0 24pt;line-height:18pt}`;
+const alternating = (index, headers = 0) => `<tr${index < headers ? ' class="header"' : ''}>${index % 2 ?
+  `<td class="a"><p>R${index}A</p></td><td colspan="2" class="bc"><p>R${index}B</p><ol start="7"><li>R${index}C</li></ol></td>` :
+  `<td colspan="2" class="ab"><p><b>R${index}A</b></p><p>R${index}B</p></td><td class="c"><p>R${index}C</p></td>`}</tr>`;
+
+for (const headers of [0, 1]) test(`no-witness spans freeze natively resolved columns with ${headers} repeated leading headers`, async ({ page }, testInfo) => {
+  await open(page, nativeTable(), `<p>BEFORE</p><table class="t">${Array.from({ length: 16 }, (_, index) => alternating(index, headers)).join('')}</table><p>AFTER</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets.nth(1)).toBeVisible();
+  await expect(page.locator('#paged-status')).toHaveText(`${await sheets.count()} · ${messages.en.pagedSheet}`);
+  const frozen = await page.locator('#paged-view .page-body table').evaluateAll(tables => tables.map(table =>
+    [...table.querySelectorAll(':scope > colgroup > col')].map(col => parseFloat(col.style.width) * .75)));
+  expect(frozen.length).toBeGreaterThan(1);
+  for (const columns of frozen) columns.forEach((value, index) => expect(Math.abs(value - [50, 70, 110][index])).toBeLessThanOrEqual(.2));
+  await expect(page.locator('#paged-view colgroup[data-native-columns]')).toHaveCount(0);
+  const fragments = await sheets.evaluateAll(sheets => sheets.map(sheet => {
+    const origin = sheet.getBoundingClientRect();
+    return [...sheet.querySelectorAll('.page-body table tr')].map(row => [...row.cells].map(cell => {
+      const bounds = cell.getBoundingClientRect();
+      return { text: cell.textContent, span: cell.colSpan, width: bounds.width * .75,
+        x: (bounds.left - origin.left) * .75, y: (bounds.top - origin.top) * .75,
+        right: (bounds.right - origin.left) * .75, bottom: (bounds.bottom - origin.top) * .75,
+        markers: [...cell.querySelectorAll('.paged-list-marker')].map(marker => marker.textContent) };
+    }));
+  }));
+  const rowIndex = row => Number(row[0].text.match(/R(\d+)A/)[1]);
+  const data = fragments.flat().filter(row => rowIndex(row) >= headers);
+  expect(data.map(rowIndex)).toEqual(Array.from({ length: 16 - headers }, (_, index) => index + headers));
+  for (const fragment of fragments.filter(rows => rows.length)) {
+    for (let header = 0; header < headers; header++) expect(rowIndex(fragment[header])).toBe(header);
+    for (const row of fragment) {
+      const index = rowIndex(row);
+      expect(row.flatMap(cell => cell.text.match(/R\d+[ABC]/g))).toEqual(['A', 'B', 'C'].map(column => `R${index}${column}`));
+      expect(row.map(cell => cell.span)).toEqual(index % 2 ? [1, 2] : [2, 1]);
+      expect(row.map(cell => Math.round(cell.width))).toEqual(index % 2 ? [50, 180] : [120, 110]);
+      expect(row.flatMap(cell => cell.markers)).toEqual(index % 2 ? ['7.'] : []);
+    }
+  }
+  const path = testInfo.outputPath(`nowitness-${headers}.pdf`);
+  await page.pdf({ path, preferCSSPageSize: true, printBackground: true });
+  const printed = inspectPDF(path);
+  expect(printed.pages.length).toBe(await sheets.count());
+  const printedCells = fragments.map((rows, index) => rows.map(row => row.map(cell =>
+    printed.pages[index].words.filter(word => {
+      const x = (word.x + word.right) / 2;
+      const y = (word.y + word.bottom) / 2;
+      return x >= cell.x - .25 && x <= cell.right + .25 && y >= cell.y - .25 && y <= cell.bottom + .25;
+    }).sort((a, b) => Math.abs(a.y - b.y) > 1 ? a.y - b.y : a.x - b.x).map(word => word.text).join('').replace(/\s/gu, ''))));
+  expect(printedCells).toEqual(fragments.map(rows => rows.map(row => row.map(cell => cell.text.replace(/\s/gu, '')))));
+  await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('no-witness grids without an exact native column resolution keep terminal localized atomic fallback', async ({ page }) => {
+  const rows = Array.from({ length: 8 }, (_, index) => alternating(index)).join('');
+  for (const [style, table] of [
+    // Native 2pt borders: stored merged widths drift row by row, so no single grid exists.
+    [nativeTable('td.ab{padding:3pt;width:127pt;border-style:solid}td.c{padding:3pt;width:110pt;border-style:solid}' +
+      'td.a{padding:3pt;width:50pt;border-style:solid}td.bc{padding:3pt;width:187.5pt;border-style:solid}', ';border-width:2pt'), rows],
+    // Per-column padding: column B never declares its own padding.
+    [nativeTable('td.ab{padding:2pt;width:131pt;border-style:solid}td.c{padding:3pt;width:110pt;border-style:solid}' +
+      'td.a{padding:2pt;width:50pt;border-style:solid}td.bc{padding:5pt;width:187pt;border-style:solid}'), rows],
+    // Exact native columns (80/90/100pt) wider than the 240pt text width are never shrunk.
+    [nativeTable('td.ab{padding:3pt;width:177pt;border-style:solid}td.c{padding:3pt;width:100pt;border-style:solid}' +
+      'td.a{padding:3pt;width:80pt;border-style:solid}td.bc{padding:3pt;width:197pt;border-style:solid}'), rows],
+    // No cell edge fixes the A|B boundary (full 4D removes such a column; hand-made XML stays atomic).
+    [nativeTable(), Array.from({ length: 8 }, (_, index) => alternating(index * 2)).join('')],
+    // Contradictory stored widths.
+    [nativeTable().replace('width:187pt', 'width:190pt'), rows],
+  ]) {
+    await open(page, style, `<p>BEFORE</p><table class="t">${table}</table><p>AFTER</p>`);
+    const before = await bytes(page);
+    await preview(page);
+    await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedTables);
+    await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+    expect(await bytes(page)).toEqual(before);
+  }
+});
+
 test('unsupported grids, header-crossing bands and no-witness bands await terminal localized atomic fallback', async ({ page }) => {
   const witness = '<tr><td><p>A</p></td><td><p>B</p></td><td><p>C</p></td></tr>';
   for (const rows of [
