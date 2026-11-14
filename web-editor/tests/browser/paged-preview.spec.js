@@ -125,15 +125,17 @@ for (const headers of [0, 1, 2]) test(`horizontal spans retain later witness wid
   expect(await bytes(page)).toEqual(before);
 });
 
-test('unsupported horizontal grids and vertical/mixed spans await terminal localized atomic fallback', async ({ page }) => {
+test('unsupported grids, header-crossing bands and no-witness bands await terminal localized atomic fallback', async ({ page }) => {
   const witness = '<tr><td><p>A</p></td><td><p>B</p></td><td><p>C</p></td></tr>';
   for (const rows of [
     '<tr><td colspan="2"><p>AB</p></td><td><p>C</p></td></tr><tr><td><p>A</p></td><td colspan="2"><p>BC</p></td></tr>',
-    '<tr><td rowspan="2"><p>A</p></td><td><p>B</p></td><td><p>C</p></td></tr><tr><td><p>B</p></td><td><p>C</p></td></tr>' + witness,
-    '<tr><td colspan="2" rowspan="2"><p>AB</p></td><td><p>C</p></td></tr><tr><td><p>C</p></td></tr>' + witness,
+    '<tr style="-d4-header:true"><td rowspan="2"><p>H</p></td><td><p>B</p></td><td><p>C</p></td></tr><tr><td><p>B</p></td><td><p>C</p></td></tr>' + witness,
+    '<tr><td rowspan="2"><p>A</p></td><td><p>B</p></td><td><p>C</p></td></tr><tr><td><p>B</p></td><td><p>C</p></td></tr>',
+    '<tr><td colspan="2" rowspan="2"><p>AB</p></td><td><p>C</p></td></tr><tr><td><p>C</p></td></tr>',
     witness + '<tr><td colspan="4"><p>IRREGULAR</p></td></tr>',
     witness + '<tr><td colspan="2"><table><tr><td><p>NESTED</p></td></tr></table></td><td><p>C</p></td></tr>',
     witness + '<tr><td colspan="2"><p style="-d4-ref-name:\'Unknown\'">DATA</p></td><td><p>C</p></td></tr>',
+    witness + '<tr><td rowspan="2"><p style="-d4-ref-name:\'Unknown\'">DATA</p></td><td><p>B</p></td><td><p>C</p></td></tr><tr><td><p>B</p></td><td><p>C</p></td></tr>',
   ]) {
     await open(page, '', `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`);
     const before = await bytes(page);
@@ -142,6 +144,146 @@ test('unsupported horizontal grids and vertical/mixed spans await terminal local
     await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
     expect(await bytes(page)).toEqual(before);
   }
+});
+
+const bandFragments = sheets => sheets.evaluateAll(sheets => sheets.map(sheet => {
+  const origin = sheet.getBoundingClientRect();
+  return [...sheet.querySelectorAll('.page-body table tr')].map(row => [...row.cells].map(cell => {
+    const bounds = cell.getBoundingClientRect();
+    const runs = [...cell.querySelectorAll('.text-run,.preserved-object,.paged-list-marker,img')];
+    return { text: cell.textContent, colSpan: cell.colSpan, rowSpan: cell.rowSpan, width: bounds.width, height: bounds.height,
+      x: (bounds.left - origin.left) * .75, y: (bounds.top - origin.top) * .75,
+      right: (bounds.right - origin.left) * .75, bottom: (bounds.bottom - origin.top) * .75,
+      inside: runs.every(run => [...run.getClientRects()].every(rect => rect.left >= bounds.left - .25 &&
+        rect.right <= bounds.right + .25 && rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25)) };
+  }));
+}));
+
+for (const headers of [0, 1, 2]) test(`vertical row bands stay whole, in reading order, with frozen geometry and ${headers} repeated leading headers`, async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    window.bandWhole = [];
+    const bounds = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () {
+      if (this.localName === 'table' && this.closest('.paged-measure .page-body') && this.style.tableLayout !== 'fixed') {
+        window.bandWhole.push([...this.rows].map(row => [...row.cells].map(cell => {
+          const rect = bounds.call(cell);
+          return { width: rect.width, height: rect.height, colSpan: cell.colSpan, rowSpan: cell.rowSpan };
+        })));
+      }
+      return bounds.call(this);
+    };
+  });
+  // Bands: header rows 0-1 (two headers), 5-6 (C), 9-11 (A), 14-17 (A/B chain), 19-20 (mixed AB 2x2).
+  const spans = { '0A': headers === 2 ? 2 : 1, '5C': 2, '9A': 3, '14A': 2, '15B': 3 };
+  const covered = new Set([...(headers === 2 ? ['1A'] : []), '6C', '10A', '11A', '15A', '16B', '17B', '20A', '20B']);
+  const row = index => {
+    const cells = index === 19 ? `<td colspan="2" rowspan="2"><p>R19A R19B</p></td><td class="c"><p>R19C</p></td>` :
+      ['A', 'B', 'C'].filter(column => !covered.has(`${index}${column}`)).map(column => {
+        const span = spans[`${index}${column}`] || 1;
+        return `<td class="${column.toLowerCase()}"${span > 1 ? ` rowspan="${span}"` : ''}><p>R${index}${column}</p></td>`;
+      }).join('');
+    return `<tr${index < headers ? ' class="header"' : ''}>${cells}</tr>`;
+  };
+  const source = Array.from({ length: 24 }, (_, index) => row(index));
+  await open(page, 'table{border-collapse:collapse}td{padding:3pt;border:1pt solid #234567}td.a{width:50pt}td.b{width:70pt}td.c{width:100pt}tr.header{-d4-header:true}',
+    `<p>BEFORE</p><table>${source.join('')}</table><p>AFTER</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets.nth(1)).toBeVisible();
+  const fragments = (await bandFragments(sheets)).filter(rows => rows.length);
+  expect(fragments.length).toBeGreaterThan(1);
+  const reference = await page.evaluate(() => window.bandWhole[0]);
+  expect(reference).toHaveLength(24);
+  const tokens = cells => cells.flatMap(cell => cell.text.match(/R\d+[ABC]/g) || []);
+  const expected = Array.from({ length: 24 }, (_, index) => tokens(
+    [...source[index].matchAll(/<p>([^<]*)<\/p>/g)].map(match => ({ text: match[1] }))));
+  const data = fragments.flatMap(rows => rows.slice(headers));
+  expect(data.map(tokens)).toEqual(expected.slice(headers));
+  const all = data.flatMap(tokens);
+  expect(new Set(all).size).toBe(all.length);
+  const inner = new Set([6, 10, 11, 15, 16, 17, 20]);
+  const bandStarts = new Set(Array.from({ length: 24 }, (_, start) => start).filter(start => start >= headers && !inner.has(start)));
+  let index = headers;
+  for (const rows of fragments) {
+    expect(bandStarts.has(index)).toBe(true);
+    for (let header = 0; header < headers; header++) expect(tokens(rows[header])).toEqual(expected[header]);
+    for (const [position, cells] of rows.entries()) {
+      const at = position < headers ? position : index + position - headers;
+      for (const [column, cell] of cells.entries()) {
+        expect([cell.colSpan, cell.rowSpan]).toEqual([reference[at][column].colSpan, reference[at][column].rowSpan]);
+        expect(Math.abs(cell.width - reference[at][column].width)).toBeLessThanOrEqual(.25);
+        expect(Math.abs(cell.height - reference[at][column].height)).toBeLessThanOrEqual(.25);
+        expect(cell.inside).toBe(true);
+      }
+    }
+    index += rows.length - headers;
+  }
+  expect(index).toBe(24);
+  const path = testInfo.outputPath(`rowspans-${headers}.pdf`);
+  await page.pdf({ path, preferCSSPageSize: true, printBackground: true });
+  const printed = inspectPDF(path);
+  const printedSheets = await bandFragments(sheets);
+  expect(printed.pages.length).toBe(await sheets.count());
+  const printedCells = printedSheets.map((rows, index) => rows.map(row => row.map(cell =>
+    printed.pages[index].words.filter(word => {
+      const x = (word.x + word.right) / 2;
+      const y = (word.y + word.bottom) / 2;
+      return x >= cell.x - .25 && x <= cell.right + .25 && y >= cell.y - .25 && y <= cell.bottom + .25;
+    }).sort((a, b) => Math.abs(a.y - b.y) > 1 ? a.y - b.y : a.x - b.x).map(word => word.text).join('').replace(/\s/gu, ''))));
+  expect(printedCells).toEqual(printedSheets.map(rows => rows.map(row => row.map(cell => cell.text.replace(/\s/gu, '')))));
+  await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
+  // A real re-projection (actual resize) must leave selection, history and IndexedDB recovery untouched.
+  await page.locator('#paper [contenteditable]').first().evaluate(element => {
+    element.focus();
+    getSelection().setBaseAndExtent(element.firstChild, 1, element.firstChild, 3);
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+  await expect(page.locator('#draft-state')).toHaveText(messages.en.draftSaved);
+  const state = () => page.evaluate(async () => {
+    const record = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('4wp-editor-history', 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const read = request.result.transaction('session').objectStore('session').get('active');
+        read.onsuccess = () => { resolve(read.result); request.result.close(); };
+        read.onerror = () => { reject(read.error); request.result.close(); };
+      };
+    });
+    const selected = getSelection();
+    return { record, text: selected.toString(), anchor: selected.anchorOffset, focus: selected.focusOffset,
+      paper: document.querySelector('#paper').innerHTML,
+      undo: document.querySelector('#undo').disabled, redo: document.querySelector('#redo').disabled };
+  });
+  const snapshot = await state();
+  const count = await sheets.count();
+  await page.evaluate(() => {
+    window.bandResize = new Promise(resolve => window.addEventListener('resize', resolve, { once: true }));
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.bandResize);
+  await expect(page.locator('#paged-status')).toHaveText(`${count} · ${messages.en.pagedSheet}`);
+  expect(await state()).toEqual(snapshot);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('a vertical band taller than the page body falls back atomically with a localized notice in all six locales', async ({ page }, testInfo) => {
+  const rows = Array.from({ length: 18 }, (_, index) => `<tr>${index === 0 ? '<td rowspan="16"><p>TALL</p></td>' :
+    index < 16 ? '' : '<td><p>A</p></td>'}<td><p>B${index}</p></td><td><p>C${index}</p></td></tr>`).join('');
+  await open(page, 'td{padding:3pt}', `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedBand);
+  await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+  const words = (await pdf(page, testInfo, 'band-fallback')).flatMap(sheet => sheet.words).join('');
+  for (const token of ['TALL', 'B1', 'C15', 'B17', 'AFTER']) expect(words).toContain(token);
+  expect(await bytes(page)).toEqual(before);
+  await page.locator('#settings-toggle').click();
+  for (const language of ['ja', 'fr', 'de', 'es', 'it', 'en']) {
+    await page.locator('#language').selectOption(language);
+    await expect(page.locator('#paged-status')).toHaveText(messages[language].pagedBand);
+  }
+  expect(await bytes(page)).toEqual(before);
 });
 
 test('horizontal fragment geometry rejects a change beyond 0.25 CSS px without partial pages or changed source', async ({ page }) => {

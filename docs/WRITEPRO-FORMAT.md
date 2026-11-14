@@ -487,7 +487,7 @@ unverified longhand margins are protected rather than normalized. Browser
 projection remains inert and allowlisted. Continuous browser printing presents
 stored content once in a labeled appendix, **not** native repeating placement.
 
-### Paged browser projection (#59 deployed snapshot; horizontal spans in this version)
+### Paged browser projection (#60 deployed snapshot; vertical row bands in this version)
 
 `wp_paged_probe` extends the existing full-4D print gate with four independent
 six-page, two-section documents and native first-footer edit targets. Right-first
@@ -539,14 +539,15 @@ with hidden areas is unchanged; the gate uses the independently editable header
 scope for Undo/Redo/recovery rather than admitting a protected body operation.
 
 The browser uses the shared native grid validator and permits direct rows with
-horizontal-only merges and at least one fully unmerged width-witness row, with
+horizontal merges, vertical row bands and at least one width-witness row that owns
+every column unmerged, with
 paragraphs or supported bounded flat cell lists. It measures the complete table once at the
 section's width, freezes the measured column geometry in disposable DOM, and
-places complete rows on pages. Leading native header rows repeat explicitly;
+places complete rows (or whole vertical bands) on pages. Leading native header rows repeat explicitly;
 every data row/cell appears once. Fragment cell widths/heights must remain within
-0.25 CSS px of the whole-table measurement. Vertical/mixed spans, no-witness,
+0.25 CSS px of the whole-table measurement. No-witness, header-crossing bands,
 nested/irregular/data-source
-tables, unsupported cell lists, invalid/nonleading/all-header metadata and rows that cannot
+tables, unsupported cell lists, invalid/nonleading/all-header metadata and rows or bands that cannot
 fit with their headers use explicit continuous fallback. The scope is bounded
 to 1,000 rows and 10,000 cells per table and the existing sheet/grapheme budgets.
 Source table XML, media, formulas, bookmarks and editing/recovery/history remain
@@ -582,8 +583,7 @@ No table authoring, row splitting, nesting or native pagination
 parity is added. #57's compatible continuous-section pages are Available on main
 and deployed; broader layout/native parity remains Proposed and unscheduled.
 
-Horizontal-span support is **implemented in this version**; live deployment is
-recorded separately in the editor README's verification snapshot.
+Horizontal-span support is **Available/deployed via #60**.
 `wp_colspan_probe` independently creates ten installed-4D originals, pre-merge
 and split mutations, getter records, safe header/body edit targets and native PDFs.
 It establishes unequal 50/70/110 pt column settings, witnesses after merged rows
@@ -600,7 +600,7 @@ unavailable-cache notice, not an invented result. Cached values remain supported
 when actually stored. The same rich table with two headers exceeds the available
 row height and independently establishes terminal atomic overflow fallback.
 
-All `rowspan` values must equal one. The shared native grid validator must confirm
+Under #60 all `rowspan` values had to equal one (vertical row bands below lift that). The shared native grid validator must confirm
 complete, nonoverlapping coverage; at least one fully unmerged row supplies every
 underlying browser column width. The complete table is measured in its owning
 physical flow, then frozen and cloned by complete rows with original `colspan`
@@ -677,9 +677,46 @@ checks residual seam capacity, later table fragments, stable widths, repeated
 leading headers, complete ordered fitting content and exact print membership.
 Geometry-changing, area-bearing, multi-column or otherwise unsupported seams
 use localized atomic continuous fallback. #57 is available on main and deployed;
-bounded horizontal spans are implemented in this version, with live deployment
-recorded separately. Broader continuous-seam parity remains
-Proposed and unscheduled.
+Vertical row bands are **implemented in this version** (milestone M1), not merged
+or deployed. `wp_rowspan_probe` independently creates thirteen installed-4D
+originals (`vertical`, `header`, `two-headers`, `mixed`, `unicode`, `lists`, `rich`,
+`media`, `seam`, `chain`, `tall`, `header-cross`, `no-witness`) with the requested
+merge list, native getters, safe header/body edit targets and PDFs, on 300×360 pt
+paper with unequal 50/70/110 pt columns. Observed full 4D 21.2 `F0012102` behavior:
+
+- `WP TABLE MERGE CELLS` with a row count serializes `rowspan` on the surviving
+  cell, which holds the covered cells' paragraphs in reading order; covered rows
+  keep only their remaining cells. A 2×2 merge serializes `colspan` and `rowspan`
+  together.
+- A merge covering every column of two rows **collapses into one row**: the
+  second row is removed, its text joins a `colspan="3"` cell and no `rowspan` is
+  written (the `mixed` original has 25 rows, not 26). Row counts therefore come
+  from native getters, never from the requested arguments.
+- With `wk header row count` 1, a merge from the header row into the first body
+  row is **silently declined** (no error, no span). The native API did not produce
+  a header band crossing into the body; such XML stays protected in the browser.
+- Native PDF pagination **splits** vertically merged cells and their bands across
+  pages (for example `vertical` page 2 starts inside the rows 9–11 band). The
+  browser intentionally keeps each band whole instead; this is a documented
+  difference, not parity.
+- In a first probe run, a disc list in a 50 pt merged cell wrapped `R10A` as
+  `R10`/`A`, and the rich PDF **omitted row 19 entirely** at a page boundary
+  (retained as `4wp-rowspan-20261114-probe-01`). After moving the list and formula
+  into the 110 pt column, every serialized token appears exactly once in every
+  native PDF, with leading headers repeated on each table page.
+
+Browser admission: the shared grid validator must confirm complete, nonoverlapping
+coverage, and a width witness must own all grid columns itself (a row covered by a
+vertical merge never qualifies). Rows tied together by `rowspan`, including chained
+merges, form one band; leading native headers must end on a band boundary. Bands
+are placed whole after the whole-table measurement and frozen geometry; each band
+keeps its original `rowspan`/`colspan`, and every fragment cell keeps whole-table
+width/height within 0.25 CSS px. A band that cannot fit on an empty page with its
+headers (`tall`, and `rich`, where the browser's protected formula display beside a
+four-item cell list is taller than the page body) falls back with the localized
+`pagedBand` notice. No-witness grids keep `pagedTables`. Authoring, native-range
+guards, formula execution, row splitting and all budgets are unchanged; native
+wrapping/pagination/page-count/border-conflict parity remains Proposed.
 
 ## Formulas
 

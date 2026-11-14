@@ -24,13 +24,14 @@ export async function prepareColspanCases(directory, cases, browser, url, downlo
     const html = strFromU8(files[Object.keys(files).find(name => name.endsWith('.html'))]);
     const dom = new JSDOM(html, { contentType: 'application/xhtml+xml' });
     const grid = nativeTableGrid(dom.window.document.querySelector('table'));
-    const excluded = ['no-witness', 'vertical', 'mixed', 'overflow'].includes(item.name);
-    const witness = grid.rows.findIndex(row => [...row.children].every(cell => !cell.hasAttribute('colspan') && !cell.hasAttribute('rowspan')));
+    // #60 excluded vertical/mixed; with native row bands (M1) they are admitted and fully verified below.
+    const excluded = ['no-witness', 'overflow'].includes(item.name);
+    const witness = grid.rows.findIndex(row => row.children.length === 3 && [...row.children].every(cell => !cell.hasAttribute('colspan') && !cell.hasAttribute('rowspan')));
     assert.equal(grid.columns, 3);
     assert.equal(grid.rows.length, 26);
     assert(grid.merged, 'Native originals must actually serialize merges');
     if (item.name === 'no-witness') assert.equal(witness, -1);
-    else if (item.name === 'vertical' || item.name === 'mixed') assert(dom.window.document.querySelector('td[rowspan]'), 'Native excluded original must actually retain a vertical span');
+    else if (item.name === 'vertical' || item.name === 'mixed') assert(dom.window.document.querySelector('td[rowspan]'), 'Native banded original must actually retain a vertical span');
     else assert(witness >= 1, 'Native width witness is deliberately not the first row');
     if (item.name === 'late-witness' || item.name === 'two-headers') assert.equal(witness, 5);
     const source = `colspan-source-${item.name}.4wp`;
@@ -43,6 +44,7 @@ export async function prepareColspanCases(directory, cases, browser, url, downlo
     const native = inspectPDF(resolve(directory, `Output/colspan-${item.name}.pdf`));
     const nativeTablePages = native.pages.filter(sheet => sheet.words.some(word =>
       tokens(word.text).some(token => Number(token.match(/^R(\d+)/)[1]) > item.headers)));
+    if (item.name === 'vertical' || item.name === 'mixed') assert(witness >= 0, 'Native vertical/mixed originals retain a width witness');
     if (!excluded) {
       assert.equal(item.cells.length, 78);
       for (let row = 1; row <= 26; row++) for (const column of ['A', 'B', 'C']) {
