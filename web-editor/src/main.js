@@ -289,6 +289,7 @@ document.querySelector('#app').innerHTML = `
         <summary data-i18n="pagedPreview"></summary>
         <p data-i18n="pagedHelp"></p><p data-i18n="pagedPrint"></p>
         <p id="paged-status" role="status"></p>
+        <div id="paged-objects" class="paged-notices" hidden></div>
         <div id="paged-surround" class="paper-surround" tabindex="0" data-label="pagedPreview"><div id="paged-view"></div></div>
       </details>
       <div class="paper-surround"><article id="paper" class="paper" data-label="editor"></article></div>
@@ -1019,6 +1020,8 @@ function refreshPagedPreview() {
   pagedProjection = null;
   $('paged-view').replaceChildren();
   $('paged-surround').hidden = true;
+  $('paged-objects').replaceChildren();
+  $('paged-objects').hidden = true;
   if (!$('paged-panel').open) return;
   $('paged-status').textContent = t('pagedLoading');
   pagedReady = document.fonts.ready.then(async () => {
@@ -1031,6 +1034,13 @@ function refreshPagedPreview() {
       pagedProjection.root.style.zoom = $('zoom').value;
       $('paged-surround').hidden = false;
       $('paged-status').textContent = `${pagedProjection.pages} · ${t('pagedSheet')}`;
+      $('paged-objects').replaceChildren(...pagedProjection.notices.map(key => {
+        const notice = document.createElement('p');
+        notice.dataset.notice = key;
+        notice.textContent = t(key);
+        return notice;
+      }));
+      $('paged-objects').hidden = !pagedProjection.notices.length;
     } catch (error) {
       if (generation !== pagedGeneration || !$('paged-panel').open) return;
       if (!(error instanceof DocumentError)) console.error('Paged preview preparation failed', error);
