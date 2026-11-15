@@ -1004,7 +1004,7 @@ test('unsupported columns fall back atomically, retaining continuous content and
     ['div.section0{column-count:5}', '<p>RETAINED</p>'],
     ['div.section0{column-count:4}', '<p>RETAINED</p>'],
     ['div.section0{column-count:2;column-rule-style:solid}', '<p>RETAINED</p>'],
-    ['div.section0{column-count:2}', '<p>BEFORE</p><table><tr><td><p>RETAINED</p></td></tr></table><p>TAIL</p>'],
+    ['div.section0{column-count:2}td{width:300pt}', '<p>BEFORE</p><table><tr><td><p>RETAINED</p></td></tr></table><p>TAIL</p>'],
   ]) {
     await open(page, style, body);
     const before = await bytes(page);
@@ -1023,6 +1023,227 @@ test('unsupported columns fall back atomically, retaining continuous content and
     }
     await page.locator('#language').selectOption('en');
   }
+});
+
+// Tables in multi-column sections (M4c): wp_coltable_probe establishes, from native PDF page/column membership only,
+// that a table stays inside one column (aligned within it), continues in the next column and then on the next page,
+// and repeats its leading header rows at the top of every column and page fragment.
+const columnTableStyle = 'table{border-collapse:collapse;border-style:solid;border-width:1pt;border-color:#234567;margin:2pt 0}td{padding:2pt;border:1pt solid #234567;width:30pt}' +
+  'tr.head{-d4-header:true;background-color:#ddeeff}ul{margin:0;padding:0}li{margin-left:12pt}';
+function columnTable(rows = 40, { headers = 1, band = 9, wide = 20, list = 25, tall = 0 } = {}) {
+  const body = [];
+  for (let index = 1; index <= rows; index++) {
+    const cells = [];
+    if (index === band) cells.push(`<td rowspan="3"><p>R${index}A</p><p>R${index + 1}A</p><p>R${index + 2}A</p></td>`);
+    else if (index === tall) cells.push(`<td rowspan="${rows - tall + 1}">${Array.from({ length: rows - tall + 1 }, (_, i) => `<p>R${tall + i}A</p>`).join('')}</td>`);
+    else if (!(band && index > band && index < band + 3) && !(tall && index > tall)) cells.push(`<td><p>R${index}A</p></td>`);
+    if (index === wide) cells.push(`<td colspan="2"><p>R${index}B</p><p>R${index}C</p></td>`);
+    else {
+      cells.push(index === list ? `<td><ul><li>R${index}B</li></ul></td>` : `<td><p>R${index}B</p></td>`);
+      cells.push(`<td><p>R${index}C</p></td>`);
+    }
+    body.push(`<tr${index <= headers ? ' class="head"' : ''}>${cells.join('')}</tr>`);
+  }
+  return `<table>${body.join('')}</table>`;
+}
+async function columnFragments(page) {
+  return page.locator('#paged-view .browser-page').evaluateAll(sheets => sheets.flatMap((sheet, index) => {
+    const frame = sheet.getBoundingClientRect();
+    return [...sheet.querySelectorAll('.page-column')].flatMap((column, slot) => {
+      const box = column.getBoundingClientRect();
+      return [...column.querySelectorAll(':scope > table')].map(table => {
+        const rect = table.getBoundingClientRect();
+        return { page: index + 1, column: slot + 1, columns: sheet.querySelectorAll('.page-column').length,
+          left: (rect.left - box.left) * .75, right: (box.right - rect.right) * .75, x: (box.left - frame.left) * .75, slotRight: (box.right - frame.left) * .75,
+          inside: rect.left >= box.left - .25 && rect.right <= box.right + .25 && rect.top >= box.top - .25 && rect.bottom <= box.bottom + .25,
+          width: rect.width, cols: [...table.querySelectorAll(':scope > colgroup > col')].map(col => col.style.width),
+          rows: [...table.rows].map(row => row.textContent.match(/R\d+[ABC]/g) || []),
+          cells: [...table.querySelectorAll('td')].map(cell => {
+            const r = cell.getBoundingClientRect();
+            return { x: (r.left - frame.left) * .75, y: (r.top - frame.top) * .75, right: (r.right - frame.left) * .75,
+              bottom: (r.bottom - frame.top) * .75, tokens: cell.textContent.match(/R\d+[ABC]/g) || [] };
+          }) };
+      });
+    });
+  }));
+}
+function expectColumnFlow(fragments, rows, headers) {
+  const source = [];
+  for (let index = headers + 1; index <= rows; index++) source.push(index);
+  expect(fragments.length).toBeGreaterThan(1);
+  fragments.forEach((fragment, index) => {
+    expect(fragment.inside, `fragment ${index + 1} stays inside its column`).toBe(true);
+    expect(fragment.cols).toEqual(fragments[0].cols);
+    expect(fragment.width).toBeCloseTo(fragments[0].width, 1);
+    for (let header = 0; header < headers; header++) expect(fragment.rows[header]).toEqual([`R${header + 1}A`, `R${header + 1}B`, `R${header + 1}C`]);
+    if (index) {
+      const previous = fragments[index - 1];
+      // Native: the next column of the same page, else the first column of the next page.
+      expect(fragment.page === previous.page && fragment.column === previous.column + 1 ||
+        fragment.page === previous.page + 1 && fragment.column === 1 && previous.column === previous.columns).toBe(true);
+    }
+  });
+  const data = fragments.flatMap(fragment => fragment.rows.slice(headers));
+  expect(data.flat().length).toBe(new Set(data.flat()).size);
+  expect(data.map(tokens => Number(tokens.at(-1).match(/^R(\d+)/)[1]))).toEqual(source);
+  return { starts: fragments.map(fragment => Number(fragment.rows[headers][0].match(/^R(\d+)/)[1])) };
+}
+
+for (const [count, style] of [[2, 'div.section0{column-count:2;column-gap:12pt}'], [3, 'div.section0{column-count:3;column-gap:6pt;-d4-page-width:480pt}']]) {
+  test(`tables in ${count} equal columns stay in one column, continue column then page and repeat headers (wp_coltable_probe)`, async ({ page }, testInfo) => {
+    await open(page, columnTableStyle + style, `<p>CTSTART</p>${columnTable(60)}<p>CTEND</p>`);
+    const before = await bytes(page);
+    await preview(page);
+    const fragments = await columnFragments(page);
+    const { starts } = expectColumnFlow(fragments, 60, 1);
+    expect(fragments[0]).toMatchObject({ page: 1, column: 1 });
+    expect(fragments.some(fragment => fragment.page > 1)).toBe(true);
+    expect(fragments.filter(fragment => fragment.page === 1).map(fragment => fragment.column)).toEqual(Array.from({ length: count }, (_, i) => i + 1));
+    // Vertical bands (rows 9-11) stay whole in one column; the colspan row and the list cell are present once.
+    const all = fragments.flatMap(fragment => fragment.rows.slice(1).flat());
+    expect(all.filter(token => /^R(9|10|11)[ABC]$/.test(token))).toHaveLength(9);
+    expect(fragments.filter(fragment => fragment.rows.slice(1).flat().some(token => /^R(9|10|11)A$/.test(token)))).toHaveLength(1);
+    expect(starts.filter(row => row === 10 || row === 11)).toEqual([]);
+    for (let row = 2; row <= 60; row++) for (const column of 'ABC') expect(all.filter(token => token === `R${row}${column}`)).toHaveLength(1);
+    await expect(page.locator('#paged-view .paged-list-marker')).toHaveText(['●']);
+    await expect(page.locator('#paged-objects > p')).toHaveText([messages.en.pagedColumnTables]);
+    await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
+    // Print keeps the exact page/column/cell membership of every table token (words inside a cell read in order).
+    const path = testInfo.outputPath(`column-tables-${count}.pdf`);
+    await page.pdf({ path, preferCSSPageSize: true, printBackground: true });
+    const printed = inspectPDF(path);
+    const sheets = await page.locator('#paged-view .browser-page').count();
+    expect(printed.pages).toHaveLength(sheets);
+    for (let index = 0; index < sheets; index++) {
+      for (const fragment of fragments.filter(item => item.page === index + 1)) for (const cell of fragment.cells) {
+        const text = printed.pages[index].words.filter(word => {
+          const x = (word.x + word.right) / 2;
+          const y = (word.y + word.bottom) / 2;
+          return x >= cell.x - .25 && x <= cell.right + .25 && y >= cell.y - .25 && y <= cell.bottom + .25 &&
+            x >= fragment.x - .25 && x <= fragment.slotRight + .25;
+        }).sort((a, b) => a.y - b.y || a.x - b.x).map(word => word.text).join('');
+        expect(text.match(/R\d+[ABC]/g) || []).toEqual(cell.tokens);
+      }
+    }
+    expect(await bytes(page)).toEqual(before);
+  });
+}
+
+test('column tables align within their column and a column break moves them to the next column (wp_coltable_probe)', async ({ page }) => {
+  for (const [align, check] of [['left', ([left]) => expect(left).toBeLessThan(.25)],
+    ['center', ([left, right]) => expect(Math.abs(left - right)).toBeLessThan(.5)],
+    ['right', ([left, right]) => { expect(right).toBeLessThan(.25); expect(left).toBeGreaterThan(1); }]]) {
+    await open(page, columnTableStyle + `div.section0{column-count:2;column-gap:12pt}table{-d4-table-align:${align}}`,
+      `<p>CTSTART</p>${columnTable(40)}<p>CTEND</p>`);
+    const before = await bytes(page);
+    await preview(page);
+    const fragments = await columnFragments(page);
+    expectColumnFlow(fragments, 40, 1);
+    for (const fragment of fragments) check([fragment.left, fragment.right]);
+    expect(await bytes(page)).toEqual(before);
+  }
+  await open(page, columnTableStyle + 'div.section0{column-count:2;column-gap:12pt}',
+    `<p style="break-after:column">CTSTART</p><p>CTCOLUMN</p>${columnTable(30)}<p>CTEND</p>`);
+  await preview(page);
+  const fragments = await columnFragments(page);
+  expectColumnFlow(fragments, 30, 1);
+  expect(fragments[0]).toMatchObject({ page: 1, column: 2 });
+  expect(fragments[1]).toMatchObject({ page: 2, column: 1 });
+  await expect(page.locator('#paged-view .browser-page').first().locator('.page-column').first()).toHaveText('CTSTART');
+});
+
+test('column tables wider than their column or with bands taller than a column fall back atomically in all six locales', async ({ page }, testInfo) => {
+  for (const [style, body, reason] of [
+    [columnTableStyle + 'div.section0{column-count:2;column-gap:12pt}td{width:60pt}', `<p>CTSTART</p>${columnTable(20)}<p>RETAINED</p>`, 'pagedColumns'],
+    [columnTableStyle + 'div.section0{column-count:2;column-gap:12pt}', `<p>CTSTART</p>${columnTable(40, { band: 0, tall: 5, wide: 0, list: 0 })}<p>RETAINED</p>`, 'pagedBand'],
+  ]) {
+    await open(page, style, body);
+    const before = await bytes(page);
+    await preview(page);
+    await expect(page.locator('#paged-status')).toHaveText(messages.en[reason]);
+    await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+    await expect(page.locator('#paper')).toContainText('RETAINED');
+    const output = (await pdf(page, testInfo, `column-table-${reason}`)).flatMap(sheet => sheet.words).join('');
+    expect(output).toContain('RETAINED');
+    expect(output).toContain('R20C');
+    expect(await bytes(page)).toEqual(before);
+    await page.locator('#settings-toggle').click();
+    for (const language of ['ja', 'fr', 'de', 'es', 'it']) {
+      await page.locator('#language').selectOption(language);
+      await expect(page.locator('#paged-status')).toHaveText(messages[language][reason]);
+    }
+    await page.locator('#language').selectOption('en');
+  }
+});
+
+test('column table notice, themes, zoom and mobile keep the same pages in all six locales', async ({ page }, testInfo) => {
+  await open(page, columnTableStyle + 'div.section0{column-count:2;column-gap:12pt}', `<p>CTSTART</p>${columnTable(50)}<p>CTEND</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets.nth(1)).toBeVisible();
+  const count = await sheets.count();
+  const fragments = await columnFragments(page);
+  const baseline = await pdf(page, testInfo, 'column-tables-locales');
+  await page.locator('#settings-toggle').click();
+  for (const language of ['ja', 'fr', 'de', 'es', 'it', 'en']) {
+    await page.locator('#language').selectOption(language);
+    await expect(page.locator('#paged-objects > p')).toHaveText([messages[language].pagedColumnTables]);
+    await expect(page.locator('#paged-status')).toHaveText(`${count} · ${messages[language].pagedSheet}`);
+    await expect(page.locator('#paged-panel [data-i18n="pagedHelp"]')).toHaveText(messages[language].pagedHelp);
+  }
+  for (const theme of ['dark', 'system', 'light']) {
+    await page.locator('#theme').selectOption(theme);
+    await page.locator('#zoom').selectOption('2');
+    expect(await pdf(page, testInfo, `column-tables-${theme}`)).toEqual(baseline);
+  }
+  await page.evaluate(() => {
+    window.columnTableResize = new Promise(resolve => window.addEventListener('resize', () => resolve(), { once: true }));
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.columnTableResize);
+  await expect(sheets).toHaveCount(count);
+  // Zoom scales measured pixels; page/column membership, rows and containment are what must stay the same.
+  const stable = items => items.map(({ page, column, rows, inside }) => ({ page, column, rows, inside }));
+  expect(stable(await columnFragments(page))).toEqual(stable(fragments));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await page.locator('#paged-panel').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await pdf(page, testInfo, 'column-tables-mobile')).toEqual(baseline);
+  await page.locator('#paged-panel > summary').focus();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#paged-panel')).not.toHaveAttribute('open');
+  await expect(page.locator('#paged-panel > summary')).toBeFocused();
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('column table projection stays derived across body edits, undo, print Cancel and recovered Redo', async ({ page }) => {
+  await open(page, columnTableStyle + 'div.section0{column-count:2;column-gap:12pt}', `<p>CTSTART</p>${columnTable(40)}<p>CTEND</p>`);
+  const before = await bytes(page);
+  await preview(page);
+  const first = await columnFragments(page);
+  await page.locator('#paper [contenteditable]').first().fill('WEBCT');
+  await expect(page.locator('#paged-view .browser-page').first()).toContainText('WEBCT');
+  expect((await columnFragments(page)).map(fragment => fragment.rows)).toEqual(first.map(fragment => fragment.rows));
+  const edited = await bytes(page);
+  expect(contents(edited).xml).toContain('WEBCT');
+  await page.locator('#undo').click();
+  await expect(page.locator('#paged-view .browser-page').first()).toContainText('CTSTART');
+  expect(await bytes(page)).toEqual(before);
+  await page.evaluate(() => {
+    window.print = () => { dispatchEvent(new Event('beforeprint')); dispatchEvent(new Event('afterprint')); };
+  });
+  await page.locator('#print-toggle').click();
+  await page.locator('#print-open').click();
+  expect(await bytes(page)).toEqual(before);
+  await expect(page.locator('#redo')).toBeEnabled();
+  await expect(page.locator('#draft-state')).toHaveText(messages.en.draftSaved);
+  await page.reload();
+  await expect(page.locator('#recovery-notice')).toBeVisible();
+  await page.locator('#redo').click();
+  await preview(page);
+  await expect(page.locator('#paged-view .browser-page').first()).toContainText('WEBCT');
+  expect((await columnFragments(page)).map(fragment => fragment.rows)).toEqual(first.map(fragment => fragment.rows));
+  expect(contents(await bytes(page))).toEqual(contents(edited));
 });
 
 test('rectangular tables split at measured rows with stable unequal columns, repeated native headers and matching print', async ({ page }, testInfo) => {

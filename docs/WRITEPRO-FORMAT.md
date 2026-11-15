@@ -640,10 +640,11 @@ slots and new-page sections reset geometry and first-area selection. The
 same finished DOM is cloned for browser print. Every supported body character
 occurs once; shared inline ancestor wrappers are retained even on middle
 fragments. Native page counts, final-column balancing, word wrapping and formula
-evaluation are not reproduced. Multi-column tables, divider rules, custom
-column shapes/spanners, RTL/vertical flow, nested/conflicting breaks and
-out-of-bound geometry use localized atomic continuous fallback. Single-column
-table behavior and all established limits/protections remain unchanged.
+evaluation are not reproduced. Divider rules, custom column shapes/spanners,
+RTL/vertical flow, nested/conflicting breaks and out-of-bound geometry use localized
+atomic continuous fallback; multi-column tables did too until M4c (see "Tables in
+multi-column sections" below). Single-column table behavior and all established
+limits/protections remain unchanged.
 
 `wp_continuous_paged_probe` independently creates 14 native originals and
 mutation targets with native section names, inherited/explicit geometry,
@@ -1056,6 +1057,52 @@ square paper, column changes, column breaks and section paper sizes (which nativ
 setters refuse) keep the localized fallback. Native evidence covers new-page versus
 shared-page decisions, per-page paper and per-section left/right margins, and area
 page membership. No position, wrapping or page-count parity is claimed.
+
+### Tables in multi-column sections (M4, third increment; full 4D F0012102)
+
+`wp_coltable_probe` (`--coltable-probe`; also run by the full gate) authors 20 documents
+on 480 × 420 pt paper (60/36 pt margins, Arial 10pt) in installed 4D 21.2 `F0012102`.
+Each holds a table of unique `R<row><A|B|C>` cell tokens in a 2-, 3- or 4-column section
+(document-level `wk column count`/`wk column spacing`, or a section override after a
+section break). The table has 2 pt padding and 1 pt solid borders, and the shapes add header rows,
+vertical and horizontal merges, a no-witness alternating grid, flat cell lists, Unicode, a
+too-wide table, a too-tall band, table alignment and a preceding column break. It records
+`wk width`/`wk padding` getters for every cell and the column getters, re-imports each
+export, and exports both PDFs. The re-imported PDFs are textually identical to the
+originals. The oracle is **which rows and cells appear in which column slot of which
+page**, read from the native PDF word x/y positions against the equal-column slots
+computed from the native column and paper getters. Exact coordinates are not the oracle.
+
+- A table in a multi-column section is laid out **inside one column**. No table spans
+  the columns. Every cell token of a fitting table lies within its column slot.
+- When the table is taller than the remaining column, it **continues at the top of the
+  next column of the same page**, then in the first column of the next page. It never
+  skips a free column. A paragraph `wk column break` before a table moves the table to the next column.
+- **Leading header rows (`wk header row count`) repeat at the top of every column
+  fragment and every page fragment**, including a section-level 2-column override.
+- **Table alignment is relative to the column.** The first-column token offset is the
+  same in every slot, and with the native outer table width
+  `Σ(width + 2 × padding + 1pt) + 1pt` it equals `(column − table)/2` for center and
+  `column − table` for right alignment (within 0.5 pt).
+- A table **wider than its column** (3 × 80 pt cells in a 195 pt column) is drawn
+  across the gap and over the next column's region. This is a protected counterexample.
+- 4D **splits a row whose cell holds several lines** (a full-width merged row in
+  `colspan`, an alternating merged row in `nowitness`) across a column or page boundary,
+  and **splits a vertical band** taller than a column (`tallband`, 24 rows) across
+  columns.
+- 4D has no unequal-column setting; equal columns are the only native shape.
+
+The browser admits the same table shapes it already pages in one column, inside 2–4
+equal columns. It measures the table's unconstrained width first, and a table wider
+than its column keeps the localized column fallback, never shrinking. Fragments fill
+the next column, then the next page, and repeat the leading header rows. Rows and bands
+are never split, so a band taller than a column keeps the band fallback. Rows per
+column and page counts are browser-measured; the native fixtures fit 17 rows per column,
+while the browser fits 14 with its own row heights. No pagination parity is claimed. The
+browser gate checks native and browser fragments against the same rules. It also checks that
+the table starts in the same page/column slot as in 4D, that every data row appears once in order,
+that fragments start at native band boundaries, and that the printed page/column/cell token
+membership equals the preview.
 
 ## Preview limits
 

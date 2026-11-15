@@ -530,7 +530,6 @@ export function pagedCapability(model) {
         paper.height - paper.margins[0] - paper.margins[2] < 72) return 'pagedSettings';
       const columns = pagedColumnGeometry(model, section.index, paper);
       for (const element of section.elements) {
-        if (columns.count > 1 && element.localName === 'table') return 'pagedColumns';
         if (element.localName === 'table' && (element.previousElementSibling?.localName !== 'p' ||
           element.nextElementSibling?.localName !== 'p')) return 'pagedShape';
         const blocks = element.localName === 'table' ?
@@ -650,6 +649,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
     let shared = null;
     let seamAreas = false;
     let seamGeometry = false;
+    let columnTables = false;
     // The current sheet's body box in points; a margin seam opens a band below the used part of the shared sheet.
     let box;
     const seams = continuousSections(copy, copy.sectionLayout(), copy.pageSetup());
@@ -805,7 +805,26 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
             table.style.width = `${resolved.reduce((sum, value) => sum + value, 0)}pt`;
             for (const row of table.rows) for (const cell of row.cells) cell.style.width = 'auto';
           }
+          // Native (wp_coltable_probe): a table in a multi-column section is laid out inside one column (aligned
+          // within it); a table wider than its column overflows into the gap and the next column, so it stays atomic.
+          // Its natural width is measured unconstrained first, because the browser would otherwise shrink it.
+          let natural = null;
+          if (columns.count > 1) {
+            const unconstrained = document.createElement('div');
+            Object.assign(unconstrained.style, { position: 'absolute', left: '0', top: '0', width: '10000pt' });
+            root.append(unconstrained);
+            unconstrained.append(table);
+            natural = table.getBoundingClientRect().width;
+            unconstrained.remove();
+          }
           flow.append(table);
+          if (columns.count > 1) {
+            const bounds = flow.getBoundingClientRect();
+            const box = table.getBoundingClientRect();
+            if (!natural || natural > bounds.width + .25 || Math.abs(box.width - natural) > .25 ||
+              box.left < bounds.left - .25 || box.right > bounds.right + .25) throw new DocumentError('pagedColumns');
+            columnTables = true;
+          }
           const width = table.getBoundingClientRect().width;
           const widths = resolved ? resolved.map(value => value * 4 / 3) :
             [...table.rows[witness].cells].map(cell => cell.getBoundingClientRect().width);
@@ -882,7 +901,8 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
             if (end === start) {
               fragment.remove();
               if (fresh()) throw new DocumentError(bands[band][1] - bands[band][0] > 1 ? 'pagedBand' : 'pagedOverflow');
-              newPage();
+              // Native: a table continues in the next column of the same page before it starts a new page.
+              nextColumn();
               continue;
             }
             fragment.style.marginBottom = end === rows.length ? table.style.marginBottom : '0';
@@ -1034,6 +1054,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
     const notices = [];
     if (seamAreas) notices.push('pagedSeamAreas');
     if (seamGeometry) notices.push('pagedSeamGeometry');
+    if (columnTables) notices.push('pagedColumnTables');
     if (placed.some(plan => plan.layout === 'wrap-square')) notices.push('pagedObjectWrap');
     if (placed.length) notices.push('pagedObjectPlaced');
     if (appended.length) notices.push('pagedObjectAppendix');
