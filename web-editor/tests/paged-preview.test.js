@@ -134,7 +134,8 @@ describe('derived paged projection safety and area selection', () => {
       ['', '<p style="column-span:all">TEXT</p>'],
       ['', '<p><span style="break-after:column">TEXT</span></p>'],
       ['', '<p style="break-after:column;page-break-after:always">A</p><p>B</p>'],
-      ['', '<p>BEFORE</p><table><tr><td><p>CELL</p></td></tr></table><p>AFTER</p>'],
+      ['div.section0{column-rule-style:solid}', '<p>BEFORE</p><table><tr><td><p>CELL</p></td></tr></table><p>AFTER</p>'],
+      ['div.section0{column-count:5}', '<p>BEFORE</p><table><tr><td><p>CELL</p></td></tr></table><p>AFTER</p>'],
     ]) {
       const model = new WriteProDocument(source(`div.section0{column-count:2}${style}`, body));
       const before = model.pack();
@@ -144,6 +145,27 @@ describe('derived paged projection safety and area selection', () => {
     }
     const model = new WriteProDocument(source('div.section0{column-count:2}', '<p style="break-after:column">A</p><p>B</p>'));
     expect(pagedCapability(model)).toBeNull();
+  });
+
+  it('admits complete tables in 2-4 equal columns without changing the source (wp_coltable_probe)', () => {
+    const table = '<p>BEFORE</p><table><tr style="-d4-header:true"><td><p>HEAD</p></td><td><p>H2</p></td></tr>' +
+      '<tr><td rowspan="2"><p>BAND</p></td><td><p>B1</p></td></tr><tr><td><ul><li>ITEM</li></ul></td></tr>' +
+      '<tr><td colspan="2"><p>WIDE</p></td></tr></table><p>AFTER</p>';
+    for (const style of ['div.section0{column-count:2}', 'div.section0{column-count:3;column-gap:0pt}',
+      'div.section0{column-count:4;column-gap:6pt;-d4-page-width:480pt}', 'div.section0{column-count:2;column-rule-style:none}',
+      'div.section0{column-count:2}table{-d4-table-align:center}', 'div.section2{column-count:2}']) {
+      const body = style.includes('section2') ? `<p style="page-break-after:always;-d4-section-break-after:always">ONE</p>${table}` : table;
+      const model = new WriteProDocument(source(style, body));
+      const before = model.pack();
+      const mappings = model.projection;
+      expect(pagedCapability(model)).toBeNull();
+      expect(model.pack()).toEqual(before);
+      expect(model.projection).toBe(mappings);
+    }
+    // Table admission keeps every other table rule: a header row merged into the body still falls back.
+    const crossing = new WriteProDocument(source('div.section0{column-count:2}', '<p>A</p><table><tr style="-d4-header:true">' +
+      '<td rowspan="2"><p>H</p></td><td><p>X</p></td></tr><tr><td><p>Y</p></td></tr><tr><td><p>Z</p></td><td><p>W</p></td></tr></table><p>B</p>'));
+    expect(pagedCapability(crossing)).toBe('pagedTables');
   });
   it('admits rectangular paragraph tables and only leading native header rows, preserving the source', () => {
     const table = rows => `<p>BEFORE</p><table>${rows}</table><p>AFTER</p>`;
