@@ -564,11 +564,12 @@ test('admitted lists, image, inert formula and rectangular table use residual ca
 
 test('unsupported continuous seams use localized atomic fallback without partial pages or source changes', async ({ page }, testInfo) => {
   for (const [style, body] of [
-    ['div.section2{-d4-page-margin:40pt}', '<p>TAIL</p>'],
+    // Margin and orientation seams are admitted (wp_contgeom_probe); square-paper rotation and column changes are not.
+    ['div.section0{-d4-page-width:300pt;-d4-page-height:300pt}div.section2{-d4-page-orientation:landscape}', '<p>TAIL</p>'],
     ['div.section0{column-count:2}', '<p>TAIL</p>'],
-    ['div.section2{-d4-page-orientation:landscape}', '<p>TAIL</p>'],
-    ['div.section2Header{margin:10pt}div.section2{-d4-page-margin:40pt}', '<p>TAIL</p><div class="section2Header" style="visibility:hidden;height:0"><p>STORED</p></div>'],
-    ['div.section2First{white-space:normal}div.section2{-d4-page-orientation:landscape}', '<p>TAIL</p>'],
+    ['div.section2{column-count:2;column-gap:12pt}', '<p>TAIL</p>'],
+    ['div.section2Header{margin:10pt}div.section2{column-count:2;-d4-page-margin:40pt}', '<p>TAIL</p><div class="section2Header" style="visibility:hidden;height:0"><p>STORED</p></div>'],
+    ['div.section2First{white-space:normal}div.section0{-d4-page-width:400pt;-d4-page-height:400pt}div.section2{-d4-page-orientation:landscape;-d4-page-margin:20pt}', '<p>TAIL</p>'],
   ]) {
     await open(page, style, '<p style="-d4-section-break-after:continuous">RETAINED</p>' + body);
     const before = await bytes(page);
@@ -729,6 +730,204 @@ test('seam area projection stays derived across area edits, undo, print Cancel a
   await page.locator('#redo').click();
   await preview(page);
   await expect(page.locator('#paged-view .browser-page').nth(1).locator(':scope > .page-area').first()).toHaveText('WEBCHLEFT');
+  expect(contents(await bytes(page))).toEqual(contents(edited));
+});
+
+// Shapes mirror wp_contgeom_probe (full 4D 21.2 F0012102) on the same 300 x 360 pt paper with 60/30 pt margins. An
+// orientation seam starts a new page in the incoming orientation; a margin seam keeps the shared page's top/bottom
+// margins and areas while the incoming text uses its own left/right margins; later pages use the incoming geometry.
+// Section margins are stored with all four sides, as native section setters write them.
+const geometryShapes = {
+  'margin-left': [{ areas: 'default', length: 2 }, { areas: 'default', length: 30, geometry: '-d4-page-margin:2.5cm 2.5cm 2.5cm 72pt' }],
+  'margin-right': [{ areas: 'default', length: 2 }, { areas: 'default', length: 30, geometry: '-d4-page-margin:2.5cm 72pt 2.5cm 2.5cm' }],
+  'margin-top-only': [{ areas: 'default', length: 20 }, { areas: 'default', length: 30, geometry: '-d4-page-margin:100pt 30pt 60pt' }],
+  'margin-bottom-only': [{ areas: 'default', length: 20 }, { areas: 'default', length: 30, geometry: '-d4-page-margin:60pt 30pt 100pt' }],
+  'margin-wider': [{ areas: 'none', length: 2 }, { areas: 'none', length: 30, geometry: '-d4-page-margin:60pt 10pt' }],
+  'margin-left-first': [{ areas: 'first-facing', length: 2 }, { areas: 'first-facing', length: 30, geometry: '-d4-page-margin:2.5cm 2.5cm 2.5cm 72pt' }],
+  'margin-chain': [{ areas: 'default', length: 2 }, { areas: 'default', length: 2, geometry: '-d4-page-margin:2.5cm 2.5cm 2.5cm 72pt' }, { areas: 'default', length: 24 }],
+  orientation: [{ areas: 'default', length: 2 }, { areas: 'default', length: 30, geometry: '-d4-page-orientation:landscape' }],
+  'orientation-back': [{ areas: 'default', length: 2, geometry: '-d4-page-orientation:landscape' }, { areas: 'default', length: 30 }],
+  'orientation-margin': [{ areas: 'default', length: 2 }, { areas: 'default', length: 30, geometry: '-d4-page-orientation:landscape;-d4-page-margin:2.5cm 2.5cm 2.5cm 72pt' }],
+  'orientation-first': [{ areas: 'first-facing', length: 2 }, { areas: 'first-facing', length: 30, geometry: '-d4-page-orientation:landscape' }],
+  'orientation-none': [{ areas: 'none', length: 2 }, { areas: 'none', length: 30, geometry: '-d4-page-orientation:landscape' }],
+  'orientation-chain': [{ areas: 'default', length: 2 }, { areas: 'first', length: 2, geometry: '-d4-page-orientation:landscape' }, { areas: 'default', length: 24 }],
+  'mixed-chain': [{ areas: 'first', length: 2 }, { areas: 'first', length: 2, geometry: '-d4-page-margin:2.5cm 2.5cm 2.5cm 72pt' },
+    { areas: 'first-facing', length: 24, geometry: '-d4-page-orientation:landscape' }],
+};
+const centimetre = 72 / 2.54;
+function sectionGeometry(spec) {
+  const paper = /landscape/.test(spec.geometry || '') ? [360, 300] : [300, 360];
+  const margin = (spec.geometry || '').match(/-d4-page-margin:([^;]+)/);
+  const values = (margin ? margin[1] : '60pt 30pt').split(' ').map(value => value.endsWith('cm') ? parseFloat(value) * centimetre : parseFloat(value));
+  const [top, right = top, bottom = top, left = right] = values;
+  return { width: paper[0], height: paper[1], top, right, bottom, left };
+}
+// The native membership rule (wp_contheader_probe, wp_contgeom_probe), independent of the editor.
+function ruleAreas(sections, owner, startsHere, pageNumber) {
+  const spec = sections[owner - 1];
+  if (spec.areas === 'none') return [];
+  const variant = startsHere && spec.areas.includes('first') ? 'FIRST' : spec.areas.includes('facing') ? (pageNumber % 2 ? 'RIGHT' : 'LEFT') : 'DEFAULT';
+  return ['FOOTER', 'HEADER'].map(kind => `CH${owner}${variant}${kind}`);
+}
+
+for (const [name, sections] of Object.entries(geometryShapes)) test(`continuous seams that change geometry follow native page rules: ${name}`, async ({ page }, testInfo) => {
+  const [style, body] = seamDocument(sections);
+  await open(page, style + sections.map((spec, index) => spec.geometry ? `div.section${index + 1}{${spec.geometry}}` : '').join(''), body);
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets.first()).toBeVisible();
+  const measured = await sheets.evaluateAll(sheets => sheets.map(sheet => {
+    const frame = sheet.getBoundingClientRect();
+    const pt = value => Math.round(value * .75 * 100) / 100;
+    return {
+      owner: Number(sheet.dataset.section), width: pt(frame.width), height: pt(frame.height),
+      areas: [...sheet.querySelectorAll(':scope > .page-area')].map(area => area.textContent.trim()).sort(),
+      body: [...sheet.querySelectorAll('.page-body p')].map(paragraph => ({
+        text: paragraph.textContent.match(/CH\d+BODY\d+/)?.[0], section: Number(paragraph.dataset.section),
+        left: pt(paragraph.getBoundingClientRect().left - frame.left), right: pt(frame.right - paragraph.getBoundingClientRect().right),
+        top: pt(paragraph.getBoundingClientRect().top - frame.top), bottom: pt(frame.bottom - paragraph.getBoundingClientRect().bottom),
+      })).filter(paragraph => paragraph.text),
+    };
+  }));
+  // Every paragraph once, in order; each sheet is owned by the section at its top and has that section's paper.
+  expect(measured.flatMap(sheet => sheet.body.map(item => item.text))).toEqual(sections.flatMap((spec, index) =>
+    Array.from({ length: spec.length }, (_, line) => `CH${index + 1}BODY${line + 1}`)));
+  const geometries = sections.map(sectionGeometry);
+  measured.forEach((sheet, index) => {
+    expect(sheet.owner, `sheet ${index + 1} owner`).toBe(sheet.body[0].section);
+    expect([sheet.width, sheet.height]).toEqual([geometries[sheet.owner - 1].width, geometries[sheet.owner - 1].height]);
+    const own = geometries[sheet.owner - 1];
+    for (const item of sheet.body) {
+      // Horizontal margins are the paragraph's own section's; vertical bounds are the sheet owner's.
+      const geometry = geometries[item.section - 1];
+      expect(item.left, `${item.text} left`).toBeCloseTo(geometry.left, 1);
+      expect(item.right, `${item.text} right`).toBeCloseTo(geometry.right, 1);
+      expect(item.top).toBeGreaterThanOrEqual(own.top - .25);
+      expect(item.bottom).toBeGreaterThanOrEqual(own.bottom - .25);
+    }
+    expect(sheet.body[0].top, `sheet ${index + 1} starts at its owner's top margin`).toBeCloseTo(own.top, 1);
+    const startsHere = sheet.body.some(item => item.text === `CH${sheet.owner}BODY1`);
+    expect(sheet.areas, `sheet ${index + 1} areas`).toEqual(ruleAreas(sections, sheet.owner, startsHere, index + 1));
+  });
+  for (let section = 2; section <= sections.length; section++) {
+    const at = measured.findIndex(sheet => sheet.body.some(item => item.text === `CH${section}BODY1`));
+    const turned = geometries[section - 1].width !== geometries[section - 2].width;
+    // Native: an orientation seam starts a new page; a margin-only seam continues on the shared page (these shapes
+    // leave room on it in the browser too).
+    if (turned) expect(measured[at].body[0].text).toBe(`CH${section}BODY1`);
+    else expect(measured[at].body.map(item => item.section)).toContain(section - 1);
+  }
+  const notices = await page.locator('#paged-objects > p').evaluateAll(items => items.map(item => item.dataset.notice));
+  // The shared-page area notice applies to seams that keep sharing a page and have areas on either side.
+  const sharedAreas = sections.slice(0, -1).some((spec, index) => geometries[index].width === geometries[index + 1].width &&
+    (spec.areas !== 'none' || sections[index + 1].areas !== 'none'));
+  expect(notices).toEqual([...(sharedAreas ? ['pagedSeamAreas'] : []), 'pagedSeamGeometry']);
+  await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
+  // Unused first/left/right areas keep their labeled appendix sheets after the pages.
+  const printed = await pdf(page, testInfo, `seam-geometry-${name}`);
+  expect(printed.length).toBe(measured.length + await page.locator('#paged-view .paged-unused').count());
+  const output = printed.slice(0, measured.length);
+  expect(output.map(sheet => [sheet.width, sheet.height])).toEqual(measured.map(sheet => [sheet.width, sheet.height]));
+  expect(output.map(sheet => sheet.words.filter(word => /^CH\d+BODY\d+$/.test(word)))).toEqual(measured.map(sheet => sheet.body.map(item => item.text)));
+  expect(output.map(sheet => sheet.words.filter(word => areaToken.test(word)).sort())).toEqual(measured.map(sheet => sheet.areas));
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('incoming margins also set the wrapping width on the shared page, as native PDFs show', async ({ page }, testInfo) => {
+  const words = ' alpha beta gamma delta epsilon zeta eta theta iota kappa';
+  await open(page, 'div.section2{-d4-page-margin:60pt 120pt 60pt 30pt}',
+    `<p>WRAP1 ${words}</p><p style="-d4-section-break-after:continuous">WRAP2 ${words}</p>` +
+    Array.from({ length: 6 }, (_, i) => `<p>WIDE${i}${words}</p>`).join(''));
+  const before = await bytes(page);
+  await preview(page);
+  const bands = await page.locator('#paged-view .browser-page').first().evaluate(sheet => {
+    const frame = sheet.getBoundingClientRect();
+    return [...sheet.querySelectorAll('.page-body p')].map(paragraph => ({
+      section: paragraph.dataset.section,
+      right: Math.max(...[...paragraph.querySelectorAll('.text-run')].flatMap(run => [...run.getClientRects()].map(rect => (rect.right - frame.left) * .75))),
+    }));
+  });
+  expect(bands.some(item => item.section === '1' && item.right > 180)).toBe(true);
+  expect(bands.filter(item => item.section === '2').length).toBeGreaterThan(0);
+  for (const item of bands.filter(item => item.section === '2')) expect(item.right).toBeLessThanOrEqual(180.25);
+  const output = await pdf(page, testInfo, 'seam-geometry-wrap');
+  const bbox = execFileSync('pdftotext', ['-bbox', testInfo.outputPath('seam-geometry-wrap.pdf'), '-'], { encoding: 'utf8' });
+  expect(output.length).toBeGreaterThan(0);
+  const firstPage = bbox.match(/<page[\s\S]*?<\/page>/)[0];
+  const lefts = [...firstPage.matchAll(/<word xMin="([\d.]+)"[^>]*>WIDE\d<\/word>/g)].map(match => Number(match[1]));
+  expect(lefts.length).toBeGreaterThan(0);
+  for (const left of lefts) expect(left).toBeCloseTo(30, 0);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('geometry seam notice, themes, zoom and mobile keep the same pages in all six locales', async ({ page }, testInfo) => {
+  const sections = geometryShapes['mixed-chain'];
+  const [style, body] = seamDocument(sections);
+  await open(page, style + sections.map((spec, index) => spec.geometry ? `div.section${index + 1}{${spec.geometry}}` : '').join(''), body);
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets.nth(1)).toBeVisible();
+  const count = await sheets.count();
+  const baseline = await pdf(page, testInfo, 'seam-geometry-locales');
+  expect(baseline.slice(0, count).map(sheet => [sheet.width, sheet.height])).toEqual([[300, 360], ...Array(count - 1).fill([360, 300])]);
+  await expect(page.locator('#paged-objects > p')).toHaveText([messages.en.pagedSeamAreas, messages.en.pagedSeamGeometry]);
+  await page.locator('#settings-toggle').click();
+  for (const language of ['ja', 'fr', 'de', 'es', 'it', 'en']) {
+    await page.locator('#language').selectOption(language);
+    await expect(page.locator('#paged-objects > p')).toHaveText([messages[language].pagedSeamAreas, messages[language].pagedSeamGeometry]);
+    await expect(page.locator('#paged-status')).toHaveText(`${count} · ${messages[language].pagedSheet}`);
+    await expect(sheets.first()).toHaveAttribute('aria-label', `${messages[language].pagedSheet} 1 · ${messages[language].sectionLabel} 1`);
+  }
+  for (const theme of ['dark', 'system', 'light']) {
+    await page.locator('#theme').selectOption(theme);
+    await page.locator('#zoom').selectOption('2');
+    expect(await pdf(page, testInfo, `seam-geometry-${theme}`)).toEqual(baseline);
+  }
+  await page.evaluate(() => {
+    window.seamGeometryResize = new Promise(resolve => window.addEventListener('resize', () => resolve(), { once: true }));
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.seamGeometryResize);
+  await expect(sheets).toHaveCount(count);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await pdf(page, testInfo, 'seam-geometry-mobile')).toEqual(baseline);
+  await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
+  expect(await bytes(page)).toEqual(before);
+});
+
+test('geometry seam projection stays derived across body edits, undo, print Cancel and recovered Redo', async ({ page }) => {
+  const sections = geometryShapes['orientation-first'];
+  const [style, body] = seamDocument(sections);
+  await open(page, style + 'div.section2{-d4-page-orientation:landscape}', body);
+  const before = await bytes(page);
+  await preview(page);
+  const second = page.locator('#paged-view .browser-page').nth(1);
+  await expect(second).toContainText('CH2FIRSTHEADER');
+  await page.locator('#paper [contenteditable]').first().fill('WEBCG');
+  await expect(page.locator('#paged-view .browser-page').first()).toContainText('WEBCG');
+  await expect(second).toContainText('CH2BODY1');
+  expect(await second.evaluate(sheet => [sheet.style.width, sheet.style.height])).toEqual(['360pt', '300pt']);
+  const edited = await bytes(page);
+  expect(contents(edited).xml).toContain('WEBCG');
+  await page.locator('#undo').click();
+  await expect(page.locator('#paged-view .browser-page').first()).toContainText('CH1BODY1');
+  expect(await bytes(page)).toEqual(before);
+  await page.evaluate(() => {
+    window.print = () => { dispatchEvent(new Event('beforeprint')); dispatchEvent(new Event('afterprint')); };
+  });
+  await page.locator('#print-toggle').click();
+  await page.locator('#print-open').click();
+  expect(await bytes(page)).toEqual(before);
+  await expect(page.locator('#redo')).toBeEnabled();
+  await expect(page.locator('#draft-state')).toHaveText(messages.en.draftSaved);
+  await page.reload();
+  await expect(page.locator('#recovery-notice')).toBeVisible();
+  await page.locator('#redo').click();
+  await preview(page);
+  await expect(page.locator('#paged-view .browser-page').first()).toContainText('WEBCG');
+  await expect(page.locator('#paged-view .browser-page').nth(1)).toContainText('CH2FIRSTHEADER');
   expect(contents(await bytes(page))).toEqual(contents(edited));
 });
 

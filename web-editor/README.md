@@ -7,8 +7,8 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`2429173` / #64](https://github.com/miyako/4d-ql/pull/64) (M3, anchored objects and media), deployed.
-**Available** means merged there; **In progress** is an unmerged increment (10.9.4, continuous-section headers and footers, in this version);
+[`137b5de` / #65](https://github.com/miyako/4d-ql/pull/65) (M4a, continuous-section headers and footers), deployed.
+**Available** means merged there; **In progress** is an unmerged increment (10.9.5, continuous sections that change page geometry, in this version);
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
@@ -37,21 +37,22 @@ promise of dates or full Write Pro parity.
 | 10.4. Expanded browser pagination | Measured paragraph fragments, supported flat native lists and local inline images in read-only paged preview and matching print | Available on main via #54 |
 | 10.5. Paged tables | Measured row-boundary fragments of rectangular paragraph-cell tables, stable columns and repeating native leading header rows in preview and matching print | Available on main via #55 |
 | 10.6. Paged columns | Bounded equal-column, sequential paragraph/list/image flow with explicit column breaks and matching browser print | Available on main via #56 |
-| 10.7. Continuous-section pages | Compatible single-column boundaries share measured pages and matching browser print (stored headers/footers admitted by 10.9.4); unsupported seams retain explicit fallback | Available on main via #57; deployed |
+| 10.7. Continuous-section pages | Compatible single-column boundaries share measured pages and matching browser print (stored headers/footers admitted by 10.9.4, margin and orientation changes by 10.9.5); unsupported seams retain explicit fallback | Available on main via #57; deployed |
 | 10.8. Paged table-cell lists | Native-evidenced bounded flat cell lists, mixed paragraphs, stable unequal columns and list-bearing leading headers in read-only pages and matching print | Available on main via #59; deployed |
 | 10.9. Paged horizontal table spans | Native-evidenced horizontal-only merges with a fully unmerged width-witness row, stable frozen geometry and complete-row/header fragments | Available on main via #60; deployed |
 | 10.9.1. Paged vertical table spans | Native-evidenced vertical and mixed merges as unbreakable row bands, whole header bands repeated, #60 frozen geometry; over-tall bands use a localized fallback | Available on main via #62 (M1); deployed |
 | 10.9.2. Paged no-witness merged grids | Merged tables with no merge-free row, paged only when native stored cell widths resolve every column exactly (uniform padding, native default borders, every boundary fixed and consistent, within the page width); other grids keep the localized fallback | Available on main via #63 (M2); deployed |
 | 10.9.3. Paged objects and media | Supported anchored pictures and text boxes targeted at the whole document or a whole section placed on paged preview/print pages (front/behind layers; square wrap drawn as a reserved box without text flow, with a localized notice); other targets keep labeled appendix sheets | Available on main via #64 (M3); deployed |
-| 10.9.4. Paged continuous-section headers and footers | Compatible continuous seams whose sections carry stored headers, footers or first/left/right variants: each page shows the areas of the section in effect at its top, first-page areas only where a section's content starts, otherwise physical left/right parity (native page membership only); geometry-changing seams keep the localized fallback | In progress (M4, first increment); implemented in this version, not merged or deployed |
-| 10.10. Further layout parity | No-witness grids that native widths do not resolve exactly, geometry-changing (paper, orientation, margin or column) continuous seams, multi-column/complex table pagination, divider rules, page-targeted/seam objects, real text wrapping around objects, arbitrary layers and native-equivalent pagination/balancing | Proposed; unscheduled |
+| 10.9.4. Paged continuous-section headers and footers | Compatible continuous seams whose sections carry stored headers, footers or first/left/right variants: each page shows the areas of the section in effect at its top, first-page areas only where a section's content starts, otherwise physical left/right parity (native page membership only) | Available on main via #65 (M4a); deployed |
+| 10.9.5. Paged continuous sections that change page geometry | Single-column continuous seams on the same paper that change margins or orientation: an orientation change starts a new page in the incoming orientation (incoming first-page areas there); a margin change continues on the shared page, which keeps the top/bottom margins and areas of the section at its top while the incoming text uses its own left/right margins; later pages use the incoming geometry (native page membership only; scoped evidence, not certification) | In progress (M4b); implemented in this version, not merged or deployed |
+| 10.10. Further layout parity | No-witness grids that native widths do not resolve exactly, column-changing or square-paper-rotating continuous seams, multi-column/complex table pagination, divider rules, page-targeted/seam objects, real text wrapping around objects, arbitrary layers and native-equivalent pagination/balancing | Proposed; unscheduled |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
 Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
-on main. #64 (M3, anchored objects and media) was deployed by successful Pages run
-[`43625437222`](https://github.com/miyako/4d-ql/actions/runs/43625437222)
-at `2429173a406421d688c457b9478897f3e25ad2d6`.
-The first M4 increment (10.9.4, continuous-section headers and footers) is implemented in
+on main. #65 (M4a, continuous-section headers and footers) was deployed by successful Pages run
+[`43654676087`](https://github.com/miyako/4d-ql/actions/runs/43654676087)
+at `137b5de04e26943b442830e0b486290422df9efc`.
+The second M4 increment (10.9.5, continuous sections that change page geometry) is implemented in
 this version and awaits review; it is not merged or deployed. 10.10/11 remain **Proposed**. Arbitrary wrapping and
 automatic native pagination remain unscheduled proposals.
 Native formula execution/a 4D backend, real-time collaboration and exact
@@ -531,7 +532,7 @@ class-renumbering counterexample are independently preserved in
 `~/.copilot/evidence-backups/4wp-objects-20261113-probes-33ac49fe/`.
 The #52 increment is merged and deployed at the baseline recorded above.
 
-## Paged browser preview (available through #64; continuous-section headers and footers in this version)
+## Paged browser preview (available through #65; continuous sections that change page geometry in this version)
 
 Open **Paged browser preview** above the continuous editor. It is a separate,
 read-only projection of the whole document, even while authoring a header/footer.
@@ -839,10 +840,9 @@ anchored objects), each clean/Redo and dirty/Undo. The final recheck's 4D run to
 Final evidence: `~/.copilot/evidence/4wp-objpage-20261115-gate-01/`; independent byte/SHA-verified backup:
 `~/.copilot/evidence-backups/4wp-objpage-20261115-gate-01/`. This is scoped evidence, not certification.
 
-### Continuous-section headers and footers (10.9.4, in this version)
+### Continuous-section headers and footers (10.9.4, #65)
 
-The **in-progress 10.9.4** increment (the first M4 increment), implemented in this version
-and not merged or deployed, admits compatible continuous seams (identical effective
+The **available/deployed 10.9.4** increment (M4a, #65) admits compatible continuous seams (identical effective
 paper, orientation, margins and one column, without column breaks) whose sections carry
 stored headers, footers or enabled first/left/right variants, on either side, including
 empty ones. Installed full 4D 21.2 `F0012102` originals, area getters, re-imports and
@@ -873,10 +873,9 @@ Admitted native shapes: `default-both`, `outgoing-only`, `incoming-only`, `first
 `page-break-incoming`, `fresh-top`, `single-page`, `unicode`, `newpage-after` and
 `footer-only`; the five #57 area-bearing originals (`areas`, `variants`,
 `empty-variants`, `areas-overflow`, `variants-overflow`) are admitted too. Protected
-counterexamples keep the localized continuous fallback: `margin-areas` (4D continues
+counterexamples kept the localized continuous fallback in 10.9.4: `margin-areas` (4D continues
 section 2 on the shared page at x = 72 pt, a mid-page body change) and
-`orientation-areas` (4D starts a new landscape page). Geometry-changing seams are a later
-increment. Anchored objects on seam-bordering sections stay on appendix sheets (10.9.3).
+`orientation-areas` (4D starts a new landscape page). Both are admitted by 10.9.5 below. Anchored objects on seam-bordering sections stay on appendix sheets (10.9.3).
 The projection is disposable: source bytes, history, selection and IndexedDB recovery are
 unchanged, and an area edited in its own scope refreshes every page that shows it.
 
@@ -895,6 +894,69 @@ every later paragraph, because new 4D paragraphs inherit the preceding paragraph
 
 Final evidence: `~/.copilot/evidence/4wp-contheader-20261115-gate-01/`; independent byte/SHA-verified backup:
 `~/.copilot/evidence-backups/4wp-contheader-20261115-gate-01/`. This is scoped evidence, not certification.
+
+### Continuous sections that change page geometry (10.9.5, in this version)
+
+The **in-progress 10.9.5** increment (M4b), implemented in this version and not merged
+or deployed, admits single-column continuous seams on the same paper whose incoming
+section changes its **margins** or its **orientation** (or both), with or without
+headers, footers and first/left/right variants. Installed full 4D 21.2 `F0012102`
+originals, area/section/geometry getters, re-imports and per-page native PDF text, x
+positions and page sizes (cross-checked with `pdfinfo`) from `wp_contgeom_probe`
+(24 shapes, `--contgeom-probe`) are the oracle for **whether a seam starts a new page,
+which paper each page has, which left/right margins each section's text uses, and which
+header and footer each page draws**:
+
+- An **orientation change starts a new page** in the incoming orientation, like a page
+  break. That page is the incoming section's first page, so it draws the section's
+  first-page areas when enabled; later pages follow physical left/right parity.
+- A **margin change continues on the shared page**. That page keeps the top and bottom
+  margins, header and footer of the section at its top; the incoming text uses its own
+  left and right margins (and so its own wrapping width) from the break onward, also
+  when they are narrower than the outgoing ones. Every later page uses the incoming
+  section's full geometry.
+- Section margin setters store all four sides; unset sides are `2.5cm`, not the
+  document margins, and the browser reads the stored values.
+- **Paper size cannot change at a section**: native section width/height setters raise
+  error 205, so such seams have no native shape and keep the existing settings fallback.
+
+The browser applies the same rules to its own measured sheets: an orientation seam
+starts a new sheet with the incoming paper (and its own named print page size); a
+margin seam opens a band below the used part of the shared sheet, at the incoming
+left/right margins and that sheet's own bottom margin. If no room is left, the incoming
+section starts the next sheet, which then counts as its first page, as in 4D. A
+localized notice (all six languages) states the rule. **Browser pages are measured by
+the browser, so line breaks, where a section starts and page counts can differ from
+4D**; positions are browser approximations. No position, wrapping or page-count parity
+is claimed. Rotating square paper, column changes and column breaks keep the localized
+continuous fallback. The #57 originals `margin-change` and `orientation-change` and the
+10.9.4 counterexamples `margin-areas` and `orientation-areas` are now admitted under
+the same rules. Anchored objects on seam-bordering sections stay on appendix sheets
+(10.9.3). The projection is disposable: source bytes, history, selection and IndexedDB
+recovery are unchanged.
+
+Admitted native shapes: `margin-left`, `margin-right`, `margin-top`, `margin-bottom`,
+`margin-all`, `margin-sides`, `orientation`, `orientation-back`, `orientation-margin`,
+`orientation-first`, `orientation-none`, `margin-left-first`, `orientation-long`,
+`margin-left-long`, `margin-top-long`, `margin-bottom-long`, `orientation-chain`,
+`margin-chain`, `unicode`, `margin-top-only`, `margin-bottom-only`, `margin-wider`,
+`margin-wrap` and `mixed-chain`.
+
+Continuous-section geometry (10.9.5) verification: **449 unit tests, 200 production browser
+tests, 2,913 installed-4D generation cases and 2,937 final strict import/export/reopen
+cases passed** under 4D 21.2 `F0012102`. All **2,815 #65 definitions** remain unchanged by
+name; **2,240 unaffected inputs and 2,761 dependency archives** were independently
+byte/SHA-compared. The new cases are 120 native downloads (before, after, edited, Undo
+and recovered Redo for each of the 24 shapes) and 2 new Cancel exports. All
+**twenty-six genuine headed Chromium Cancel states** passed across thirteen modes (adding
+`--contgeoms`), each clean/Redo and dirty/Undo. The final recheck's 4D run took about
+261 seconds, within its computed 500.55-second limit (`max(300, 0.15 × 2,937 + 60)`;
+whole recheck 334 seconds). Retained probe runs: `4wp-contgeom-20261115-probe-01`
+(section paper width/height setters raised native error 205; no PDFs judged),
+`-probe-02` (19 shapes) and `-probe-03` (the final 24-shape probe).
+
+Final evidence: `~/.copilot/evidence/4wp-contgeom-20261115-gate-01/`; independent byte/SHA-verified backup:
+`~/.copilot/evidence-backups/4wp-contgeom-20261115-gate-01/`. This is scoped evidence, not certification.
 
 The available #56 column increment admits **2-4 equal-width, left-to-right columns**,
 with a **0-72 pt gap** and **at least 72 pt of text width in each column** after
@@ -946,9 +1008,9 @@ native flow/balancing behavior and remain unsupported here. A shared native page
 keeps the starting section's header/footer; later physical pages use the later
 section's facing/default content, **not a deferred first header**. #57 kept all
 stored areas and enabled first/facing variants outside its subset; 10.9.4 below
-admits them on compatible seams. Geometry-changing seams, column
-breaks or multi-column seams also use the dedicated localized continuous-seam
-fallback. Unsupported seams never return partial pages.
+admits them on compatible seams, and 10.9.5 below admits margin and orientation
+changes. Column changes, column breaks, multi-column seams and square-paper rotation
+still use the dedicated localized continuous-seam fallback. Unsupported seams never return partial pages.
 
 Already-admitted lists, inline local images/inert formulas and rectangular
 single-column tables retain their existing safety rules across compatible
@@ -1291,17 +1353,18 @@ source export bytes. `seams-cancel-*` adds two cases without replacing any
 baseline definition. Later increments add `--cell-lists`, `--colspans`, `--rowspans` and
 `--nowitnesses` (the native no-witness `rich` original and its first-header
 target), `--objpages` (the native anchored-object `variants` original and its
-first-paragraph target) and `--contheaders` (the native continuous-section area
-`first-facing-both` original and its first-paragraph target), each adding two
-`*-cancel-*` cases: twelve modes and twenty-four states in all. The harness settles its own download-triggered draft write
+first-paragraph target), `--contheaders` (the native continuous-section area
+`first-facing-both` original and its first-paragraph target) and `--contgeoms` (the
+native continuous-section geometry `mixed-chain` original and its first-paragraph
+target), each adding two `*-cancel-*` cases: thirteen modes and twenty-six states in all. The harness settles its own download-triggered draft write
 before taking the snapshots and fixes the browser's Date per phase (timers still
 run), so dirty-export modification timestamps are identical for exact byte
 comparison. It does not normalize away DOM, history, recovery or source changes.
 Run all modes, then
 re-import the augmented manifest in full 4D and run the complete verifier.
 
-For the strict baseline comparison (currently the sealed #64 evidence), run
-`node scripts/reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_64_BASELINE`
+For the strict baseline comparison (currently the sealed #65 evidence), run
+`node scripts/reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_65_BASELINE`
 after the initial full gate. It preserves unrelated baseline input/dependency
 bytes and regenerates affected paged exports with the current production build.
 Run all Cancel modes, then the same command with `--compare` to check every
@@ -1650,7 +1713,7 @@ at about 0.07 s per case (about 195 s for 2,728 cases in #64), so the limit keep
 fixed 300 seconds through 10.9.3; a run that exceeds it is terminated, the message
 prints the computed limit and no pass is claimed.
 Independent probes run with `--continuous-probe`, `--cell-list-probe`,
-`--colspan-probe`, `--rowspan-probe`, `--nowitness-probe`, `--objpage-probe` or `--contheader-probe`; each also runs inside the full gate.
+`--colspan-probe`, `--rowspan-probe`, `--nowitness-probe`, `--objpage-probe`, `--contheader-probe` or `--contgeom-probe`; each also runs inside the full gate.
 
 The gate first runs isolated native section/break, page geometry, offset and mutation probes, then creates
 genuine browser downloads and model exports, imports them in full 4D, exports

@@ -38,12 +38,30 @@ describe('derived paged projection safety and area selection', () => {
     }
   });
 
-  it('keeps geometry-changing and column-breaking seams on the atomic fallback even when areas are stored', () => {
+  it('admits margin and orientation seams with or without areas (wp_contgeom_probe) without source changes', () => {
     const seam = '<p style="-d4-section-break-after:continuous">A</p><p>B</p>';
     const header = '<div class="section2Header" style="visibility:hidden;height:0"><p>H</p></div>';
     for (const [style, body] of [
+      ['div.section2{-d4-page-margin:40pt}', seam],
+      ['div.section2{-d4-page-margin:2.5cm 72pt 2.5cm 2.5cm}', seam],
+      ['div.section2{-d4-page-orientation:landscape}', seam],
+      ['div.section1{-d4-page-orientation:landscape}', seam],
+      ['div.section2{-d4-page-orientation:landscape;-d4-page-margin:2.5cm 2.5cm 2.5cm 72pt}', seam],
       ['div.section2Header{margin:10pt}div.section2{-d4-page-margin:40pt}', seam + header],
       ['div.section2Header{margin:10pt}div.section2{-d4-page-orientation:landscape}', seam + header],
+    ]) {
+      const model = new WriteProDocument(source(style, body));
+      const before = model.pack();
+      expect(pagedCapability(model)).toBeNull();
+      expect(model.pack()).toEqual(before);
+      expect(document.querySelector('.paged-measure')).toBeNull();
+    }
+  });
+
+  it('keeps square-rotation, column-changing and column-breaking seams on the atomic fallback even when areas are stored', () => {
+    const seam = '<p style="-d4-section-break-after:continuous">A</p><p>B</p>';
+    const header = '<div class="section2Header" style="visibility:hidden;height:0"><p>H</p></div>';
+    for (const [style, body] of [
       ['div.section0{-d4-page-width:480pt;-d4-page-height:480pt}div.section2Header{margin:10pt}div.section2{-d4-page-orientation:landscape}', seam + header],
       ['div.section2Header{margin:10pt}div.section2{column-count:2}', seam + header],
       ['div.section2Header{margin:10pt}', '<p style="break-after:column">START</p>' + seam + header],
@@ -57,11 +75,22 @@ describe('derived paged projection safety and area selection', () => {
     }
   });
 
+  it('keeps section paper sizes, which native setters refuse (error 205), on the settings fallback', () => {
+    const seam = '<p style="-d4-section-break-after:continuous">A</p><p>B</p>';
+    for (const style of ['div.section2{-d4-page-width:400pt}', 'div.section2{-d4-page-height:400pt}',
+      'div.section2{-d4-page-height:900pt;-d4-page-orientation:landscape}']) {
+      const model = new WriteProDocument(source(style, seam));
+      const before = model.pack();
+      expect(pagedCapability(model)).toBe('pagedSettings');
+      expect(() => createPagedProjection(model, messages.en)).toThrow(expect.objectContaining({ code: 'pagedSettings' }));
+      expect(model.pack()).toEqual(before);
+      expect(document.querySelector('.paged-measure')).toBeNull();
+    }
+  });
+
   it('rejects unsupported continuous seams atomically', () => {
     const seam = '<p style="-d4-section-break-after:continuous">A</p><p>B</p>';
     for (const [style, body] of [
-      ['div.section2{-d4-page-margin:40pt}', seam],
-      ['div.section2{-d4-page-orientation:landscape}', seam],
       ['div.section0{-d4-page-width:480pt;-d4-page-height:480pt}div.section2{-d4-page-orientation:landscape}', seam],
       ['div.section0{column-count:2}', seam],
       ['div.section2{column-count:2}', seam],

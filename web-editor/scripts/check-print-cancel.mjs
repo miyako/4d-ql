@@ -16,9 +16,10 @@ const rowspans = process.argv[3] === '--rowspans';
 const nowitnesses = process.argv[3] === '--nowitnesses';
 const objpages = process.argv[3] === '--objpages';
 const contheaders = process.argv[3] === '--contheaders';
-const paginated = paged || expanded || tables || columns || seams || cellLists || colspans || rowspans || nowitnesses || objpages || contheaders;
-assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded|--tables|--columns|--seams|--cell-lists|--colspans|--rowspans|--nowitnesses|--objpages|--contheaders]');
-const prefix = contheaders ? 'contheaders-cancel' : objpages ? 'objpages-cancel' : nowitnesses ? 'nowitnesses-cancel' : rowspans ? 'rowspans-cancel' : colspans ? 'colspans-cancel' : cellLists ? 'cell-lists-cancel' : seams ? 'seams-cancel' : columns ? 'columns-cancel' : tables ? 'tables-cancel' : expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
+const contgeoms = process.argv[3] === '--contgeoms';
+const paginated = paged || expanded || tables || columns || seams || cellLists || colspans || rowspans || nowitnesses || objpages || contheaders || contgeoms;
+assert(process.argv[2], 'Usage: node scripts/check-print-cancel.mjs NATIVE_EVIDENCE_DIRECTORY [--paged|--expanded|--tables|--columns|--seams|--cell-lists|--colspans|--rowspans|--nowitnesses|--objpages|--contheaders|--contgeoms]');
+const prefix = contgeoms ? 'contgeoms-cancel' : contheaders ? 'contheaders-cancel' : objpages ? 'objpages-cancel' : nowitnesses ? 'nowitnesses-cancel' : rowspans ? 'rowspans-cancel' : colspans ? 'colspans-cancel' : cellLists ? 'cell-lists-cancel' : seams ? 'seams-cancel' : columns ? 'columns-cancel' : tables ? 'tables-cancel' : expanded ? 'expanded-cancel' : paged ? 'paged-cancel' : 'print-cancel';
 const manifest = paginated ? JSON.parse(await readFile(resolve(directory, 'Input/cases.json'), 'utf8')) : null;
 if (paginated) {
   const files = new Set(await readdir(resolve(directory, 'Input')));
@@ -34,15 +35,15 @@ try {
   const page = await browser.newPage({ acceptDownloads: true, locale: 'en-US' });
   const cdp = await browser.newBrowserCDPSession();
   await page.goto(server.resolvedUrls.local[0]);
-  await page.locator('#file').setInputFiles(resolve(directory, contheaders ? 'Input/contheader-source-first-facing-both.4wp' : objpages ? 'Input/objpage-source-variants.4wp' : nowitnesses ? 'Input/nowitness-source-rich.4wp' : rowspans ? 'Input/rowspan-source-media.4wp' : colspans ? 'Input/colspan-source-rich.4wp' : cellLists ? 'Input/cell-list-source-mixed.4wp' : seams ? 'Input/continuous-paged-source-overflow.4wp' : columns ? 'Input/paged-column-source-mixed.4wp' : tables ? 'Input/paged-table-source-mixed.4wp' : expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
-  await expect(page.locator('#paper')).toContainText(contheaders ? 'CHSTART' : objpages ? 'OBJP1' : nowitnesses ? 'NOWSTART' : rowspans ? 'ROWSTART' : colspans ? 'SPANSTART' : cellLists ? 'CELLSTART' : seams ? 'SEAMSTART' : columns ? 'COLUMNSTART' : tables ? 'TABLESTART' : expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
+  await page.locator('#file').setInputFiles(resolve(directory, contgeoms ? 'Input/contgeom-source-mixed-chain.4wp' : contheaders ? 'Input/contheader-source-first-facing-both.4wp' : objpages ? 'Input/objpage-source-variants.4wp' : nowitnesses ? 'Input/nowitness-source-rich.4wp' : rowspans ? 'Input/rowspan-source-media.4wp' : colspans ? 'Input/colspan-source-rich.4wp' : cellLists ? 'Input/cell-list-source-mixed.4wp' : seams ? 'Input/continuous-paged-source-overflow.4wp' : columns ? 'Input/paged-column-source-mixed.4wp' : tables ? 'Input/paged-table-source-mixed.4wp' : expanded ? 'Input/expanded-source-images.4wp' : paged ? 'Input/paged-source-right.4wp' : 'Output/print-rich.4wp'));
+  await expect(page.locator('#paper')).toContainText(contgeoms ? 'CGSTART' : contheaders ? 'CHSTART' : objpages ? 'OBJP1' : nowitnesses ? 'NOWSTART' : rowspans ? 'ROWSTART' : colspans ? 'SPANSTART' : cellLists ? 'CELLSTART' : seams ? 'SEAMSTART' : columns ? 'COLUMNSTART' : tables ? 'TABLESTART' : expanded ? 'EXPANDED' : paged ? 'PAGED1' : 'TAILEND');
   if (paged) await page.locator('#editing-scope').selectOption('section1FirstFooter');
   if (tables || columns || cellLists || colspans || rowspans || nowitnesses) await page.locator('#editing-scope').selectOption('section1FirstHeader');
   await page.locator('#paper [contenteditable]').first().evaluate(element => {
     element.focus();
     getSelection().collapse(element.firstChild, 0);
   });
-  if (paginated) await page.locator('#paper [contenteditable]').first().fill(contheaders ? 'WEBCH' : objpages ? 'WEBOBJ' : nowitnesses ? 'WEBNOW' : rowspans ? 'WEBROW' : colspans ? 'WEBSPAN' : cellLists ? 'WEBCELL' : seams ? 'WEBSEAM' : columns ? 'WEBCOLUMN' : tables ? 'WEBTABLE' : expanded ? 'WEBEXPANDED' : 'WEBPAGED');
+  if (paginated) await page.locator('#paper [contenteditable]').first().fill(contgeoms ? 'WEBCG' : contheaders ? 'WEBCH' : objpages ? 'WEBOBJ' : nowitnesses ? 'WEBNOW' : rowspans ? 'WEBROW' : colspans ? 'WEBSPAN' : cellLists ? 'WEBCELL' : seams ? 'WEBSEAM' : columns ? 'WEBCOLUMN' : tables ? 'WEBTABLE' : expanded ? 'WEBEXPANDED' : 'WEBPAGED');
   else await page.keyboard.insertText('EDIT');
   await page.locator('#undo').click();
   await page.locator('#zoom').selectOption('1.5');
@@ -51,7 +52,7 @@ try {
   let pages;
   if (paginated) {
     await page.locator('#paged-panel > summary').click();
-    if (expanded || tables || columns || seams || cellLists || colspans || rowspans || nowitnesses || objpages || contheaders) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
+    if (expanded || tables || columns || seams || cellLists || colspans || rowspans || nowitnesses || objpages || contheaders || contgeoms) await expect(page.locator('#paged-view .browser-page').nth(1)).toBeVisible();
     else await expect(page.locator('#paged-view .browser-page')).toHaveCount(6);
     pages = await page.locator('#paged-view .browser-page').count();
   }
@@ -176,6 +177,9 @@ try {
       if (rowspans && phase === 'clean-with-redo') assert.deepEqual(sourceAfter,
         await readFile(resolve(directory, 'Input/rowspan-source-media.4wp')),
         'Actual print Cancel must leave clean row-band source bytes unchanged');
+      if (contgeoms && phase === 'clean-with-redo') assert.deepEqual(sourceAfter,
+        await readFile(resolve(directory, 'Input/contgeom-source-mixed-chain.4wp')),
+        'Actual print Cancel must leave clean continuous-section geometry source bytes unchanged');
       if (contheaders && phase === 'clean-with-redo') assert.deepEqual(sourceAfter,
         await readFile(resolve(directory, 'Input/contheader-source-first-facing-both.4wp')),
         'Actual print Cancel must leave clean continuous-section area source bytes unchanged');
@@ -198,7 +202,9 @@ try {
   if (paginated) {
     for (const [phase, stage] of [['clean-with-redo', 'original'], ['dirty-with-undo', 'edited']]) {
       const name = `${prefix}-${phase}`;
-      manifest.cases.push(contheaders ? { name, file: `${name}.4wp`,
+      manifest.cases.push(contgeoms ? { name, file: `${name}.4wp`,
+        flow: { source: stage === 'original' ? 'contgeom-source-mixed-chain.4wp' : 'contgeom-target-mixed-chain.4wp', action: 'identity' },
+        resources: 'contgeom-source-mixed-chain.4wp' } : contheaders ? { name, file: `${name}.4wp`,
         flow: { source: stage === 'original' ? 'contheader-source-first-facing-both.4wp' : 'contheader-target-first-facing-both.4wp', action: 'identity' },
         resources: 'contheader-source-first-facing-both.4wp' } : objpages ? { name, file: `${name}.4wp`,
         flow: { source: stage === 'original' ? 'objpage-source-variants.4wp' : 'objpage-target-variants.4wp', action: 'identity' },

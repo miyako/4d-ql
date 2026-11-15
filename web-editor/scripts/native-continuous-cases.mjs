@@ -10,6 +10,9 @@ const normalize = text => text.replace(/&(?:amp|lt|gt|quot|apos);/g, entity =>
 const tokens = text => normalize(text).match(/SEAM[12]TOKEN\d+/g) || [];
 // Area-bearing compatible seams are admitted after wp_contheader_probe established native header/footer page membership.
 const positives = new Set(['compatible', 'explicit', 'overflow', 'chain', 'newpage', 'areas', 'variants', 'empty-variants', 'areas-overflow', 'variants-overflow']);
+// Margin and orientation seams are admitted after wp_contgeom_probe established the native page rules: a margin change
+// continues on the shared page with the incoming left/right margins; an orientation change starts a new page.
+const geometryPositives = new Set(['margin-change', 'orientation-change']);
 // Facing areas follow physical parity: when browser and native page numbers differ in parity, the native left/right
 // choice maps to the other facing variant on the browser page (page counts are not reproduced).
 export const atParity = (tokens, nativePage, browserPage) => (nativePage - browserPage) % 2 === 0 ? tokens :
@@ -49,8 +52,8 @@ export async function prepareContinuousCases(directory, cases, browser, url, dow
       assert(Math.abs(after.x - 36) < .5 && Math.abs(after.y - 115.94) < .5,
         'The following native section resumes below the preceding column group on the same page');
     }
-    const supported = positives.has(item.name);
-    if (supported) {
+    const supported = positives.has(item.name) || geometryPositives.has(item.name);
+    if (positives.has(item.name)) {
       assert.deepEqual(papers[0], papers[1], 'Positive originals must independently establish compatible effective geometry');
       assert(item.layout.sections.every(item => item.count === 1));
       const shared = native.pages.find(page => page.words.some(word => word.text === 'SEAM2TOKEN0'));
@@ -97,19 +100,28 @@ export async function prepareContinuousCases(directory, cases, browser, url, dow
       } else {
         await expect(page.locator('#paged-view .browser-page').first()).toBeVisible();
         measured = await page.locator('#paged-view .browser-page').evaluateAll(sheets => sheets.map(sheet => {
-          const body = sheet.querySelector('.page-body');
-          const bounds = body.getBoundingClientRect();
+          // A margin seam adds a band (a second page body) below the used part of the shared sheet.
+          const bodies = [...sheet.querySelectorAll('.page-body')];
           return { page: Number(sheet.dataset.page), owner: Number(sheet.dataset.section), sections: sheet.dataset.sections,
-            text: body.textContent, width: parseFloat(sheet.style.width), height: parseFloat(sheet.style.height),
+            text: bodies.map(body => body.textContent).join(''), width: parseFloat(sheet.style.width), height: parseFloat(sheet.style.height),
+            bands: bodies.length,
             areas: [...sheet.querySelectorAll('.page-area')].map(area => ({ name: area.dataset.area, text: area.textContent })),
-            fits: [...body.querySelectorAll('p,.text-run')].every(run => [...run.getClientRects()].every(rect =>
-              rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25 &&
-              rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25)) };
+            fits: bodies.every(body => {
+              const bounds = body.getBoundingClientRect();
+              return [...body.querySelectorAll('p,.text-run')].every(run => [...run.getClientRects()].every(rect =>
+                rect.left >= bounds.left - .25 && rect.right <= bounds.right + .25 &&
+                rect.top >= bounds.top - .25 && rect.bottom <= bounds.bottom + .25));
+            }) };
         }));
         assert.deepEqual(tokens(measured.map(sheet => sheet.text).join('')), expectedTokens);
         assert(measured.every((sheet, i) => sheet.fits && sheet.page === i + 1));
-        assert(measured.some(sheet => sheet.sections.split(' ').includes('1') && sheet.sections.split(' ').includes('2')),
-          'The evidenced seam must share a measured physical page, not just avoid a fallback notice');
+        const shares = measured.some(sheet => sheet.sections.split(' ').includes('1') && sheet.sections.split(' ').includes('2'));
+        if (item.name === 'orientation-change') {
+          assert(!shares, 'Native orientation change starts a new page');
+          const turned = measured.find(sheet => sheet.owner === 2);
+          assert.deepEqual([turned.width, turned.height], [420, 480], 'The new page takes the incoming orientation');
+        } else assert(shares, 'The evidenced seam must share a measured physical page, not just avoid a fallback notice');
+        if (item.name === 'margin-change') assert(measured.some(sheet => sheet.bands === 2), 'The incoming margins apply from the break on the shared page');
         if (/^(areas|variants|empty-variants)/.test(item.name)) {
           // Native page 1 and the first page owned by section 2 (if any) carry exactly the same area tokens.
           const sheetTokens = sheet => headerTokens(sheet.areas.flatMap(area => area.text.split(/\s+/)));
