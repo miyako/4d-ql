@@ -16,10 +16,12 @@ export const contheaderShapes = {
   // The incoming section's content starts at the top of a new page: native uses its first-page areas there.
   'fresh-top': 'paged',
   'single-page': 'paged', unicode: 'paged', 'newpage-after': 'paged', 'footer-only': 'paged',
-  // Native continues section 2 on the shared page at x = 72 pt: a mid-page body geometry change stays protected.
-  'margin-areas': 'fallback',
-  // Native starts a new landscape page for section 2: geometry-changing seams stay protected.
-  'orientation-areas': 'fallback',
+  // Native continues section 2 on the shared page at x = 72 pt. Protected in 10.9.4; admitted after wp_contgeom_probe
+  // established the margin-seam rule (incoming left/right margins from the break on the shared page).
+  'margin-areas': 'paged',
+  // Native starts a new landscape page for section 2. Protected in 10.9.4; admitted after wp_contgeom_probe established
+  // the orientation-seam rule (a new page in the incoming orientation).
+  'orientation-areas': 'paged',
 };
 const areaToken = /CH\d(?:DEFAULT|FIRST|LEFT|RIGHT)(?:HEADER|FOOTER)/g;
 const bodyToken = /^(?:CHSTART|CH\d+BODY\d+)$/;
@@ -132,7 +134,8 @@ export async function prepareContheaderCases(directory, cases, browser, url, dow
         await expect(page.locator('#paged-status')).toHaveText(`${count} · ${messages.en.pagedSheet}`);
         const measured = await sheets.evaluateAll(sheets => sheets.map(sheet => ({
           owner: Number(sheet.dataset.section),
-          body: sheet.querySelector('.page-body').textContent.match(/CHSTART|CH\d+BODY\d+/g) || [],
+          body: [...sheet.querySelectorAll('.page-body')].flatMap(body => body.textContent.match(/CHSTART|CH\d+BODY\d+/g) || []),
+          size: [Math.round(sheet.getBoundingClientRect().width * .75), Math.round(sheet.getBoundingClientRect().height * .75)],
           texts: [...sheet.querySelectorAll(':scope > .page-area')].map(area => area.textContent),
         })));
         browserPages = analyse(measured.map(sheet => ({ body: sheet.body, areas: sheet.texts.join(' ').match(/CH\d(?:DEFAULT|FIRST|LEFT|RIGHT)(?:HEADER|FOOTER)/g) || [] })));
@@ -154,7 +157,8 @@ export async function prepareContheaderCases(directory, cases, browser, url, dow
           assert(item.areas.some(area => area.text === text.trim()), `${item.name}: complete area text ${text}`);
         }
         notices = await page.locator('#paged-objects > p').evaluateAll(items => items.map(entry => entry.dataset.notice));
-        assert.deepEqual(notices, ['pagedSeamAreas']);
+        // Geometry seams (wp_contgeom_probe) add their notice; an orientation seam starts a new page, so no page is shared.
+        assert.deepEqual(notices, { 'margin-areas': ['pagedSeamAreas', 'pagedSeamGeometry'], 'orientation-areas': ['pagedSeamGeometry'] }[item.name] || ['pagedSeamAreas']);
         await expect(page.locator('#paged-view [contenteditable],#paged-view [data-run]')).toHaveCount(0);
         await page.locator('#settings-toggle').click();
         await page.locator('#theme').selectOption('dark');
@@ -173,7 +177,13 @@ export async function prepareContheaderCases(directory, cases, browser, url, dow
         assert.deepEqual(printedAreas, browserPages.map(sheet => sheet.areas), `${item.name}: printed pages carry exactly the previewed areas`);
         assert.deepEqual(printed.pages.slice(0, count).map(sheet => sheet.words.map(word => word.text).filter(word => bodyToken.test(word))),
           browserPages.map(sheet => sheet.body), `${item.name}: printed body membership`);
-        for (const sheet of printed.pages) assert(Math.abs(sheet.width - 300) < 1 && Math.abs(sheet.height - 360) < 1, 'Unscaled native paper geometry');
+        // Unscaled native paper geometry: each printed page has its sheet's paper (landscape for orientation-areas section 2);
+        // appendix sheets use the first section's paper.
+        printed.pages.forEach((sheet, index) => {
+          const [width, height] = index < count ? measured[index].size : [300, 360];
+          assert(Math.abs(sheet.width - width) < 1 && Math.abs(sheet.height - height) < 1, 'Unscaled native paper geometry');
+        });
+        if (item.name === 'orientation-areas') assert.deepEqual(measured.map(sheet => sheet.size).slice(0, 2), [[300, 360], [360, 300]]);
       }
       await download(`contheader-after-${item.name}`, expected, page);
       assert.deepEqual(await readFile(resolve(directory, `Input/contheader-after-${item.name}.4wp`)), Buffer.from(original));

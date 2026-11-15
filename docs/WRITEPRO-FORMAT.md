@@ -676,9 +676,10 @@ Existing admitted paragraph/list/image/formula and rectangular table handling
 is reused without relaxing authoring guards. A rich-content browser regression
 checks residual seam capacity, later table fragments, stable widths, repeated
 leading headers, complete ordered fitting content and exact print membership.
-Geometry-changing, multi-column or otherwise unsupported seams
+Multi-column, column-changing or otherwise unsupported seams
 use localized atomic continuous fallback; area-bearing compatible seams are admitted
-by the continuous-section area increment below. #57 is available on main and deployed;
+by the continuous-section area increment below, and margin/orientation seams by the
+continuous-section geometry increment below. #57 is available on main and deployed;
 Vertical row bands are **Available/deployed via #62** (milestone M1). `wp_rowspan_probe` independently creates thirteen installed-4D
 originals (`vertical`, `header`, `two-headers`, `mixed`, `unicode`, `lists`, `rich`,
 `media`, `seam`, `chain`, `tall`, `header-cross`, `no-witness`) with the requested
@@ -1000,13 +1001,61 @@ a body-edited target. Native PDFs read per page are the oracle for header/footer
   (`wk margin bottom`); the probe resets it after the break.
 - With an area-bearing seam whose incoming section changes its left margin, 4D continues
   that section on the shared page at the new margin; with an orientation change it
-  starts a new page of the other orientation. Both remain protected.
+  starts a new page of the other orientation. Both were protected here and are admitted
+  by the geometry increment below.
 - `WP Get breaks` also lists paragraph breaks (type 4) alongside page (2), new-page
   section (1) and continuous section (5) breaks.
 
 The paged browser preview applies the same rule to its own measured sheets; where a
 section starts, and therefore physical parity, can differ from 4D. No position,
 wrapping or page-count parity is claimed.
+
+### Continuous sections that change page geometry (M4, second increment; full 4D F0012102)
+
+`wp_contgeom_probe` (gate flag `--contgeom-probe`, also run by the full gate) authors
+twenty-four native documents on 300×360 pt paper (60/30 pt margins, area margins
+`10pt 30pt`) whose continuous section breaks lead into a section with different
+margins (each side, all sides, wider or narrower than the outgoing ones), a different
+orientation, or both, with default, first/left/right or no areas, in two- and
+three-section chains. Body paragraphs are `CGSTART`/`CG<section>BODY<n>` and area words
+`CG<section><DEFAULT|FIRST|LEFT|RIGHT><HEADER|FOOTER>`. It exports the original,
+area/section/break/geometry getters, a native PDF, a re-imported PDF and a body-edited
+target. Native PDFs read per page (page sizes cross-checked with `pdfinfo`, body words
+and their x positions, area words) are the oracle:
+
+- **Paper size cannot change at a section.** Section `wk page width`/`wk page height`
+  setters raise error 205 (re-confirmed by the first probe run), so there is no native
+  continuous seam that changes paper size.
+- **A section margin setter stores all four sides.** Unset sides read back, export and
+  print as `2.5cm`, not the document margins (`-d4-page-margin:2.5cm 72pt 2.5cm 2.5cm`).
+- **Orientation change → new page.** A continuous break into a different orientation
+  starts a new page of the incoming orientation, exactly like a page break, also with
+  changed margins and in chains (portrait → landscape → portrait gives three pages).
+  That page is the incoming section's first page: it draws the section's first-page
+  areas when enabled; later pages follow physical left/right parity.
+- **Margin change → same page.** A continuous break into different margins keeps
+  filling the shared page. The incoming text starts at its own left margin and wraps at
+  its own right margin from the break onward (`margin-wrap`: section 1 lines reach about
+  x = 257, section 2 lines stay within x = 180); the shared page keeps the top/bottom
+  margins, header and footer of the section at its top, whatever the incoming section
+  stores (`margin-bottom-only`: shared-page body text still reaches the outgoing bottom
+  margin). Every later page uses the incoming section's full geometry, including its
+  top/bottom margins. A narrower incoming margin (`margin-wider`, 10 pt) extends the
+  text outside the outgoing body on the shared page.
+- A paragraph break follows each continuous section break in these documents, so the
+  incoming section starts with an empty paragraph (on the new page for orientation seams).
+- A paragraph can be split across native pages; page membership is read from each
+  paragraph's first word.
+
+The paged browser preview applies these rules to its own measured sheets: an
+orientation seam on non-square paper calls the normal new-page path (named `@page`
+size per section for print); a margin seam that changes left/right margins opens a
+band below the used part of the shared sheet, at the incoming left/right margins and
+the sheet's own bottom margin, and later sheets use the incoming geometry. Rotating
+square paper, column changes, column breaks and section paper sizes (which native
+setters refuse) keep the localized fallback. Native evidence covers new-page versus
+shared-page decisions, per-page paper and per-section left/right margins, and area
+page membership. No position, wrapping or page-count parity is claimed.
 
 ## Preview limits
 

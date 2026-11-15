@@ -384,8 +384,16 @@ function pagedBreak(values) {
 // headers, footers and first/left/right variants no longer block a seam: 4D draws on every page the areas of the
 // section in effect at the top of that page (a shared page keeps the outgoing section's header and footer), uses a
 // section's first-page areas only on the page where its content starts, and otherwise follows physical left/right
-// parity. Geometry-changing seams remain on the continuous fallback.
+// parity.
+// Geometry-changing seams (wp_contgeom_probe, full 4D 21.2 F0012102): a seam into a different orientation of the same
+// non-square paper starts a new page in the incoming geometry, exactly like a page break (the incoming section's
+// first-page areas apply there). A seam that changes only margins keeps sharing the page: that page keeps the
+// vertical geometry (top/bottom margins) and areas of the section at its top, the incoming text uses its own
+// left/right margins (and so its own wrapping width) from the break onward, and every later page uses the incoming
+// section's full geometry. Section paper width/height setters raise native error 205, so a seam that changes paper
+// size has no native shape; it stays on the continuous fallback with column changes and column breaks.
 function continuousSections(model, layout, setup) {
+  const seams = new Map();
   for (let index = 1; index < layout.sections.length; index++) {
     const previous = layout.sections[index - 1];
     if (paragraphBreak(model.values(previous.elements.at(-1))) !== 'continuous') continue;
@@ -393,12 +401,19 @@ function continuousSections(model, layout, setup) {
     const geometries = [previous, section].map(item => ({ ...setup.geometry, ...setup.sections.get(item.index) }));
     const papers = geometries.map(paperGeometry);
     const columns = [previous, section].map((item, i) => pagedColumnGeometry(model, item.index, papers[i], true));
-    if (columns.some(column => column.count !== 1) || columns[0].gap !== columns[1].gap ||
-      geometries[0].orientation !== geometries[1].orientation || JSON.stringify(papers[0]) !== JSON.stringify(papers[1]) ||
+    const sizes = geometries.map(geometry => [pagePoints(geometry.width), pagePoints(geometry.height)]);
+    const sameSize = sizes[0][0] === sizes[1][0] && sizes[0][1] === sizes[1][1];
+    let kind = null;
+    if (sameSize && geometries[0].orientation === geometries[1].orientation) kind = 'shared';
+    else if (sameSize && papers[0].width !== papers[0].height && papers[0].width === papers[1].height &&
+      papers[0].height === papers[1].width) kind = 'page';
+    if (!kind || columns.some(column => column.count !== 1) || columns[0].gap !== columns[1].gap ||
       [previous, section].some(item => item.elements.some(element => model.values(element)['break-after'] === 'column'))) {
       throw new DocumentError('pagedContinuous');
     }
+    seams.set(section.index, { kind, geometry: JSON.stringify(papers[0]) !== JSON.stringify(papers[1]) });
   }
+  return seams;
 }
 
 // Anchored objects (wp_objpage_probe, full 4D 21.2 F0012102): document-wide objects are drawn on every native page,
@@ -634,6 +649,10 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
     // The sheet a section shares through a continuous seam, until the section's own first new page is decided.
     let shared = null;
     let seamAreas = false;
+    let seamGeometry = false;
+    // The current sheet's body box in points; a margin seam opens a band below the used part of the shared sheet.
+    let box;
+    const seams = continuousSections(copy, copy.sectionLayout(), copy.pageSetup());
     for (const section of state.sections) {
       const setup = copy.sectionSetup(section.index);
       const paper = paperGeometry(setup.geometry);
@@ -656,6 +675,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
         const body = document.createElement('div');
         body.className = 'page-body';
         Object.assign(body.style, { top: `${top}pt`, left: `${left}pt`, right: `${right}pt`, bottom: `${bottom}pt` });
+        box = { top, right, bottom, left };
         flows = [body];
         columnIndex = 0;
         if (columns.count > 1) {
@@ -709,10 +729,32 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
         else flow = flows[columnIndex];
       };
       // A shared page keeps the areas of the section that started it; physical numbering is never reset.
-      if (previous && paragraphBreak(copy.values(previous.elements.at(-1))) === 'continuous') {
+      const seam = previous && paragraphBreak(copy.values(previous.elements.at(-1))) === 'continuous' ? seams.get(section.index) : null;
+      if (seam?.geometry) seamGeometry = true;
+      if (seam?.kind === 'page') newPage();
+      else if (seam) {
         shared = sheet;
         if (state.areas.some(area => area.section === previous.index || area.section === section.index)) seamAreas = true;
+        if (left !== box.left || right !== box.right) {
+          // The incoming left/right margins apply from the break down to the shared sheet's own bottom margin.
+          const sheetTop = sheet.getBoundingClientRect().top;
+          const last = flow.lastElementChild;
+          const used = last ? (last.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(last).marginBottom) || 0) - sheetTop) * .75 : box.top;
+          if (paper.height - box.bottom - used <= 0) newPage();
+          else {
+            const band = document.createElement('div');
+            band.className = 'page-body page-band';
+            Object.assign(band.style, { top: `${used}pt`, left: `${left}pt`, right: `${right}pt`, bottom: `${box.bottom}pt` });
+            box = { ...box, left, right };
+            sheet.append(band);
+            flows = [band];
+            columnIndex = 0;
+            flow = band;
+          }
+        }
       } else newPage();
+      // An empty band is not a fresh page: content that does not fit there moves to the next page.
+      const fresh = () => !flow.children.length && !flow.classList.contains('page-band');
       const fits = candidate => {
         const bounds = flow.getBoundingClientRect();
         const last = candidate.getBoundingClientRect();
@@ -839,7 +881,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
             }
             if (end === start) {
               fragment.remove();
-              if (!flow.children.length) throw new DocumentError(bands[band][1] - bands[band][0] > 1 ? 'pagedBand' : 'pagedOverflow');
+              if (fresh()) throw new DocumentError(bands[band][1] - bands[band][0] > 1 ? 'pagedBand' : 'pagedOverflow');
               newPage();
               continue;
             }
@@ -905,7 +947,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
                 if (fit) { best = end; low = end + 1; } else high = end - 1;
               }
               if (best === start) {
-                if (!flow.children.length) throw new DocumentError('pagedOverflow');
+                if (fresh()) throw new DocumentError('pagedOverflow');
                 nextColumn();
                 continue;
               }
@@ -991,6 +1033,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
     }
     const notices = [];
     if (seamAreas) notices.push('pagedSeamAreas');
+    if (seamGeometry) notices.push('pagedSeamGeometry');
     if (placed.some(plan => plan.layout === 'wrap-square')) notices.push('pagedObjectWrap');
     if (placed.length) notices.push('pagedObjectPlaced');
     if (appended.length) notices.push('pagedObjectAppendix');
