@@ -126,7 +126,13 @@ describe('derived paged projection safety and area selection', () => {
     for (const [style, body] of [
       ['div.section0{column-count:5}', '<p>TEXT</p>'],
       ['div.section0{column-gap:73pt}', '<p>TEXT</p>'],
-      ['div.section0{column-rule-style:solid}', '<p>TEXT</p>'],
+      ['div.section0{column-gap:6pt;column-rule-style:solid;column-rule-width:8pt}', '<p>TEXT</p>'],
+      ['div.section0{column-gap:0pt;column-rule-style:solid;column-rule-width:1pt}', '<p>TEXT</p>'],
+      ['div.section0{column-rule-style:hidden}', '<p>TEXT</p>'],
+      ['div.section0{column-rule-style:solid;column-rule-width:thin}', '<p>TEXT</p>'],
+      ['div.section0{column-rule-style:solid;column-rule-width:2px}', '<p>TEXT</p>'],
+      ['div.section0{column-rule-style:solid;column-rule-color:red}', '<p>TEXT</p>'],
+      ['div.section0{column-rule:1pt solid #000000}', '<p>TEXT</p>'],
       ['div.section1{column-width:100pt}', '<p>TEXT</p>'],
       ['p{column-span:all}', '<p>TEXT</p>'],
       ['@media print{div.section1{column-rule-style:none}}', '<p>TEXT</p>'],
@@ -134,7 +140,7 @@ describe('derived paged projection safety and area selection', () => {
       ['', '<p style="column-span:all">TEXT</p>'],
       ['', '<p><span style="break-after:column">TEXT</span></p>'],
       ['', '<p style="break-after:column;page-break-after:always">A</p><p>B</p>'],
-      ['div.section0{column-rule-style:solid}', '<p>BEFORE</p><table><tr><td><p>CELL</p></td></tr></table><p>AFTER</p>'],
+      ['div.section0{column-gap:6pt;column-rule-style:solid;column-rule-width:7pt}', '<p>BEFORE</p><table><tr><td><p>CELL</p></td></tr></table><p>AFTER</p>'],
       ['div.section0{column-count:5}', '<p>BEFORE</p><table><tr><td><p>CELL</p></td></tr></table><p>AFTER</p>'],
     ]) {
       const model = new WriteProDocument(source(`div.section0{column-count:2}${style}`, body));
@@ -145,6 +151,35 @@ describe('derived paged projection safety and area selection', () => {
     }
     const model = new WriteProDocument(source('div.section0{column-count:2}', '<p style="break-after:column">A</p><p>B</p>'));
     expect(pagedCapability(model)).toBeNull();
+  });
+
+  it('admits native rules between columns with native defaults and per-property cascade, without source changes (wp_colrule_probe)', () => {
+    const paper = { width: 480, margins: [60, 36, 60, 36] };
+    for (const [style, rule] of [
+      ['div.section0{column-count:2;column-gap:18pt}div.section1{column-rule-style:solid;column-rule-width:1pt;column-rule-color:#234567}', { style: 'solid', width: 1, color: '#234567' }],
+      ['div.section0{column-count:2;column-gap:18pt}div.section1{column-rule-style:solid}', { style: 'solid', width: 2.5, color: '#000000' }],
+      ['div.section0{column-count:2;column-gap:18pt;column-rule-style:dashed;column-rule-width:0.1cm;column-rule-color:#336699}', { style: 'dashed', width: 72 / 2.54 * .1, color: '#336699' }],
+      ['div.section0{column-count:3;column-gap:12pt;column-rule-width:3pt}div.section1{column-rule-style:groove;column-rule-color:#C00000}', { style: 'groove', width: 3, color: '#C00000' }],
+      ['div.section0{column-count:2;column-gap:4pt}div.section1{column-rule-style:double;column-rule-width:4pt}', { style: 'double', width: 4, color: '#000000' }],
+    ]) {
+      const model = new WriteProDocument(source(style, '<p>TEXT</p>'));
+      const before = model.pack();
+      expect(pagedColumnGeometry(model, 1, paper).rule).toEqual(rule);
+      expect(pagedCapability(model)).toBeNull();
+      expect(model.pack()).toEqual(before);
+    }
+    // Native 'none' shape: width and colour without a style draw nothing; a section-2 rule leaves section 1 bare.
+    const none = new WriteProDocument(source('div.section0{column-count:2}div.section1{column-rule-width:3pt;column-rule-color:#C00000}', '<p>TEXT</p>'));
+    expect(pagedColumnGeometry(none, 1, paper)).toEqual({ count: 2, gap: 12, width: 198 });
+    const second = new WriteProDocument(source('div.section0{column-count:2;column-gap:18pt}div.section2{column-rule-style:solid}',
+      '<p style="page-break-after:always;-d4-section-break-after:always">ONE</p><p>TWO</p>'));
+    expect(pagedColumnGeometry(second, 1, paper).rule).toBeUndefined();
+    expect(pagedColumnGeometry(second, 2, paper).rule).toEqual({ style: 'solid', width: 2.5, color: '#000000' });
+    expect(pagedCapability(second)).toBeNull();
+    // A single column draws no rule natively and keeps its existing paged admission.
+    const single = new WriteProDocument(source('div.section0{column-rule-style:solid}', '<p>TEXT</p>'));
+    expect(pagedColumnGeometry(single, 1, paper)).toEqual({ count: 1, gap: 12, width: 408 });
+    expect(pagedCapability(single)).toBeNull();
   });
 
   it('admits complete tables in 2-4 equal columns without changing the source (wp_coltable_probe)', () => {

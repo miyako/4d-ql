@@ -15,6 +15,7 @@ import { prepareObjpageCases } from './native-objpage-cases.mjs';
 import { prepareContheaderCases } from './native-contheader-cases.mjs';
 import { prepareContgeomCases } from './native-contgeom-cases.mjs';
 import { prepareColtableCases } from './native-coltable-cases.mjs';
+import { prepareColruleCases } from './native-colrule-cases.mjs';
 
 export async function preparePagedCases(directory, cases, browser, url, download) {
   const report = JSON.parse(await readFile(resolve(directory, 'Output/paged-report.json'), 'utf8'));
@@ -114,6 +115,7 @@ export async function preparePagedCases(directory, cases, browser, url, download
   await prepareContheaderCases(directory, cases, browser, url, download);
   await prepareContgeomCases(directory, cases, browser, url, download);
   await prepareColtableCases(directory, cases, browser, url, download);
+  await prepareColruleCases(directory, cases, browser, url, download);
 }
 
 async function preparePagedTableCases(directory, cases, browser, url, download) {
