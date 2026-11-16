@@ -291,7 +291,7 @@ function makeInert(root) {
     if (['p', 'li'].includes(element.localName) || element.classList.contains('text-run')) element.style.whiteSpace = 'break-spaces';
     for (const attribute of [...element.attributes]) {
       if (['contenteditable', 'tabindex', 'role', 'spellcheck'].includes(attribute.name) ||
-        attribute.name.startsWith('data-') && !['data-page', 'data-section', 'data-sections', 'data-area', 'data-column', 'data-object', 'data-objects', 'data-layer'].includes(attribute.name)) element.removeAttribute(attribute.name);
+        attribute.name.startsWith('data-') && !['data-page', 'data-section', 'data-sections', 'data-area', 'data-column', 'data-object', 'data-objects', 'data-layer', 'data-rule'].includes(attribute.name)) element.removeAttribute(attribute.name);
     }
   }
 }
@@ -360,16 +360,77 @@ export function pagedColumnGeometry(model, index, paper, strict = false) {
     });
   }
   const values = { ...rules.get(0), ...rules.get(index) };
-  if (values['column-rule-style'] && values['column-rule-style'] !== 'none' ||
-    [...model.document.querySelectorAll('[style]')].some(element =>
-      /(?:^|;)\s*(?:columns|column-[\w-]+)\s*:/i.test(element.getAttribute('style')))) throw new DocumentError('pagedColumns');
+  if ([...model.document.querySelectorAll('[style]')].some(element =>
+    /(?:^|;)\s*(?:columns|column-[\w-]+)\s*:/i.test(element.getAttribute('style')))) throw new DocumentError('pagedColumns');
+  const rule = columnRule(values, gap);
+  // A rule is never admitted on a continuous seam (wp_colrule_probe: 4D draws it over the whole shared page body).
+  if (rule && strict) throw new DocumentError('pagedColumns');
   for (const element of model.document.querySelectorAll('body,body *')) {
     const style = model.values(element);
     if (style.direction && style.direction !== 'ltr' || style['writing-mode'] && style['writing-mode'] !== 'horizontal-tb') {
       throw new DocumentError('pagedColumns');
     }
   }
-  return { count, gap, width };
+  return { count, gap, width, ...(rule && { rule }) };
+}
+
+// Rules between columns (wp_colrule_probe, full 4D 21.2 F0012102). The effective section values cascade per property
+// from div.section0; an unset or 'none' style draws nothing, an unset width is 2.5pt and an unset colour black (native
+// getters and PDF). Native strokes every rule centred in its gap over the full body height (top to bottom margin),
+// in each gap left of the last column the page's text reaches (an empty paragraph counts), whatever the content height.
+// Only absolute widths that stay inside the gap and #RRGGBB colours are admitted: a wider rule (and so any rule with a
+// zero gap) overlaps column text, whose native paint order is not claimed.
+const ruleStyles = ['none', 'solid', 'dotted', 'dashed', 'double', 'groove', 'ridge', 'inset', 'outset'];
+function columnRule(values, gap) {
+  const style = values['column-rule-style'] ?? 'none';
+  if (!ruleStyles.includes(style)) throw new DocumentError('pagedColumns');
+  if (style === 'none') return null;
+  const color = values['column-rule-color'] ?? '#000000';
+  let width;
+  try {
+    width = pagePoints(values['column-rule-width'] ?? '2.5pt');
+  } catch {
+    throw new DocumentError('pagedColumns');
+  }
+  if (!/^#[0-9a-f]{6}$/i.test(color) || !(width > 0) || width > gap) throw new DocumentError('pagedColumns');
+  return { style, width, color };
+}
+
+// Each rule is an inline SVG drawn with the native paint observed in the wp_colrule_probe PDFs, as pieces across the
+// rule width w (offsets from its left edge): solid/outset one w stroke in the colour, inset one in the dark tone (half
+// of each colour channel), dotted/dashed one w stroke dashed w/w and 3w/3w, double two w/3 strokes at the outer
+// thirds, groove a dark left half and colour right half, ridge the reverse. SVG strokes keep fractional widths and
+// print as vector strokes, like the native PDF.
+const ruleNamespace = 'http://www.w3.org/2000/svg';
+export function rulePieces(rule) {
+  const { width: w, color } = rule;
+  const dark = `rgb(${[1, 3, 5].map(at => parseInt(color.slice(at, at + 2), 16) / 2).join(' ')})`;
+  const one = (paint, dash = null) => [{ x: w / 2, width: w, paint, dash }];
+  return {
+    solid: one(color), outset: one(color), inset: one(dark), dotted: one(color, [w, w]), dashed: one(color, [3 * w, 3 * w]),
+    double: [{ x: w / 6, width: w / 3, paint: color, dash: null }, { x: 5 * w / 6, width: w / 3, paint: color, dash: null }],
+    groove: [{ x: w / 4, width: w / 2, paint: dark, dash: null }, { x: 3 * w / 4, width: w / 2, paint: color, dash: null }],
+    ridge: [{ x: w / 4, width: w / 2, paint: color, dash: null }, { x: 3 * w / 4, width: w / 2, paint: dark, dash: null }],
+  }[rule.style];
+}
+
+function ruleElement(rule, index, columns) {
+  const element = document.createElementNS(ruleNamespace, 'svg');
+  element.setAttribute('class', 'page-column-rule');
+  element.setAttribute('data-rule', String(index + 1));
+  element.setAttribute('aria-hidden', 'true');
+  element.setAttribute('focusable', 'false');
+  element.style.left = `${(index + 1) * columns.width + index * columns.gap + (columns.gap - rule.width) / 2}pt`;
+  element.style.width = `${rule.width}pt`;
+  for (const piece of rulePieces(rule)) {
+    const line = document.createElementNS(ruleNamespace, 'line');
+    for (const [name, value] of [['x1', `${piece.x}pt`], ['x2', `${piece.x}pt`], ['y1', '0'], ['y2', '100%']]) line.setAttribute(name, value);
+    line.style.stroke = piece.paint;
+    line.style.strokeWidth = `${piece.width}pt`;
+    if (piece.dash) line.style.strokeDasharray = piece.dash.map(value => `${value}pt`).join(' ');
+    element.append(line);
+  }
+  return element;
 }
 
 function pagedBreak(values) {
@@ -650,6 +711,8 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
     let seamAreas = false;
     let seamGeometry = false;
     let columnTables = false;
+    // Sheets of sections with a rule between columns; rules are drawn once every column's content is known.
+    const ruled = [];
     // The current sheet's body box in points; a margin seam opens a band below the used part of the shared sheet.
     let box;
     const seams = continuousSections(copy, copy.sectionLayout(), copy.pageSetup());
@@ -691,6 +754,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
           });
         }
         flow = flows[0];
+        if (columns.rule) ruled.push({ body, flows, columns });
         sheet.append(body);
         root.append(sheet);
         const objects = placed.filter(plan => plan.section === null || plan.section === section.index);
@@ -988,6 +1052,11 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
       }
       previous = section;
     }
+    // Native (wp_colrule_probe): a rule in every gap left of the last column the page reaches, full body height.
+    for (const { body, flows: columnsOnPage, columns } of ruled) {
+      const last = columnsOnPage.findLastIndex(column => column.children.length);
+      for (let index = 0; index < last; index++) body.append(ruleElement(columns.rule, index, columns));
+    }
     for (const page of root.querySelectorAll('.browser-page')) {
       page.dataset.sections = [...new Set([...page.querySelectorAll('.page-body [data-section]')].map(block => block.dataset.section))].join(' ');
     }
@@ -1055,6 +1124,7 @@ export function createPagedProjection(model, labels, decoded = new Map()) {
     if (seamAreas) notices.push('pagedSeamAreas');
     if (seamGeometry) notices.push('pagedSeamGeometry');
     if (columnTables) notices.push('pagedColumnTables');
+    if (root.querySelector('.page-column-rule')) notices.push('pagedColumnRules');
     if (placed.some(plan => plan.layout === 'wrap-square')) notices.push('pagedObjectWrap');
     if (placed.length) notices.push('pagedObjectPlaced');
     if (appended.length) notices.push('pagedObjectAppendix');

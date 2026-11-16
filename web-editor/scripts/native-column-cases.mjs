@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { zipSync, unzipSync } from 'fflate';
 import { expect } from '@playwright/test';
 import { geometry, inspectPDF } from './native-print-cases.mjs';
+import { pageVectors, bounds } from './pdf-vectors.mjs';
 
 const normalize = text => text.replace(/&(?:amp|lt|gt|quot|apos);/g, entity =>
   ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'" })[entity]).replace(/[\s\u200b]/gu, '').normalize('NFC');
@@ -23,6 +24,22 @@ function pdfColumns(sheet, paper, columns) {
       const sameLine = Math.abs(distance) <= Math.min(a.bottom - a.y, b.bottom - b.y) / 2;
       return sameLine ? a.x - b.x : distance;
     }).map(word => word.text).join('');
+  });
+}
+
+// Pages whose gap between the first two columns carries vertical paint spanning at least half the body (rule pages).
+function ruledGaps(path, pages, paper, columns) {
+  const gap = parseFloat(columns.gap);
+  const width = (paper.width - paper.left - paper.right - (columns.count - 1) * gap) / columns.count;
+  return pages.map((sheet, index) => {
+    const vectors = pageVectors(path, index + 1).map(vector => ({ ...bounds(vector), vector }));
+    return Array.from({ length: columns.count - 1 }, (_, i) => {
+      const left = paper.left + (i + 1) * width + i * gap;
+      const inside = vectors.filter(box => box.left >= left - .25 && box.right <= left + gap + .25 &&
+        (box.vector.stroke && box.vector.stroke !== 'none' || box.vector.fill && box.vector.fill !== 'none'));
+      const span = inside.length ? Math.max(...inside.map(box => box.bottom)) - Math.min(...inside.map(box => box.top)) : 0;
+      return span >= (paper.height - paper.top - paper.bottom) / 2 ? i + 1 : 0;
+    }).filter(Boolean);
   });
 }
 
@@ -76,7 +93,16 @@ export async function prepareColumnCases(directory, cases, browser, url, downloa
       await expect(page.locator('#paper')).toContainText('COLUMNSTART');
       await download(`paged-column-before-${item.name}`, expected, page);
       await page.locator('#paged-panel > summary').click();
-      const supported = !['rule', 'narrow'].includes(item.name);
+      // wp_colrule_probe admits rules between columns (M4d); the 'rule' shape (1pt solid #234567) now pages.
+      const supported = item.name !== 'narrow';
+      let nativeRules = null;
+      if (item.name === 'rule') {
+        // Independent native PDF oracle: a rule in the gap exactly on the pages whose text reaches the second column.
+        nativeRules = ruledGaps(resolve(directory, `Output/paged-column-${item.name}.pdf`), native.pages, papers[0], columns[0]);
+        assert.deepEqual(nativeRules, native.pages.map(sheet => (pdfColumns(sheet, papers[0], columns[0])[1] ? [1] : [])),
+          'Native rules are drawn exactly on the pages whose text reaches the second column');
+        assert(nativeRules.some(rules => rules.length) && nativeRules.some(rules => !rules.length));
+      }
       let measured;
       let printed;
       if (!supported) {
@@ -89,6 +115,8 @@ export async function prepareColumnCases(directory, cases, browser, url, downloa
           const bounds = sheet.getBoundingClientRect();
           return { section: Number(sheet.dataset.section), width: parseFloat(sheet.style.width), height: parseFloat(sheet.style.height),
             areas: [...sheet.querySelectorAll('.page-area')].map(area => ({ name: area.dataset.area, text: area.textContent })),
+            reach: [...sheet.querySelectorAll('.page-column')].findLastIndex(column => column.children.length) + 1,
+            rules: [...sheet.querySelectorAll('.page-column-rule')].map(rule => Number(rule.dataset.rule)),
             columns: [...sheet.querySelectorAll('.page-column')].map(column => {
               const rect = column.getBoundingClientRect();
               return { text: column.textContent, x: (rect.left - bounds.left) * .75, width: rect.width * .75,
@@ -108,6 +136,8 @@ export async function prepareColumnCases(directory, cases, browser, url, downloa
           assert.equal(sheet.columns.length, nativeColumns.count);
           assert.equal(sheet.width, paper.width);
           assert.equal(sheet.height, paper.height);
+          assert.deepEqual(sheet.rules, item.name === 'rule' ? Array.from({ length: Math.max(0, sheet.reach - 1) }, (_, i) => i + 1) : [],
+            'Rules are drawn in every gap left of the reached column, and only for a ruled section (native rule)');
           for (const [index, column] of sheet.columns.entries()) {
             assert(column.fits, 'All content must fit its own column without shrinking or clipping');
             assert(Math.abs(column.width - width) < .05);
@@ -122,6 +152,14 @@ export async function prepareColumnCases(directory, cases, browser, url, downloa
         const path = resolve(directory, `Output/paged-column-browser-${item.name}.pdf`);
         await page.pdf({ path, preferCSSPageSize: true, printBackground: true });
         printed = inspectPDF(path);
+        if (item.name === 'rule') {
+          // Printed sheets after the previewed pages are unused-area appendices, which never carry rules.
+          const printedRules = ruledGaps(path, printed.pages, papers[0], columns[0]);
+          assert.deepEqual(printedRules.slice(0, measured.length), measured.map(sheet => sheet.rules),
+            'Printed rules must appear on exactly the previewed pages and gaps');
+          assert(printedRules.slice(measured.length).every(rules => !rules.length), 'Appendix sheets carry no rules');
+          assert(measured.some(sheet => sheet.rules.length));
+        }
         for (const [index, sheet] of measured.entries()) {
           const paper = papers[sheet.section - 1];
           assert.equal(printed.pages[index].width, paper.width);
@@ -159,7 +197,7 @@ export async function prepareColumnCases(directory, cases, browser, url, downloa
       else await expect(page.locator('#paged-status')).toContainText('Paged columns require');
       assert.deepEqual(errors, []);
       assert.deepEqual(external, [], 'Column preparation must remain local-only');
-      results.push({ name: item.name, supported, nativePages: native.pages.length, browserPages: measured?.length,
+      results.push({ name: item.name, supported, nativePages: native.pages.length, browserPages: measured?.length, nativeRules,
         measured, printedPages: printed?.pages.length, independentNativeGeometryAndBreaks: true, exactPrintColumnMembership: supported,
         unchangedOriginalBytes: true, headerUndoRecoveryExports: true,
         limits: 'Sequential browser flow only; no native wrapping, final-column balancing, formula evaluation or page-count parity.' });

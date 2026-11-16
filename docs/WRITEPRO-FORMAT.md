@@ -640,10 +640,10 @@ slots and new-page sections reset geometry and first-area selection. The
 same finished DOM is cloned for browser print. Every supported body character
 occurs once; shared inline ancestor wrappers are retained even on middle
 fragments. Native page counts, final-column balancing, word wrapping and formula
-evaluation are not reproduced. Divider rules, custom column shapes/spanners,
-RTL/vertical flow, nested/conflicting breaks and out-of-bound geometry use localized
-atomic continuous fallback; multi-column tables did too until M4c (see "Tables in
-multi-column sections" below). Single-column table behavior and all established
+evaluation are not reproduced. Custom column shapes/spanners, RTL/vertical flow,
+nested/conflicting breaks and out-of-bound geometry use localized atomic continuous
+fallback; multi-column tables did too until M4c and divider rules until M4d (see
+"Tables in multi-column sections" and "Rules between columns" below). Single-column table behavior and all established
 limits/protections remain unchanged.
 
 `wp_continuous_paged_probe` independently creates 14 native originals and
@@ -1103,6 +1103,62 @@ browser gate checks native and browser fragments against the same rules. It also
 the table starts in the same page/column slot as in 4D, that every data row appears once in order,
 that fragments start at native band boundaries, and that the printed page/column/cell token
 membership equals the preview.
+
+### Rules between columns (M4, fourth increment; full 4D F0012102)
+
+`wp_colrule_probe` (`--colrule-probe`; also run by the full gate) authors 36 documents on
+480 × 420 pt paper (60/36 pt margins, Arial 10pt, default header and footer) in installed
+4D 21.2 `F0012102`. Each holds one-line `CL<n>` paragraphs in a 1- to 4-column section
+with `wk column rule style`/`wk column rule width`/`wk column rule color` set on the
+section (or on the document), and the shapes add every rule style, thin/thick/too-wide
+widths, a centimetre width, a zero gap, column and page breaks, an empty paragraph that
+reaches the next column, a table (and a too-wide table), a ruled second section,
+landscape orientation, one column and two continuous seams. It records the effective
+rule getters of every section before and after re-import and exports both PDFs. The
+oracle is the **native PDF vector content** (read with `pdftocairo -svg`): which pages
+carry rule paint in which gap, its vertical extent, its paint pieces and colours.
+Exact coordinates are not the oracle.
+
+- Storage: the setters write `column-rule-style`, `column-rule-width` and
+  `column-rule-color` (`#RRGGBB`) in `div.sectionN` (or `div.section0` for the
+  document); only the properties that were set are stored, and the effective value of
+  each property cascades from `div.section0`. An unset width reads back as `2.5pt` and an
+  unset colour as black, and the PDF draws exactly that. Widths keep their unit
+  (`0.1cm`). Getter style codes: none 0, solid 1, dotted 2, dashed 3, double 4,
+  groove 6, ridge 7, inset 8, outset 9. Width and colour without a style draw nothing.
+- **Pages and gaps:** a page carries a rule in **every gap to the left of the last
+  column its text reaches**, and none elsewhere. A page whose text stays in the first
+  column has no rule, including the last page and short documents. A 3-column page that
+  reaches the second column has only the first rule. A column holding only an empty
+  paragraph (two consecutive column breaks) counts as reached. A too-wide table's
+  overflow into the next column's area does not count.
+- **Extent:** each rule is centred in its gap and spans the **full body height**, from
+  the top margin to the bottom margin, whatever the content height (a page with three
+  short lines per column has a full-height rule). Headers and footers do not change it.
+- **Paint:** solid and outset are one stroke of the rule width in the colour, inset the
+  same stroke in a dark tone of half of each colour channel. Dotted and dashed are one
+  stroke dashed `w w` and `3w 3w`. Double is two `w/3` strokes on the outer thirds.
+  Groove is a dark left half and colour right half, ridge the reverse (filled halves).
+- A ruled section 2 after a page-type section break leaves section 1 pages bare.
+  Landscape uses the rotated body. One column draws nothing.
+- Counterexamples: a rule **wider than its gap** (8 pt in a 4 pt gap), and any rule with a
+  **zero gap** (where it straddles the column boundary), are painted over the text of
+  both columns. Across a **continuous seam** 4D strokes the incoming section's rule over
+  the whole shared page body, above the seam where the text is single-column, and a seam
+  between two ruled sections strokes it twice.
+
+The browser draws each rule as a disposable inline SVG in the projection only (the
+source is never changed) with the native pieces above: the same gaps on its own pages,
+centred, over the full body, in the document colours, which stay unchanged in the dark
+theme and in print. It admits the nine styles with absolute widths up to the gap and
+`#RRGGBB` colours. Wider rules, zero gaps, other values (`hidden`, keyword widths,
+other colour syntaxes, the `column-rule` shorthand) and rules on continuous seams keep
+the localized fallback. Pagination is browser-measured, so a rule can be on a different
+page than in 4D when the browser fits fewer lines per column. The browser gate checks the
+native relation in each rendering, the browser's SVG pieces against the native PDF
+pieces (centre offset, width, paint and dash pattern), and that the printed PDF carries
+paint in exactly the previewed gaps of each page. Line patterns, exact coordinates and
+page counts are not claimed.
 
 ## Preview limits
 

@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { messages } from '../../src/i18n.js';
 import { inspectPDF } from '../../scripts/native-print-cases.mjs';
+import { pageVectors, bounds } from '../../scripts/pdf-vectors.mjs';
 
 const geometry = 'div.section0{-d4-page-width:300pt;-d4-page-height:360pt;-d4-page-margin:60pt 30pt}';
 const localPNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAASklEQVR4nO3OMQ0AIBBD0VPCjCtM4gBhYOA6kg79Scef9NU9s91Yu93vvgABAhQHch2rHhAgQHkg17HqAQEClAdyHaseECBAcaAH191RiEIeQFYAAAAASUVORK5CYII=';
@@ -1003,7 +1004,7 @@ test('unsupported columns fall back atomically, retaining continuous content and
   for (const [style, body] of [
     ['div.section0{column-count:5}', '<p>RETAINED</p>'],
     ['div.section0{column-count:4}', '<p>RETAINED</p>'],
-    ['div.section0{column-count:2;column-rule-style:solid}', '<p>RETAINED</p>'],
+    ['div.section0{column-count:2;column-gap:6pt;column-rule-style:solid;column-rule-width:8pt}', '<p>RETAINED</p>'],
     ['div.section0{column-count:2}td{width:300pt}', '<p>BEFORE</p><table><tr><td><p>RETAINED</p></td></tr></table><p>TAIL</p>'],
   ]) {
     await open(page, style, body);
@@ -1244,6 +1245,231 @@ test('column table projection stays derived across body edits, undo, print Cance
   await expect(page.locator('#paged-view .browser-page').first()).toContainText('WEBCT');
   expect((await columnFragments(page)).map(fragment => fragment.rows)).toEqual(first.map(fragment => fragment.rows));
   expect(contents(await bytes(page))).toEqual(contents(edited));
+});
+
+// Rules between columns (M4d): wp_colrule_probe establishes, from native PDF vector content only, that 4D strokes a rule
+// centred in a gap over the full body height, in every gap left of the last column the page's text reaches (an empty
+// paragraph counts), whatever the content height; pages that only use the first column have none.
+const ruleLines = count => Array.from({ length: count }, (_, i) => `<p>CL${i + 1} word</p>`).join('');
+async function columnRules(page) {
+  return page.locator('#paged-view .browser-page').evaluateAll(sheets => sheets.map(sheet => {
+    const frame = sheet.getBoundingClientRect();
+    const pt = value => value * .75;
+    const body = sheet.querySelector('.page-body').getBoundingClientRect();
+    const columns = [...sheet.querySelectorAll('.page-column')];
+    const boxes = columns.map(column => column.getBoundingClientRect());
+    return {
+      reach: columns.findLastIndex(column => column.children.length) + 1,
+      body: { top: pt(body.top - frame.top), bottom: pt(body.bottom - frame.top) },
+      gaps: boxes.slice(1).map((box, i) => ({ left: pt(boxes[i].right - frame.left), right: pt(box.left - frame.left) })),
+      rules: [...sheet.querySelectorAll('.page-column-rule')].map(rule => {
+        const box = rule.getBoundingClientRect();
+        const length = value => [...value.matchAll(/([\d.]+)(px|pt)?/g)].map(([, number, unit]) => Math.round(Number(number) * (unit === 'pt' ? 1 : .75) * 1000) / 1000);
+        return { index: Number(rule.dataset.rule), hidden: rule.getAttribute('aria-hidden'), left: pt(box.left - frame.left), right: pt(box.right - frame.left),
+          top: pt(box.top - frame.top), bottom: pt(box.bottom - frame.top),
+          pieces: [...rule.querySelectorAll('line')].map(line => {
+            const style = getComputedStyle(line);
+            return { x: Math.round(line.x1.baseVal.value * .75 * 1000) / 1000, width: length(style.strokeWidth)[0], paint: style.stroke,
+              dash: style.strokeDasharray === 'none' ? null : length(style.strokeDasharray) };
+          }) };
+      }),
+    };
+  }));
+}
+function expectNativeRules(sheets) {
+  for (const sheet of sheets) {
+    // Native rule: one rule in each gap left of the last reached column, centred in its gap, full body height.
+    expect(sheet.rules.map(rule => rule.index)).toEqual(Array.from({ length: Math.max(0, sheet.reach - 1) }, (_, i) => i + 1));
+    for (const rule of sheet.rules) {
+      const gap = sheet.gaps[rule.index - 1];
+      expect(rule.hidden).toBe('true');
+      expect(Math.abs((rule.left + rule.right) / 2 - (gap.left + gap.right) / 2)).toBeLessThan(.05);
+      expect(rule.left).toBeGreaterThanOrEqual(gap.left - .05);
+      expect(rule.right).toBeLessThanOrEqual(gap.right + .05);
+      expect(Math.abs(rule.top - sheet.body.top)).toBeLessThan(.05);
+      expect(Math.abs(rule.bottom - sheet.body.bottom)).toBeLessThan(.05);
+    }
+  }
+}
+// Printed rules: vertical paint (strokes or fills) of a printed page that lies inside a gap and spans the body.
+function printedRules(path, sheets) {
+  return sheets.map((sheet, index) => {
+    const vectors = pageVectors(path, index + 1).map(vector => ({ ...bounds(vector), vector }))
+      .filter(box => box.bottom - box.top > (sheet.body.bottom - sheet.body.top) - 1);
+    return sheet.gaps.map(gap => vectors.filter(box => box.left >= gap.left - .5 && box.right <= gap.right + .5)
+      .map(box => box.vector.fill !== 'none' && box.vector.fill ? box.vector.fill : box.vector.stroke)).filter(paint => paint.length);
+  });
+}
+
+for (const [label, style, body, reaches] of [
+  ['two columns over pages', 'div.section0{column-count:2;column-gap:12pt}div.section1{column-rule-style:solid;column-rule-width:1pt;column-rule-color:#234567}', ruleLines(33), null],
+  ['three columns reaching the second column', 'div.section0{column-count:3;column-gap:12pt;column-rule-style:solid;column-rule-width:1pt;column-rule-color:#7A1F3D}', ruleLines(55), null],
+  ['an empty paragraph reaching the next column', 'div.section0{column-count:2;column-gap:12pt}div.section1{column-rule-style:solid;column-rule-width:1pt;column-rule-color:#234567}p.c{break-after:column}',
+    '<p>CL1 word</p><p class="c">CL2 word</p><p class="c"></p><p>CL3 word</p>', [2, 1]],
+  ['a short first column and an unreached second column', 'div.section0{column-count:2;column-gap:12pt;column-rule-style:solid;column-rule-width:1pt;column-rule-color:#234567}',
+    '<p>CL1 word</p><p>CL2 word</p>', [1]],
+]) {
+  test(`rules between columns follow native gap and page reach: ${label} (wp_colrule_probe)`, async ({ page }, testInfo) => {
+    await open(page, style, body);
+    const before = await bytes(page);
+    await preview(page);
+    await expect(page.locator('#paged-view .browser-page').first()).toBeVisible();
+    const sheets = await columnRules(page);
+    if (reaches) expect(sheets.map(sheet => sheet.reach)).toEqual(reaches);
+    else expect(sheets.some(sheet => sheet.reach > 1) && sheets.at(-1).reach < sheets[0].reach).toBe(true);
+    expectNativeRules(sheets);
+    const color = style.match(/column-rule-color:(#\w+)/)[1];
+    const rgb = `rgb(${[1, 3, 5].map(at => parseInt(color.slice(at, at + 2), 16)).join(', ')})`;
+    for (const rule of sheets.flatMap(sheet => sheet.rules)) {
+      expect(Math.abs(rule.right - rule.left - 1)).toBeLessThan(.05);
+      expect(rule.pieces).toEqual([{ x: .5, width: 1, paint: rgb, dash: null }]);
+    }
+    await expect(page.locator('#paged-objects > p')).toHaveText(sheets.some(sheet => sheet.rules.length) ? [messages.en.pagedColumnRules] : []);
+    // Print: the same pages carry paint in exactly the previewed gaps, in the document colour (dark theme included).
+    await page.locator('#settings-toggle').click();
+    await page.locator('#theme').selectOption('dark');
+    const path = testInfo.outputPath(`column-rules-${label.replace(/\W+/g, '-')}.pdf`);
+    await page.pdf({ path, preferCSSPageSize: true, printBackground: true });
+    expect(inspectPDF(path).pages).toHaveLength(sheets.length);
+    const printed = printedRules(path, sheets);
+    expect(printed.map(page => page.length)).toEqual(sheets.map(sheet => sheet.rules.length));
+    const percent = `rgb(${[1, 3, 5].map(at => parseInt(color.slice(at, at + 2), 16))}`;
+    for (const paint of printed.flat(2)) {
+      const channels = paint.match(/[\d.]+/g).map(Number).map(value => Math.round(value * 2.55));
+      expect(`rgb(${channels}`).toBe(percent);
+    }
+    expect(await bytes(page)).toEqual(before);
+  });
+}
+
+test('rule line styles keep the native widths, defaults and two-tone 3-D colours (wp_colrule_probe)', async ({ page }) => {
+  // Native PDF paint per style for a 3pt #C00000 rule (wp_colrule_probe), as pieces across the rule width.
+  const color = 'rgb(192, 0, 0)';
+  const dark = 'rgb(96, 0, 0)';
+  const expected = {
+    solid: [{ x: 1.5, width: 3, paint: color, dash: null }], outset: [{ x: 1.5, width: 3, paint: color, dash: null }],
+    inset: [{ x: 1.5, width: 3, paint: dark, dash: null }], dotted: [{ x: 1.5, width: 3, paint: color, dash: [3, 3] }],
+    dashed: [{ x: 1.5, width: 3, paint: color, dash: [9, 9] }],
+    double: [{ x: .5, width: 1, paint: color, dash: null }, { x: 2.5, width: 1, paint: color, dash: null }],
+    groove: [{ x: .75, width: 1.5, paint: dark, dash: null }, { x: 2.25, width: 1.5, paint: color, dash: null }],
+    ridge: [{ x: .75, width: 1.5, paint: color, dash: null }, { x: 2.25, width: 1.5, paint: dark, dash: null }],
+  };
+  for (const [style, pieces] of Object.entries(expected)) {
+    await open(page, `div.section0{column-count:2;column-gap:12pt;column-rule-style:${style};column-rule-width:3pt;column-rule-color:#C00000}`, ruleLines(20));
+    await preview(page);
+    const sheets = await columnRules(page);
+    expectNativeRules(sheets);
+    const rule = sheets[0].rules[0];
+    expect(Math.abs(rule.right - rule.left - 3)).toBeLessThan(.05);
+    expect(rule.pieces).toEqual(pieces);
+  }
+  // Native defaults: an unset width is 2.5pt and an unset colour black.
+  await open(page, 'div.section0{column-count:2;column-gap:12pt;column-rule-style:solid}', ruleLines(20));
+  await preview(page);
+  const [sheet] = await columnRules(page);
+  expect(sheet.rules[0].pieces).toEqual([{ x: 1.25, width: 2.5, paint: 'rgb(0, 0, 0)', dash: null }]);
+  expect(Math.abs(sheet.rules[0].right - sheet.rules[0].left - 2.5)).toBeLessThan(.05);
+  // A rule in section 2 only: native section 1 pages stay bare.
+  await open(page, 'div.section0{column-count:2;column-gap:12pt}div.section2{column-rule-style:solid;column-rule-color:#234567}',
+    `${ruleLines(20)}<p style="page-break-after:always;-d4-section-break-after:always">CRSECTION</p>${ruleLines(20)}`);
+  await preview(page);
+  const sections = await page.locator('#paged-view .browser-page').evaluateAll(sheets => sheets.map(sheet => [sheet.dataset.section, sheet.querySelectorAll('.page-column-rule').length]));
+  expect(sections.filter(([section]) => section === '1').every(([, rules]) => rules === 0)).toBe(true);
+  expect(sections.filter(([section]) => section === '2').some(([, rules]) => rules === 1)).toBe(true);
+});
+
+test('rules wider than their gap, zero gaps and unsupported rule values fall back atomically in all six locales', async ({ page }, testInfo) => {
+  for (const style of ['div.section0{column-count:2;column-gap:4pt;column-rule-style:solid;column-rule-width:8pt}',
+    'div.section0{column-count:2;column-gap:0pt;column-rule-style:solid;column-rule-width:1pt}',
+    'div.section0{column-count:2;column-rule-style:hidden}', 'div.section0{column-count:2;column-rule-style:solid;column-rule-color:red}']) {
+    await open(page, style, ruleLines(20));
+    const before = await bytes(page);
+    await preview(page);
+    await expect(page.locator('#paged-status')).toHaveText(messages.en.pagedColumns);
+    await expect(page.locator('#paged-view .browser-page')).toHaveCount(0);
+    expect((await pdf(page, testInfo, 'column-rule-fallback')).flatMap(sheet => sheet.words)).toContain('CL20');
+    expect(await bytes(page)).toEqual(before);
+    await page.locator('#settings-toggle').click();
+    for (const language of ['ja', 'fr', 'de', 'es', 'it', 'en']) {
+      await page.locator('#language').selectOption(language);
+      await expect(page.locator('#paged-status')).toHaveText(messages[language].pagedColumns);
+    }
+    await page.locator('#settings-toggle').click();
+  }
+});
+
+test('column rule notice, themes, zoom, mobile, versions, undo and recovered Redo keep the derived rules in all six locales', async ({ page }, testInfo) => {
+  const style = 'div.section0{column-count:2;column-gap:12pt;column-rule-style:dashed;column-rule-width:2pt;column-rule-color:#336699}';
+  await open(page, style, ruleLines(40));
+  const before = await bytes(page);
+  await preview(page);
+  const sheets = page.locator('#paged-view .browser-page');
+  await expect(sheets.nth(1)).toBeVisible();
+  const count = await sheets.count();
+  const stable = items => items.map(sheet => ({ reach: sheet.reach, rules: sheet.rules.map(rule => [rule.index, rule.pieces]) }));
+  const first = stable(await columnRules(page));
+  const baseline = await pdf(page, testInfo, 'column-rules-locales');
+  await page.locator('#settings-toggle').click();
+  for (const language of ['ja', 'fr', 'de', 'es', 'it', 'en']) {
+    await page.locator('#language').selectOption(language);
+    await expect(page.locator('#paged-objects > p')).toHaveText([messages[language].pagedColumnRules]);
+    await expect(page.locator('#paged-status')).toHaveText(`${count} · ${messages[language].pagedSheet}`);
+    await expect(page.locator('#paged-panel [data-i18n="pagedHelp"]')).toHaveText(messages[language].pagedHelp);
+  }
+  for (const theme of ['dark', 'system', 'light']) {
+    await page.locator('#theme').selectOption(theme);
+    await page.locator('#zoom').selectOption('2');
+    expect(stable(await columnRules(page))).toEqual(first);
+    expect(await pdf(page, testInfo, `column-rules-${theme}`)).toEqual(baseline);
+  }
+  await page.locator('#settings-toggle').click();
+  await page.evaluate(() => {
+    window.columnRuleResize = new Promise(resolve => window.addEventListener('resize', () => resolve(), { once: true }));
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.columnRuleResize);
+  await expect(sheets).toHaveCount(count);
+  expect(stable(await columnRules(page))).toEqual(first);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await page.locator('#paged-panel').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.locator('#paged-panel > summary').focus();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#paged-panel')).not.toHaveAttribute('open');
+  await expect(page.locator('#paged-panel > summary')).toBeFocused();
+  await page.locator('#paged-panel > summary').click();
+  await page.locator('#history-toggle').click();
+  await page.locator('#version-name').fill('Ruled original');
+  await page.locator('#save-version').click();
+  await page.locator('#history-toggle').click();
+  await page.locator('#paper [contenteditable]').first().fill('WEBCR');
+  await expect(sheets.first()).toContainText('WEBCR');
+  expect(stable(await columnRules(page))).toEqual(first);
+  const edited = await bytes(page);
+  expect(contents(edited).xml).toContain('WEBCR');
+  expect(contents(edited).xml).toContain('column-rule-style:dashed;column-rule-width:2pt;column-rule-color:#336699');
+  await page.locator('#undo').click();
+  await expect(sheets.first()).toContainText('CL1');
+  expect(await bytes(page)).toEqual(before);
+  await page.evaluate(() => {
+    window.print = () => { dispatchEvent(new Event('beforeprint')); dispatchEvent(new Event('afterprint')); };
+  });
+  await page.locator('#print-toggle').click();
+  await page.locator('#print-open').click();
+  expect(await bytes(page)).toEqual(before);
+  await expect(page.locator('#redo')).toBeEnabled();
+  await expect(page.locator('#draft-state')).toHaveText(messages.en.draftSaved);
+  await page.reload();
+  await expect(page.locator('#recovery-notice')).toBeVisible();
+  await page.locator('#redo').click();
+  await preview(page);
+  await expect(sheets.first()).toContainText('WEBCR');
+  expect(stable(await columnRules(page))).toEqual(first);
+  expect(contents(await bytes(page))).toEqual(contents(edited));
+  await page.locator('#history-toggle').click();
+  await page.locator('#version-list li').filter({ hasText: 'Ruled original' }).getByRole('button').click();
+  await expect(sheets.first()).toContainText('CL1');
+  expect(stable(await columnRules(page))).toEqual(first);
+  expect(contents(await bytes(page))).toEqual(contents(before));
 });
 
 test('rectangular tables split at measured rows with stable unequal columns, repeated native headers and matching print', async ({ page }, testInfo) => {
@@ -1677,7 +1903,7 @@ for (const locale of ['en', 'ja', 'fr', 'de', 'es', 'it']) {
   test(`paged controls, fallback and keyboard work on mobile in ${locale}`, async ({ page }) => {
     await page.addInitScript(locale => localStorage.setItem('4wp-language', locale), locale);
     await page.setViewportSize({ width: 390, height: 844 });
-    await open(page, 'div.section0{column-count:2;column-rule-style:solid}', '<p>BODY</p>');
+    await open(page, 'div.section0{column-count:2;column-gap:0pt;column-rule-style:solid;column-rule-width:1pt}', '<p>BODY</p>');
     await page.locator('#paged-panel > summary').click();
     await expect(page.locator('#paged-status')).toHaveText(messages[locale].pagedColumns);
     expect(await page.locator('#paged-panel').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);

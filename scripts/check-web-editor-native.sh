@@ -3,8 +3,8 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FOURD=${FOURD:-"/Applications/4D 21.2/4D.app/Contents/MacOS/4D"}
-DEST=${1:?Usage: bash scripts/check-web-editor-native.sh OUTPUT_DIRECTORY [--continuous-probe|--cell-list-probe|--colspan-probe|--rowspan-probe|--nowitness-probe|--objpage-probe|--contheader-probe|--contgeom-probe|--coltable-probe|--recheck]}
-[ "${2:-}" = "" ] || [ "$2" = "--continuous-probe" ] || [ "$2" = "--cell-list-probe" ] || [ "$2" = "--colspan-probe" ] || [ "$2" = "--rowspan-probe" ] || [ "$2" = "--nowitness-probe" ] || [ "$2" = "--objpage-probe" ] || [ "$2" = "--contheader-probe" ] || [ "$2" = "--contgeom-probe" ] || [ "$2" = "--coltable-probe" ] || [ "$2" = "--recheck" ] || { echo "Unknown native gate mode." >&2; exit 1; }
+DEST=${1:?Usage: bash scripts/check-web-editor-native.sh OUTPUT_DIRECTORY [--continuous-probe|--cell-list-probe|--colspan-probe|--rowspan-probe|--nowitness-probe|--objpage-probe|--contheader-probe|--contgeom-probe|--coltable-probe|--colrule-probe|--recheck]}
+[ "${2:-}" = "" ] || [ "$2" = "--continuous-probe" ] || [ "$2" = "--cell-list-probe" ] || [ "$2" = "--colspan-probe" ] || [ "$2" = "--rowspan-probe" ] || [ "$2" = "--nowitness-probe" ] || [ "$2" = "--objpage-probe" ] || [ "$2" = "--contheader-probe" ] || [ "$2" = "--contgeom-probe" ] || [ "$2" = "--coltable-probe" ] || [ "$2" = "--colrule-probe" ] || [ "$2" = "--recheck" ] || { echo "Unknown native gate mode." >&2; exit 1; }
 [ -x "$FOURD" ] || { echo "Full 4D application not found; set FOURD. tool4d cannot validate Write Pro." >&2; exit 1; }
 if [ "${2:-}" = "--recheck" ]; then
   [ -s "$DEST/Input/cases.json" ] && [ -s "$DEST/Project/wpfixture.4DProject" ] || { echo "Recheck requires existing generated evidence." >&2; exit 1; }
@@ -64,6 +64,21 @@ if [ "${2:-}" = "--recheck" ]; then
   run_4d wp_web_check final-native.log
   (cd "$ROOT/web-editor" && node scripts/native-roundtrip.mjs verify "$DEST") > "$DEST/final-verify.log" 2>&1
   cat "$DEST/final-verify.log"
+  exit 0
+fi
+if [ "${2:-}" = "--colrule-probe" ]; then
+  run_4d wp_colrule_check colrule-native.log
+  python3 - "$DEST" <<'PY'
+import json
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1]) / "Output"
+errors = json.loads((root / "colrule-errors.json").read_text())
+report = json.loads((root / "colrule-report.json").read_text())
+if errors or report.get("version") != "F0012102" or len(report.get("cases", [])) != 36:
+    raise SystemExit("Native column rule probe failed: " + json.dumps(errors, ensure_ascii=False))
+PY
+  echo "Independent native column rule evidence retained in $DEST"
   exit 0
 fi
 if [ "${2:-}" = "--coltable-probe" ]; then
@@ -322,6 +337,7 @@ run_4d wp_objpage_check objpage-native.log
 run_4d wp_contheader_check contheader-native.log
 run_4d wp_contgeom_check contgeom-native.log
 run_4d wp_coltable_check coltable-native.log
+run_4d wp_colrule_check colrule-native.log
 [ -s "$DEST/Output/range-report.json" ] || { echo "Full 4D produced no range report; inspect $DEST/range-native.log." >&2; exit 1; }
 (cd "$ROOT/web-editor" && npm run build && node scripts/native-roundtrip.mjs prepare "$DEST")
 run_4d wp_web_check native.log
