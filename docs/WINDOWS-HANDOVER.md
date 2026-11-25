@@ -15,8 +15,11 @@ HTML with WebView2 (Chromium). This repository provides a standalone, unsigned
 Windows x86-64 `fourdql` ZIP through hosted CI and tagged releases, including its
 runtime DLLs. See [CLI installation](CLI.md#windows-and-linux-downloads) and
 [hosted builds](CLI.md#hosted-builds-and-releases).
-There is still **no Explorer preview handler**; the Quick Look app, extension and
-project-access/XPC targets are declared only on macOS.
+The optional x64 Windows Explorer preview handler is implemented in
+[WINDOWS-PREVIEW-HANDLER.md](WINDOWS-PREVIEW-HANDLER.md). Its release ZIP is
+separate from the standalone CLI and installs per-user without replacing file
+ProgIDs or default applications. The Quick Look app, extension and
+project-access/XPC targets remain macOS-only.
 
 ## Platform model
 

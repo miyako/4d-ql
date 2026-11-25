@@ -88,10 +88,26 @@ jobs:
       - name: Build release CLI
         run: swift build -c release --product fourdql
 
+      - name: Build and test Windows Explorer preview handler
+        if: runner.os == 'Windows' && hashFiles('scripts/build-windows-preview-handler.ps1') != ''
+        shell: pwsh
+        run: |
+          $bin = (swift build -c release --show-bin-path).Trim()
+          ./scripts/build-windows-preview-handler.ps1 `
+            -CliPath (Join-Path $bin 'fourdql.exe') -RunSelfTest
+
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/package-cli-windows.ps1 -Version $env:PACKAGE_VERSION
+
+      - name: Package Windows Explorer preview handler
+        if: runner.os == 'Windows' && hashFiles('scripts/package-windows-preview-handler.ps1') != ''
+        shell: pwsh
+        run: |
+          ./scripts/package-windows-preview-handler.ps1 `
+            -Version $env:PACKAGE_VERSION `
+            -CliPackageDirectory (Join-Path 'dist' $env:PACKAGE_NAME)
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
@@ -127,5 +143,14 @@ jobs:
         with:
           name: ${{ env.PACKAGE_NAME }}
           path: dist/${{ env.PACKAGE_NAME }}.${{ env.PACKAGE_EXTENSION }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows preview-handler archive
+        if: runner.os == 'Windows' && hashFiles('scripts/package-windows-preview-handler.ps1') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}-preview-handler
+          path: dist/${{ env.PACKAGE_NAME }}-preview-handler.zip
           if-no-files-found: error
           retention-days: 14

@@ -185,6 +185,22 @@ final class PathConfinementTests: XCTestCase {
         XCTAssertEqual(try source.read(at: 0, length: 3), Data([1, 2, 3]))
     }
 
+    func testCanonicalURLKeepsLongPathsComparable() throws {
+        try requireWindows()
+        var folder = try scratch()
+        while folder.path.count < 300 {
+            folder.appendPathComponent(String(repeating: "d", count: 40))
+        }
+        let created = URL(fileURLWithPath: PathConfinement.win32Path(folder.path))
+        try FileManager.default.createDirectory(at: created, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("a.bin")
+        try Data([1]).write(to: URL(fileURLWithPath: PathConfinement.win32Path(file.path)))
+
+        let canonicalRoot = PathConfinement.canonicalURL(folder)
+        let canonicalFile = PathConfinement.canonicalURL(file)
+        XCTAssertTrue(PathConfinement.contains(canonicalFile, in: canonicalRoot))
+    }
+
     func testUNCPathReadsThroughAdministrativeShare() throws {
         try requireWindows()
         let root = try scratch()
