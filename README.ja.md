@@ -541,6 +541,8 @@ DMG には公証チケットをステープルするため、オフラインで�
 ビルドし、タグからのリリースでは macOS 版と一緒に公開します。Windows 版は未署名です。
 Linux 版は Ubuntu 24.04 互換環境向けで、フォームや図の描画は実験的な対応です。
 展開したフォルダ全体を保持してください。
+x64 Windows 用の任意の ZIP には、ユーザー単位で登録するエクスプローラーのプレビューハンドラーが含まれます
+（WebView2 ランタイムが必要です。[Windows プレビューハンドラー](docs/WINDOWS-PREVIEW-HANDLER.md)を参照）。
 [インストール](docs/CLI.md#windows-and-linux-downloads)と
 [ホスト型ビルド・リリース](docs/CLI.md#hosted-builds-and-releases)の説明も参照してください。
 
