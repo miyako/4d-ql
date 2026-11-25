@@ -255,10 +255,9 @@ public enum PathConfinement {
         return String(decoding: buffer.prefix(Int(count)), as: UTF16.self)
     }
 
-    /// Strips the `\\?\` prefix from short paths so URLs stay conventional;
-    /// comparisons ignore the prefix either way.
+    /// Keep URLs in conventional form; Win32 file calls add the extended prefix
+    /// back through `win32Path` when it is needed.
     private static func display(_ final: String) -> String {
-        guard final.count < 240 else { return final }
         if final.hasPrefix("\\\\?\\UNC\\") { return "\\\\" + final.dropFirst(8) }
         if final.hasPrefix("\\\\?\\") { return String(final.dropFirst(4)) }
         return final

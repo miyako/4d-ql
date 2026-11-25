@@ -362,6 +362,14 @@ jobs:
         run: |
           set -euo pipefail
           gh release view "$RELEASE_TAG" >/dev/null
-          gh release upload "$RELEASE_TAG" \
-            "dist/fourdql-${VERSION}-windows-x86_64.zip" \
-            "dist/fourdql-${VERSION}-linux-x86_64.tar.gz" --clobber
+          ASSETS=(
+            "dist/fourdql-${VERSION}-windows-x86_64.zip"
+            "dist/fourdql-${VERSION}-linux-x86_64.tar.gz"
+          )
+          PREVIEW_HANDLER="dist/fourdql-${VERSION}-windows-x86_64-preview-handler.zip"
+          if [[ -f "$PREVIEW_HANDLER" ]]; then
+            ASSETS+=("$PREVIEW_HANDLER")
+          else
+            echo "::notice::This source tag predates the optional Windows preview-handler package."
+          fi
+          gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber

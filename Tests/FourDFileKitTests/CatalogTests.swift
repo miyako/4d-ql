@@ -96,7 +96,7 @@ final class CatalogTests: XCTestCase {
         let editorURL = url.deletingLastPathComponent().appendingPathComponent("catalog_editor.json")
         let outside = try file(Data(#"{"tables":{"A":{"coordinates":{"left":9,"top":9}}}}"#.utf8), ext: "json")
         try FileManager.default.removeItem(at: editorURL)
-        try FileManager.default.createSymbolicLink(at: editorURL, withDestinationURL: outside)
+        try createSymbolicLink(at: editorURL, to: outside)
         let info = try XCTUnwrap(try AnalyzerRegistry.default.analyze(url: url) as? CatalogInfo)
         XCTAssertNil(info.tables[0].position)
         XCTAssertTrue(info.warnings.contains { $0.contains("escapes the catalog folder") })

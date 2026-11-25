@@ -89,15 +89,18 @@ download. The CLI's embedded font is used for Windows-style form previews.
 
 ### Windows and Linux downloads
 
-The hosted workflows also produce these standalone x86-64 CLI packages:
+The hosted workflows also produce these Windows/Linux x86-64 packages:
 
 | Asset | Platform and contents |
 |---|---|
 | `fourdql-X.Y.Z-windows-x86_64.zip` | Windows executable, required runtime DLLs, usage information and licenses; unsigned |
+| `fourdql-X.Y.Z-windows-x86_64-preview-handler.zip` | The Windows CLI package plus the optional Explorer preview handler; requires the WebView2 Runtime |
 | `fourdql-X.Y.Z-linux-x86_64.tar.gz` | Ubuntu 24.04-compatible Linux executable, launcher, runtime libraries, usage information and licenses; experimental rendering |
 
-These are CLI distributions, not Windows Explorer or Linux desktop preview
-extensions. They do not require 4D or a Swift development installation.
+The standalone CLI archives do not install desktop preview extensions. The
+optional Windows archive includes per-user Explorer preview-handler
+registration instructions; see [Windows preview handler](WINDOWS-PREVIEW-HANDLER.md).
+None of these packages require 4D or a Swift development installation.
 Windows ARM64 and Linux ARM64 native packages are not built. Windows validation
 uses the GitHub-hosted `windows-latest` runner; Linux validation uses
 `ubuntu-24.04`. The Linux package is not a universal Linux binary: it requires
