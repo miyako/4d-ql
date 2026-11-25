@@ -188,15 +188,18 @@ self-authored.
 
 ## Remaining Windows work
 
-1. Explorer preview-handler integration and Windows packaging (separate from
-   4d-form's CLI). The macOS bookmark/XPC authorization is not a Windows design.
+1. Explorer preview handler: implemented (x64, per-user; see
+   [WINDOWS-PREVIEW-HANDLER.md](WINDOWS-PREVIEW-HANDLER.md)). What remains is that
+   document's "Open items and follow-ups": manual Explorer pane checks on Windows 10
+   and 11, latency, signing and an ARM64 build. The macOS bookmark/XPC authorization
+   is not a Windows design.
 2. Refine the approximations listed above with more native references,
    including per-control pixel scores and printed/offscreen captures.
 3. Verify other display scales and Windows 10 font metrics.
 4. ~~Path handling for UNC and long (`\\?\`) paths and reparse-point confinement.~~
-   Implemented in `PathConfinement` (see below) but **not yet run on Windows**:
-   the Windows-only tests in `PathConfinementTests` skip elsewhere and need a first
-   run on a Windows host (`swift test --filter PathConfinementTests`).
+   Implemented in `PathConfinement` (see below) and run on Windows (304 tests
+   passed, 10 skipped); the long-path canonicalization regression that run exposed
+   is fixed.
 
 ## Path confinement
 

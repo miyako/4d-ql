@@ -576,7 +576,9 @@ Hosted CI also builds standalone x86-64 Windows ZIP and Linux tar.gz packages
 with their runtime libraries. Tagged releases attach these alongside the
 macOS assets. Windows builds are unsigned; Linux targets Ubuntu 24.04-compatible
 systems and has experimental form/diagram rendering. Keep the whole extracted
-folder together. See [Windows and Linux installation](docs/CLI.md#windows-and-linux-downloads)
+folder together. An optional x64 Windows ZIP adds a per-user Explorer preview
+handler (needs the WebView2 Runtime; see [Windows preview handler](docs/WINDOWS-PREVIEW-HANDLER.md)).
+See [Windows and Linux installation](docs/CLI.md#windows-and-linux-downloads)
 and [hosted build/release instructions](docs/CLI.md#hosted-builds-and-releases).
 
 ### Upgrading

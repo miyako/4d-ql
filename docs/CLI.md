@@ -102,7 +102,8 @@ optional Windows archive includes per-user Explorer preview-handler
 registration instructions; see [Windows preview handler](WINDOWS-PREVIEW-HANDLER.md).
 None of these packages require 4D or a Swift development installation.
 Windows ARM64 and Linux ARM64 native packages are not built. Windows validation
-uses the GitHub-hosted `windows-latest` runner; Linux validation uses
+uses the GitHub-hosted `windows-2022` runner (pinned: `windows-latest` now ships
+Visual Studio 18, whose STL rejects the Clang 21 bundled with Swift 6.4.2); Linux validation uses
 `ubuntu-24.04`. The Linux package is not a universal Linux binary: it requires
 an x86-64, glibc-based environment compatible with Ubuntu 24.04, not Alpine/musl.
 Its system baseline includes glibc 2.39 or later, `libgcc-s1`, `libstdc++6`,
