@@ -47,7 +47,7 @@ public final class ByteSource {
     public init(url: URL) throws {
         self.url = url
         #if os(Windows)
-        let opened = url.path.withCString(encodedAs: UTF16.self) { path in
+        let opened = PathConfinement.win32Path(url.path).withCString(encodedAs: UTF16.self) { path in
             CreateFileW(path, GENERIC_READ, DWORD(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE), nil,
                         DWORD(OPEN_EXISTING), DWORD(FILE_ATTRIBUTE_NORMAL), nil)
         }

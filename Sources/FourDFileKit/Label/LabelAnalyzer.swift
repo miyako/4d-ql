@@ -227,7 +227,7 @@ public struct LabelFileAnalyzer: FileAnalyzer {
         guard !name.contains("/"), !name.contains("\\"), !name.contains("\0"), name != ".", name != ".." else {
             throw LabelError.invalid("Invalid saved form name.")
         }
-        let label = label.standardizedFileURL.resolvingSymlinksInPath()
+        let label = PathConfinement.canonicalURL(label)
         var folder = label.deletingLastPathComponent()
         var sources: URL?
         for _ in 0..<8 {
@@ -246,8 +246,8 @@ public struct LabelFileAnalyzer: FileAnalyzer {
         guard directories.count <= 64 else { throw LabelError.invalid("More than 64 table-form folders.") }
         let matches = directories.filter { directory in
             FileManager.default.fileExists(atPath: directory.appendingPathComponent(name).appendingPathComponent("form.4DForm").path)
-        }.map { $0.appendingPathComponent(name).appendingPathComponent("form.4DForm").resolvingSymlinksInPath() }
-        guard matches.count == 1, let match = matches.first, match.path.hasPrefix(root.path + "/") else {
+        }.map { $0.appendingPathComponent(name).appendingPathComponent("form.4DForm") }.map { PathConfinement.canonicalURL($0) }
+        guard matches.count == 1, let match = matches.first, PathConfinement.contains(match, in: root) else {
             throw LabelError.invalid("Saved table form is missing, ambiguous or outside the project.")
         }
         return match
