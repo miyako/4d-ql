@@ -197,9 +197,11 @@ self-authored.
    including per-control pixel scores and printed/offscreen captures.
 3. Verify other display scales and Windows 10 font metrics.
 4. ~~Path handling for UNC and long (`\\?\`) paths and reparse-point confinement.~~
-   Implemented in `PathConfinement` (see below) and run on Windows (304 tests
-   passed, 10 skipped); the long-path canonicalization regression that run exposed
-   is fixed.
+   Implemented in `PathConfinement` (see below) and run on Windows: the hosted
+   Windows job ran 304 tests with 0 failures and 4 skipped (two need macOS-measured
+   font metrics; two need the `FOURD_SAMPLES` dataset), so the Windows-only
+   `PathConfinementTests` executed. The long-path canonicalization regression that
+   run exposed is fixed.
 
 ## Path confinement
 
