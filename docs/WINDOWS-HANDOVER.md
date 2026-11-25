@@ -186,7 +186,8 @@ self-authored.
 ## Remaining Windows work
 
 1. Explorer preview-handler integration and Windows packaging (separate from
-   4d-form's CLI). The macOS bookmark/XPC authorization is not a Windows design.
+   4d-form's CLI). Design proposal and
+   open questions: [WINDOWS-PREVIEW-HANDLER.md](WINDOWS-PREVIEW-HANDLER.md). The macOS bookmark/XPC authorization is not a Windows design.
 2. Refine the approximations listed above with more native references,
    including per-control pixel scores and printed/offscreen captures.
 3. Verify other display scales and Windows 10 font metrics.
