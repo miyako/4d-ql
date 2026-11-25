@@ -62,3 +62,39 @@ The resulting archive includes the CLI's runtime DLLs, the handler and loader,
 the registration script, the self-test executable, and WebView2 SDK notices.
 The automated host test does not automate Explorer's UI or preview-pane
 selection; it verifies the registered COM class activates in `prevhost.exe`.
+
+## Open items and follow-ups
+
+Carried over from the earlier design proposal. None of these is implemented or
+verified unless stated.
+
+- **Explorer UI.** Activation is verified in `prevhost.exe`, not through the
+  Explorer preview pane. Check manually on Windows 10 and 11, at 100/150/200 %
+  display scale, in light and dark mode, while resizing the pane, arrow-keying
+  quickly through many files, and on a file on a network share. Record versions
+  in this document.
+- **x64 CLI self-test.** The first local validation used an ARM64 CLI helper, so
+  the x64 self-test runs only in the hosted Windows job. Review that job's log on
+  each release.
+- **Leaks and robustness.** Watch `prevhost.exe` memory and handles over a few
+  hundred selections, and confirm that rapid selection changes cancel the helper
+  without blocking the UI thread.
+- **Latency.** Measure process start plus Swift runtime load for the `fourdql.exe`
+  helper while arrow-keying. If it is too slow, cost a long-lived helper or an
+  exported C ABI loaded by a helper process.
+- **Hosting model.** Forms, labels and catalogs read sibling files, so the handler
+  needs file-based initialization; single-file types could use a more isolated
+  stream-based host. Confinement relies on `PathConfinement` and the helper's
+  limits.
+- **Confinement through the handler.** Exercise forms whose stylesheet or `$ref`
+  escapes the project through `..`, a junction and a symbolic link, and paths with
+  spaces, non-ASCII characters, UNC and over 260 characters.
+- **Associations.** Check what 4D itself registers for these extensions on a
+  machine with 4D installed, and that a `SystemFileAssociations` fallback never
+  displaces an existing preview handler or default app.
+- **Signing and distribution.** The package is unsigned. Test whether SmartScreen
+  or Smart App Control blocks the unsigned handler DLL on current Windows 11.
+  Later: MSIX or WiX, code signing, and an ARM64 build.
+- **Dark mode.** Form previews select a theme explicitly (see the handover's
+  Windows HTML contract). Decide whether the shell's dark/light state should also
+  set WebView2's preferred color scheme for the other report types.
