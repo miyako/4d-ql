@@ -150,7 +150,7 @@ private final class CatalogDecoder {
     }
 
     private func applyEditorLayout(to tables: inout [CatalogTable], source: ByteSource) {
-        let folder = source.url.standardizedFileURL.resolvingSymlinksInPath().deletingLastPathComponent()
+        let folder = PathConfinement.canonicalURL(source.url).deletingLastPathComponent()
         let url = folder.appendingPathComponent("catalog_editor.json")
         do {
             let attributes: [FileAttributeKey: Any]
@@ -160,8 +160,8 @@ private final class CatalogDecoder {
                 && error.code == NSFileReadNoSuchFileError {
                 return
             }
-            let resolved = url.resolvingSymlinksInPath()
-            guard resolved.deletingLastPathComponent() == folder else {
+            let resolved = PathConfinement.canonicalURL(url)
+            guard PathConfinement.isSameLocation(resolved.deletingLastPathComponent(), folder) else {
                 throw CatalogError.invalid("catalog_editor.json escapes the catalog folder")
             }
             let resolvedAttributes = attributes[.type] as? FileAttributeType == .typeSymbolicLink

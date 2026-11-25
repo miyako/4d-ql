@@ -97,7 +97,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
         var parser = try FormJSONParser(data)
         let original = try parser.parse()
         guard case .object = original else { throw FormError.invalid("Root must be an object.") }
-        let url = source.url.standardizedFileURL.resolvingSymlinksInPath()
+        let url = PathConfinement.canonicalURL(source.url)
         let dependencies = FormDependencies(formURL: url)
         let resolved = try FormPointerResolver(dependencies: dependencies).resolve(original, document: url)
         if let scheme = resolved["colorScheme"], scheme.string != "light" && scheme.string != "dark" {
@@ -259,7 +259,7 @@ public struct FormFileAnalyzer: FileAnalyzer {
     private func loadCSS(_ url: URL, stylesheet: inout FormStylesheet,
                          parsed: inout [URL: FormStylesheet], dependencies: FormDependencies) throws {
         do {
-            let canonical = url.standardizedFileURL.resolvingSymlinksInPath()
+            let canonical = PathConfinement.canonicalURL(url)
             let loaded: FormStylesheet
             if let cached = parsed[canonical] {
                 loaded = cached

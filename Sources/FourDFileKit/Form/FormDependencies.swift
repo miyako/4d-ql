@@ -12,7 +12,7 @@ final class FormDependencies {
     private var attempts = Set<URL>()
 
     init(formURL: URL) {
-        let form = formURL.standardizedFileURL.resolvingSymlinksInPath()
+        let form = PathConfinement.canonicalURL(formURL)
         self.formURL = form
         var folder = form.deletingLastPathComponent()
         var found: URL?
@@ -58,16 +58,16 @@ final class FormDependencies {
         } else {
             target = document.deletingLastPathComponent().appendingPathComponent(path)
         }
-        let resolved = target.standardizedFileURL.resolvingSymlinksInPath()
-        guard resolved.path.hasPrefix(root.path + "/") else {
+        let resolved = PathConfinement.canonicalURL(target)
+        guard PathConfinement.contains(resolved, in: root) else {
             throw FormError.dependency("Path escapes the preview's project/form folder: \(path).")
         }
         return resolved
     }
 
     func read(_ requestedURL: URL) throws -> Data {
-        let url = requestedURL.standardizedFileURL.resolvingSymlinksInPath()
-        guard url.path.hasPrefix(root.path + "/") else {
+        let url = PathConfinement.canonicalURL(requestedURL)
+        guard PathConfinement.contains(url, in: root) else {
             throw FormError.dependency("Path escapes the preview's project/form folder: \(requestedURL.lastPathComponent).")
         }
         if let data = cache[url] { return data }
@@ -84,7 +84,7 @@ final class FormDependencies {
         let data = try source.read(at: 0, length: Int(source.size))
         bytesRead += data.count
         cache[url] = data
-        loadedPaths.append(String(url.path.dropFirst(root.path.count + 1)))
+        loadedPaths.append(PathConfinement.relativePath(of: url, in: root) ?? url.lastPathComponent)
         return data
     }
 

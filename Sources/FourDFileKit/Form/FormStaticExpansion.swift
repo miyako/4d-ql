@@ -166,7 +166,7 @@ final class FormStaticExpansion {
                 url = candidates[0]
             } else { url = sources.appendingPathComponent("Forms/\(name)/form.4DForm") }
         }
-        let canonical = url.standardizedFileURL.resolvingSymlinksInPath()
+        let canonical = PathConfinement.canonicalURL(url)
         if let value = documents[canonical] { return (value, canonical, canonical.path) }
         var parser = try FormJSONParser(dependencies.read(canonical))
         let original = try parser.parse()

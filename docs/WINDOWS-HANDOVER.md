@@ -190,5 +190,33 @@ self-authored.
 2. Refine the approximations listed above with more native references,
    including per-control pixel scores and printed/offscreen captures.
 3. Verify other display scales and Windows 10 font metrics.
-4. Path handling for UNC and long (`\\?\`) paths and reparse-point confinement
-   are exercised only through Foundation's standard paths so far.
+4. ~~Path handling for UNC and long (`\\?\`) paths and reparse-point confinement.~~
+   Implemented in `PathConfinement` (see below) but **not yet run on Windows**:
+   the Windows-only tests in `PathConfinementTests` skip elsewhere and need a first
+   run on a Windows host (`swift test --filter PathConfinementTests`).
+
+## Path confinement
+
+Form, label and catalog dependency reads are confined to the project or form
+folder by `PathConfinement` (`Sources/FourDFileKit/Core/PathConfinement.swift`),
+replacing the textual `path.hasPrefix(root + "/")` checks.
+
+- Containment compares normalized components, strictly inside the root. Windows
+  rules: `\`, `/` and `/C:/` spellings; `\\?\`, `\\.\` and `\\?\UNC\` prefixes; UNC
+  server/share as the root that cannot be climbed out of; case-insensitive keys
+  with the original spelling kept for display; trailing dots and spaces ignored;
+  alternate data streams, reserved device names, wildcard characters, volume-GUID
+  and `GLOBALROOT` paths rejected. These pure rules are tested on every host.
+- `canonicalURL` resolves links before the check: Foundation's resolution on
+  macOS (unchanged), and on Windows `GetFinalPathNameByHandleW` through the
+  deepest existing ancestor, which also follows junctions and mount points and
+  expands 8.3 names.
+- `ByteSource` opens Windows paths through `win32Path`, which uses backslashes and
+  the `\\?\` / `\\?\UNC\` prefix from 240 characters, so long paths open without
+  long-path awareness.
+- Windows-only tests (junction and symbolic-link escape, stored case, 8.3 names,
+  long paths, UNC through an administrative share) skip with a stated reason on
+  other hosts, or when the host lacks the capability.
+
+Not covered: macOS `ProjectAccessStore` (bookmark design, macOS only); remote
+volumes whose reparse behavior differs; ReFS/OneDrive placeholder semantics.
