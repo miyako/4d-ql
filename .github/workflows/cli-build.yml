@@ -29,7 +29,7 @@ jobs:
           ${{ fromJSON(inputs.platform == 'windows' && '["windows-x86_64"]' ||
                        inputs.platform == 'linux' && '["linux-x86_64"]' ||
                        '["windows-x86_64","linux-x86_64"]') }}
-    runs-on: ${{ matrix.platform == 'windows-x86_64' && 'windows-latest' || 'ubuntu-24.04' }}
+    runs-on: ${{ matrix.platform == 'windows-x86_64' && 'windows-2022' || 'ubuntu-24.04' }}
     timeout-minutes: 45
     env:
       PACKAGE_VERSION: ${{ inputs.version }}
