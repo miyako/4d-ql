@@ -1072,6 +1072,12 @@ recheck 443 seconds). Retained runs: `4wp-colrule-20261117-probe-01` (30 shapes)
 unused-area appendix sheets as preview pages; it was made exact for the preview pages
 and stricter for the appendix sheets before `-gate-02`.
 
+Re-verification of the unchanged #68 editor on 2026-11-26 (macOS, 4D 21.2 LTS build 100694,
+`F0012102`; fresh evidence, sealed and backed up outside the repository): **451 unit tests and
+213 production-browser tests passed, 3,193 generation cases, all 15 headed print-Cancel modes
+and the 3,221-case strict recheck passed.** This is a scoped re-run, not a successor baseline
+comparison against the sealed #68 evidence (still open), and no other 4D build has been tested.
+
 Final evidence: `~/.copilot/evidence/4wp-colrule-20261117-gate-02/`; independent byte/SHA-verified backup:
 `~/.copilot/evidence-backups/4wp-colrule-20261117-gate-02/`. This is scoped evidence, not certification.
 
