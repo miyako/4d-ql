@@ -86,3 +86,12 @@ From `docs/WINDOWS-HANDOVER.md` and the "Open items and follow-ups" section of
   previews). It is not vendored as a submodule here.
 - Cloud sessions here cannot push to `main` or force-push; work lands through
   PRs, and merges were squash merges pinned to the checked head SHA.
+
+## Status after the macOS session (2026-11-26)
+
+- Verified on macOS with full Xcode (`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test`; Command Line Tools alone lack XCTest): 367 tests, 9 skipped, 0 failures. Web editor: 451 unit and 213 production-browser tests pass (browser printing specs need Poppler, `brew install poppler`).
+- `ProjectAccessStore.contains` was left unchanged (optional item 3 above; not requested).
+- `web-editor/README.md` status text corrected to #68.
+- Native gate re-run on 2026-11-26 with 4D 21.2 LTS build 100694 (`F0012102`), fresh evidence `~/.copilot/evidence/4wp-handover-20261126-gate-01`: 3,193 generation cases passed, all 15 headed print-Cancel modes passed, and the strict `--recheck` passed 3,221 cases. Sealed (SHA256-MANIFEST.json, 11,815 files, manifest SHA-256 `050973719540d0517daf5952eddca1c4cd8c7192eec65a8a6b849d2051feb693`) and copied to `~/.copilot/evidence-backups/4wp-handover-20261126-gate-01` with 0 mismatches (receipt `~/.copilot/evidence/4wp-handover-20261126-backup-verification.json`). A first Cancel attempt failed on the default port 4190 (blocked by fetch, "bad port"); set `WP_PREVIEW_PORT` (43614 worked) and keep that failure log.
+- Still **not done**: the #68 successor baseline comparison (`reproduce-paged.mjs` requires the #67 evidence), M5a-M5c audits, the compatibility matrix beyond 21.2 LTS build 100694 (build 100691 and 21 R5 untested), and the manual Quick Look Space-bar checks (the worktree build is currently the registered extension).
+- `scripts/build.sh --register` was run from the worktree; keep that worktree, or re-register an installed app.
