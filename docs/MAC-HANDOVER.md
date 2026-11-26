@@ -90,5 +90,5 @@ From `docs/WINDOWS-HANDOVER.md` and the "Open items and follow-ups" section of
 ## Status after the macOS session (2026-11-26)
 
 - Verified on macOS with full Xcode (`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test`; Command Line Tools alone lack XCTest): 367 tests, 9 skipped, 0 failures. Web editor: 451 unit and 213 production-browser tests pass (browser printing specs need Poppler, `brew install poppler`).
-- `ProjectAccessStore.contains` now uses `PathConfinement` (component-wise; the filesystem root never authorizes), with a test.
+- `ProjectAccessStore.contains` was left unchanged (optional item 3 above; not requested).
 - `web-editor/README.md` status text corrected to #68. Still **not done**: the #68 successor baseline comparison (`reproduce-paged.mjs` requires the #67 evidence), the full-4D native gate (`FOURD` must point at an installed full 4D, e.g. `/Applications/4D 21.2 LTS (100694)/4D.app/Contents/MacOS/4D`), M5a-M5c audits, and manual `build.sh --register` Quick Look checks.

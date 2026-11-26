@@ -80,15 +80,6 @@ final class ProjectAccessTests: XCTestCase {
         }
     }
 
-    func testContainsIsComponentWise() {
-        XCTAssertTrue(ProjectAccessStore.contains("/a/b", in: "/a/b"))
-        XCTAssertTrue(ProjectAccessStore.contains("/a/b/c.4DForm", in: "/a/b"))
-        XCTAssertFalse(ProjectAccessStore.contains("/a/bc/c", in: "/a/b"))
-        XCTAssertFalse(ProjectAccessStore.contains("/a", in: "/a/b"))
-        XCTAssertFalse(ProjectAccessStore.contains("/a/b", in: "/"), "the filesystem root never authorizes")
-        XCTAssertFalse(ProjectAccessStore.contains("/a/../x", in: "/a"))
-    }
-
     func testMissingDirectoryMeansNoPendingRequests() throws {
         XCTAssertEqual(try exchange.pendingRequests(), [])
         try exchange.cleanupExpired()

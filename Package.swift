@@ -32,7 +32,7 @@ var targets: [Target] = [
 
 #if os(macOS)
 targets += [
-    .target(name: "FourDProjectAccess", dependencies: ["FourDFileKit"]),
+    .target(name: "FourDProjectAccess"),
     .target(name: "FourDQuickLookUI", linkerSettings: [.linkedFramework("WebKit")]),
 
     .executableTarget(name: "FourDProjectPreviewService",
