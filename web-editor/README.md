@@ -7,8 +7,9 @@ the 4D runtime. Files are processed in the browser and are not uploaded.
 ## Roadmap and status
 
 Status snapshot: `main` at
-[`4ea912a` / #67](https://github.com/miyako/4d-ql/pull/67) (M4c, tables in multi-column sections), deployed.
-**Available** means merged there; **In progress** is an unmerged increment (10.9.7, rules between columns, in this version);
+[`8eb85ce` / #68](https://github.com/miyako/4d-ql/pull/68) (M4d, rules between columns), the latest editor feature, deployed.
+Later `main` commits (#70–#74) concern the Swift Quick Look preview and Windows handler, not the editor.
+**Available** means merged there; **In progress** is an unmerged increment (none at present);
 **Planned** is approved subsequent work, not implemented here;
 **Proposed** is an unscheduled idea requiring further decisions.
 Phase numbers below organize this roadmap, not past PR numbers.
@@ -46,16 +47,15 @@ promise of dates or full Write Pro parity.
 | 10.9.4. Paged continuous-section headers and footers | Compatible continuous seams whose sections carry stored headers, footers or first/left/right variants: each page shows the areas of the section in effect at its top, first-page areas only where a section's content starts, otherwise physical left/right parity (native page membership only) | Available on main via #65 (M4a); deployed |
 | 10.9.5. Paged continuous sections that change page geometry | Single-column continuous seams on the same paper that change margins or orientation: an orientation change starts a new page in the incoming orientation (incoming first-page areas there); a margin change continues on the shared page, which keeps the top/bottom margins and areas of the section at its top while the incoming text uses its own left/right margins; later pages use the incoming geometry (native page membership only; scoped evidence, not certification) | Available on main via #66 (M4b); deployed |
 | 10.9.6. Paged tables in multi-column sections | Tables already admitted for paged preview, inside 2–4 equal columns: each table stays inside one column (aligned within it), continues in the next column and then on the next page, and repeats its leading header rows at the top of every column and page fragment (native page/column membership only; scoped evidence, not certification); tables wider than their column and bands taller than a column keep the localized fallback | Available on main via #67 (M4c); deployed |
-| 10.9.7. Paged rules between columns | Rules between 2–4 equal columns (`column-rule-*`, nine native styles, absolute widths up to the gap, `#RRGGBB` colours, native 2.5pt/black defaults) drawn in the projection only: in every gap to the left of the last column a page's text reaches, centred in the gap over the full body height, with the native paint pieces, in preview and print (native page/gap membership only; scoped evidence, not certification); rules wider than their gap, zero gaps, other values and rules on continuous seams keep the localized fallback | In progress (M4d); implemented in this version, not merged or deployed |
+| 10.9.7. Paged rules between columns | Rules between 2–4 equal columns (`column-rule-*`, nine native styles, absolute widths up to the gap, `#RRGGBB` colours, native 2.5pt/black defaults) drawn in the projection only: in every gap to the left of the last column a page's text reaches, centred in the gap over the full body height, with the native paint pieces, in preview and print (native page/gap membership only; scoped evidence, not certification); rules wider than their gap, zero gaps, other values and rules on continuous seams keep the localized fallback | Available on main via #68 (M4d); deployed |
 | 10.10. Further layout parity | No-witness grids that native widths do not resolve exactly, column-changing or square-paper-rotating continuous seams, tables wider than their column, split rows/bands, complex table pagination, rules wider than their gap or on continuous seams, page-targeted/seam objects, real text wrapping around objects, arbitrary layers and native-equivalent pagination/balancing | Proposed; unscheduled |
 | 11. Release readiness | Accessibility, mobile usability, compatibility matrix, persistence/export reliability and release criteria; improvements remain incremental throughout | Proposed completion criteria |
 
 Steps 8.1–8.4, header/footer variants/positioning and advanced media are available
-on main. #67 (M4c, tables in multi-column sections) was deployed by successful Pages run
-[`43704980142`](https://github.com/miyako/4d-ql/actions/runs/43704980142)
-at `4ea912a0b25d5872571e768e132a951a7ab0d2e1`.
-The fourth and last M4 increment (10.9.7, rules between columns) is implemented in
-this version and awaits review; it is not merged or deployed. 10.10/11 remain **Proposed**. Arbitrary wrapping and
+on main. #68 (M4d, rules between columns, the fourth and last M4 increment) was deployed by
+successful Pages run
+[`43975003535`](https://github.com/miyako/4d-ql/actions/runs/43975003535)
+at `8eb85ce74487489fc9a0b571fa2674f28300d83c`. 10.10/11 remain **Proposed**. Arbitrary wrapping and
 automatic native pagination remain unscheduled proposals.
 Native formula execution/a 4D backend, real-time collaboration and exact
 full-Write-Pro parity are **not approved features**.
@@ -1014,10 +1014,9 @@ final 20-shape probe).
 Final evidence: `~/.copilot/evidence/4wp-coltable-20261115-gate-01/`; independent byte/SHA-verified backup:
 `~/.copilot/evidence-backups/4wp-coltable-20261115-gate-01/`. This is scoped evidence, not certification.
 
-### Rules between columns (10.9.7, in this version)
+### Rules between columns (10.9.7, available/deployed #68)
 
-The **in-progress 10.9.7** increment (M4d, the fourth and last M4 increment), implemented in this
-version and not merged or deployed, draws rules between columns (`column-rule-style`,
+The **available/deployed 10.9.7** increment (M4d, #68, the fourth and last M4 increment) draws rules between columns (`column-rule-style`,
 `column-rule-width`, `column-rule-color`) in the paged preview and print. Before it, any
 ruled multi-column section used the localized column fallback. Installed full 4D 21.2
 `F0012102` originals, effective rule getters (before and after re-import) and native PDF
@@ -1485,7 +1484,7 @@ comparison. It does not normalize away DOM, history, recovery or source changes.
 Run all modes, then
 re-import the augmented manifest in full 4D and run the complete verifier.
 
-For the strict baseline comparison (currently the sealed #67 evidence), run
+For the strict baseline comparison (the helper currently requires the sealed #67 evidence of 3,039 cases; a #68 successor comparison against all 3,221 cases is still open), run
 `node scripts/reproduce-paged.mjs NEW_EVIDENCE_DIRECTORY SEALED_67_BASELINE`
 after the initial full gate. It preserves unrelated baseline input/dependency
 bytes and regenerates affected paged exports with the current production build.

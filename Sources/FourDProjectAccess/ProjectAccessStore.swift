@@ -1,4 +1,5 @@
 import Foundation
+import FourDFileKit
 
 public enum ProjectAccessError: LocalizedError {
     case unavailable
@@ -132,7 +133,7 @@ public struct ProjectAccessStore {
     }
 
     public static func contains(_ path: String, in root: String) -> Bool {
-        path == root || path.hasPrefix(root + "/")
+        PathConfinement.isSameLocation(path, root) || PathConfinement.contains(path, in: root)
     }
 
     private func save(_ entries: [ProjectAccessEntry]) throws {
